@@ -87,7 +87,7 @@ describe("parseKeymapSource: invalid input produces clear, located errors", () =
 			throw new Error("expected parseKeymapSource to throw");
 		} catch (err) {
 			expect(err).toBeInstanceOf(KeymapParseError);
-			expect((err as KeymapParseError).breadcrumb).toBe("items");
+			expect((err as KeymapParseError).path).toEqual(["items"]);
 		}
 	});
 
@@ -97,7 +97,7 @@ describe("parseKeymapSource: invalid input produces clear, located errors", () =
 			throw new Error("expected parseKeymapSource to throw");
 		} catch (err) {
 			expect(err).toBeInstanceOf(KeymapParseError);
-			expect((err as KeymapParseError).breadcrumb).toBe("items.f");
+			expect((err as KeymapParseError).path).toEqual(["items", "f"]);
 		}
 	});
 
@@ -119,12 +119,12 @@ describe("parseKeymapSource: invalid input produces clear, located errors", () =
 			throw new Error("expected parseKeymapSource to throw");
 		} catch (err) {
 			expect(err).toBeInstanceOf(KeymapParseError);
-			expect((err as KeymapParseError).breadcrumb).toBe("items.");
+			expect((err as KeymapParseError).path).toEqual(["items", ""]);
 		}
 	});
 
 	it("rejects two sibling keys that resolve to the same key combination", () => {
-		expect(() => parseKeymapSource("items:\n  a:\n    command: x\n  s-a:\n    command: y\n")).toThrow(
+		expect(() => parseKeymapSource("items:\n  A:\n    command: x\n  s-a:\n    command: y\n")).toThrow(
 			/collides/,
 		);
 	});

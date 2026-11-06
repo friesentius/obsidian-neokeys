@@ -42,21 +42,3 @@ export function entryLabel(entry: GroupEntry, resolveCommandName?: (id: string) 
 	}
 	return node.description ?? node.file;
 }
-
-/**
- * Resolve a full sequence of key presses against a root group, descending one
- * key at a time. Returns the final group/command/file node reached, or
- * `undefined` if any step in the sequence has no matching entry.
- */
-export function resolveSequence(root: GroupNode, sequence: ParsedKey[]) {
-	let current: GroupNode = root;
-	for (const pressed of sequence) {
-		const entry = findEntry(current, pressed);
-		if (!entry) return undefined;
-		if (entry.node.kind !== "group") {
-			return entry.node;
-		}
-		current = entry.node;
-	}
-	return current;
-}

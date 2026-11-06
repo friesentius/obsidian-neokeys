@@ -21,7 +21,7 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
-      - run: npm run validate
+      - run: npm run validate -- --tag "${GITHUB_REF_NAME}"
       - env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |

@@ -35,7 +35,7 @@ export default class NeokeysPlugin extends Plugin {
 			root = parseKeymapSource(this.settings.keymapSource);
 		} catch (err) {
 			const message = err instanceof KeymapParseError ? err.message : String(err);
-			new Notice(`Neokeys: invalid keymap — ${message}`, 8000);
+			new Notice(`Neokeys: invalid keymap - ${message}`, 8000);
 			return;
 		}
 

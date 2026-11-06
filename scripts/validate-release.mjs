@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 // Mirrors the parts of Obsidian's obsidian-releases submission checks that
 // don't require a live GitHub release: manifest/versions shape, id and
-// version format. With --check-release-assets <tag> it also verifies a
-// tagged GitHub release has main.js and manifest.json attached.
+// version format. With --tag <tag> it also verifies the release tag equals
+// manifest.json's version exactly, and with --check-release-assets <tag> it
+// verifies a tagged GitHub release has main.js and manifest.json attached.
 import { readFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 
@@ -87,31 +88,38 @@ if (manifest) {
 	}
 }
 
-const checkReleaseAssetsIndex = process.argv.indexOf("--check-release-assets");
-if (checkReleaseAssetsIndex !== -1) {
-	const tag = process.argv[checkReleaseAssetsIndex + 1];
-	if (!tag) {
-		errors.push("--check-release-assets requires a tag argument");
-	} else if (manifest) {
-		if (tag.replace(/^v/, "") !== manifest.version) {
-			errors.push(`Release tag "${tag}" does not match manifest.json's version "${manifest.version}"`);
-		}
+function optionValue(flag) {
+	const index = process.argv.indexOf(flag);
+	if (index === -1) return undefined;
+	const value = process.argv[index + 1];
+	if (!value) {
+		errors.push(`${flag} requires a tag argument`);
+		return undefined;
+	}
+	return value;
+}
 
-		let assetNames = [];
-		try {
-			const output = execFileSync("gh", ["release", "view", tag, "--json", "assets"], {
-				encoding: "utf8",
-			});
-			const parsed = JSON.parse(output);
-			assetNames = (parsed.assets ?? []).map((a) => a.name);
-		} catch (err) {
-			errors.push(`Could not fetch release "${tag}" via gh: ${err.message}`);
-		}
+const tag = optionValue("--tag");
+if (tag !== undefined && manifest && tag !== manifest.version) {
+	errors.push(`Release tag "${tag}" does not match manifest.json's version "${manifest.version}"`);
+}
 
-		for (const required of ["main.js", "manifest.json"]) {
-			if (!assetNames.includes(required)) {
-				errors.push(`Release "${tag}" is missing required asset "${required}"`);
-			}
+const assetsTag = optionValue("--check-release-assets");
+if (assetsTag !== undefined) {
+	let assetNames = [];
+	try {
+		const output = execFileSync("gh", ["release", "view", assetsTag, "--json", "assets"], {
+			encoding: "utf8",
+		});
+		const parsed = JSON.parse(output);
+		assetNames = (parsed.assets ?? []).map((a) => a.name);
+	} catch (err) {
+		errors.push(`Could not fetch release "${assetsTag}" via gh: ${err.message}`);
+	}
+
+	for (const required of ["main.js", "manifest.json"]) {
+		if (!assetNames.includes(required)) {
+			errors.push(`Release "${assetsTag}" is missing required asset "${required}"`);
 		}
 	}
 }

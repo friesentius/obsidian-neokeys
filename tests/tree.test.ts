@@ -1,6 +1,6 @@
 import { parseKeyString } from "../src/keys";
 import { parseKeymapSource } from "../src/keymap";
-import { entryLabel, findEntry, resolveSequence, sortEntries } from "../src/tree";
+import { entryLabel, findEntry, sortEntries } from "../src/tree";
 
 const SOURCE = `
 title: Neokeys
@@ -20,7 +20,7 @@ items:
     command: app:about
 `;
 
-describe("findEntry / resolveSequence", () => {
+describe("findEntry", () => {
 	const root = parseKeymapSource(SOURCE);
 
 	it("finds a top-level entry by key", () => {
@@ -30,31 +30,6 @@ describe("findEntry / resolveSequence", () => {
 
 	it("returns undefined for an unmatched key", () => {
 		expect(findEntry(root, parseKeyString("q"))).toBeUndefined();
-	});
-
-	it("resolves a multi-key sequence down to a command node", () => {
-		const result = resolveSequence(root, [parseKeyString("f"), parseKeyString("n")]);
-		expect(result).toEqual({ kind: "command", command: "file-explorer:new-file", description: "New file" });
-	});
-
-	it("resolves a multi-key sequence down to a file node", () => {
-		const result = resolveSequence(root, [parseKeyString("f"), parseKeyString("o")]);
-		expect(result).toEqual({ kind: "file", file: "Inbox/Today" });
-	});
-
-	it("resolves an empty sequence to the root group", () => {
-		expect(resolveSequence(root, [])).toBe(root);
-	});
-
-	it("stops and returns undefined when a step in the sequence has no match", () => {
-		expect(resolveSequence(root, [parseKeyString("f"), parseKeyString("q")])).toBeUndefined();
-	});
-
-	it("stops early once a command is reached, ignoring any further keys", () => {
-		const result = resolveSequence(root, [parseKeyString("z"), parseKeyString("q")]);
-		// the sequence above is built from already-parsed keys, so resolution
-		// never reaches the second one: the walk stops at the command node.
-		expect(result).toEqual({ kind: "command", command: "app:zoom" });
 	});
 });
 

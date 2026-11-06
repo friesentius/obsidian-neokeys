@@ -11,10 +11,6 @@ export class KeymapParseError extends Error {
 		this.name = "KeymapParseError";
 	}
 
-	get breadcrumb(): string {
-		return this.path.length > 0 ? this.path.join(".") : "(root)";
-	}
-
 	private static formatMessage(path: string[], message: string): string {
 		const where = path.length > 0 ? path.join(".") : "root";
 		return `${message} (at ${where})`;

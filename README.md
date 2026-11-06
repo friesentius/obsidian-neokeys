@@ -50,11 +50,11 @@ popup can show a heading for the section you're in.
 
 Every entry under `items` is one of:
 
-- **A group** — has nested `items`, plus an optional `title` and `description` shown as the
+- **A group** - has nested `items`, plus an optional `title` and `description` shown as the
   popup's header when you're inside it.
-- **A command** — `command: <command-id>`, or the short form `"<command-id> <description>"`.
+- **A command** - `command: <command-id>`, or the short form `"<command-id> <description>"`.
   An optional `description` overrides the label shown in the popup.
-- **A file** — `file: <vault-relative-path>`, opened with the same resolution as Obsidian's
+- **A file** - `file: <vault-relative-path>`, opened with the same resolution as Obsidian's
   internal links. An optional `description` overrides the label.
 
 ```yaml
@@ -82,8 +82,9 @@ items:
 
 A key string is an optional run of modifier letters (`c`/`s`/`a`/`m` for ctrl/shift/alt/meta)
 followed by a `-` and a base key, e.g. `c-enter` for Ctrl+Enter, or just a single character for
-an unmodified key, e.g. `f`. Printable characters are case-sensitive instead of needing an
-explicit shift modifier: write `?` rather than `s-/`. A handful of named keys are recognized as
+an unmodified key, e.g. `f`. Printable characters are case-sensitive: `F` is Shift+F, and `s-f`
+or `cs-f` are equivalent to `F` and `c-F`. Any other shifted character must be written as the
+character itself, e.g. `?` rather than `s-/` or `!` rather than `s-1`; those forms are rejected. A handful of named keys are recognized as
 aliases: `space`, `up`/`down`/`left`/`right`, `enter`, `esc`, `tab`, `backspace`, `delete`,
 `home`, `end`, `pageup`, `pagedown`, `insert`, and `f1`–`f12`.
 
@@ -104,12 +105,12 @@ since there is no public API signal for "a hardware keyboard is attached."
 ## Development
 
 - `npm install`
-- `npm run dev` — esbuild in watch mode
-- `npm run build` — typecheck + production build
-- `npm test` — Jest unit tests (key parsing, keymap parsing/validation, tree resolution, delay
+- `npm run dev` - esbuild in watch mode
+- `npm run build` - typecheck + production build
+- `npm test` - Jest unit tests (key parsing, keymap parsing/validation, tree resolution, delay
   logic)
-- `npm run lint` — ESLint with `eslint-plugin-obsidianmd`'s recommended config
-- `npm run validate` — mirrors the parts of Obsidian's community-plugin submission checks that
+- `npm run lint` - ESLint with `eslint-plugin-obsidianmd`'s recommended config
+- `npm run validate` - mirrors the parts of Obsidian's community-plugin submission checks that
   don't require a live GitHub release (manifest/versions shape, `id`/`version` format)
 
 ## License

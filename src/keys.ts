@@ -74,6 +74,9 @@ function normalize(key: ParsedKey): ParsedKey {
  * Parse a Spacekeys-style key string, e.g. "c-enter", "cs-f", "?", "c--".
  * An optional single run of modifier letters (c/s/a/m for ctrl/shift/alt/meta)
  * precedes a `-` and the base key; aliases map friendly names to raw key values.
+ * Shift on a single letter becomes the uppercase letter ("cs-f" is Ctrl+Shift+F);
+ * shift on any other single character is rejected, since the shifted character
+ * itself must be written instead (e.g. "!" rather than "s-1").
  */
 export function parseKeyString(raw: string): ParsedKey {
 	if (raw.length === 0) {
@@ -104,8 +107,19 @@ export function parseKeyString(raw: string): ParsedKey {
 		seen.add(ch);
 	}
 
+	let resolved = resolveBase(base);
+	if (seen.has("s") && resolved.length === 1) {
+		if (resolved.toLowerCase() === resolved.toUpperCase()) {
+			throw new KeyParseError(
+				raw,
+				`Invalid key string "${raw}": shift cannot be combined with "${resolved}"; write the shifted character itself instead (e.g. "!" rather than "s-1")`,
+			);
+		}
+		resolved = resolved.toUpperCase();
+	}
+
 	const key: ParsedKey = {
-		key: resolveBase(base),
+		key: resolved,
 		ctrl: mods.includes("c"),
 		shift: mods.includes("s"),
 		alt: mods.includes("a"),
@@ -113,21 +127,6 @@ export function parseKeyString(raw: string): ParsedKey {
 	};
 
 	return normalize(key);
-}
-
-/** Format a parsed key back into its canonical Spacekeys-style string. */
-export function formatKey(key: ParsedKey): string {
-	const normalized = normalize(key);
-	let mods = "";
-	if (normalized.ctrl) mods += "c";
-	if (normalized.shift) mods += "s";
-	if (normalized.alt) mods += "a";
-	if (normalized.meta) mods += "m";
-
-	if (mods.length === 0) {
-		return normalized.key;
-	}
-	return `${mods}-${normalized.key}`;
 }
 
 /** Build a ParsedKey from a live (or test-fake) keyboard event. */
