@@ -84,9 +84,10 @@ A key string is an optional run of modifier letters (`c`/`s`/`a`/`m` for ctrl/sh
 followed by a `-` and a base key, e.g. `c-enter` for Ctrl+Enter, or just a single character for
 an unmodified key, e.g. `f`. Printable characters are case-sensitive: `F` is Shift+F, and `s-f`
 or `cs-f` are equivalent to `F` and `c-F`. Any other shifted character must be written as the
-character itself, e.g. `?` rather than `s-/` or `!` rather than `s-1`; those forms are rejected. A handful of named keys are recognized as
-aliases: `space`, `up`/`down`/`left`/`right`, `enter`, `esc`, `tab`, `backspace`, `delete`,
-`home`, `end`, `pageup`, `pagedown`, `insert`, and `f1`–`f12`.
+character itself, e.g. `?` rather than `s-/` or `!` rather than `s-1`; those forms are rejected.
+A handful of named keys are recognized as aliases: `space`, `up`/`down`/`left`/`right`, `enter`,
+`esc`, `tab`, `backspace`, `delete`, `home`, `end`, `pageup`, `pagedown`, `insert`, and
+`f1`–`f12`.
 
 Click **Save keymap** to apply changes; an invalid keymap is rejected with an error message that
 points at the exact field (e.g. `items.f.items.d`) that needs fixing, and the previously saved
