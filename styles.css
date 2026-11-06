@@ -1,0 +1,115 @@
+/* Neokeys which-key popup: a Spacekeys-style bottom, full-width bar built on
+   Obsidian's Modal so it gets correct keyboard-scope capture for free. */
+
+.neokeys-modal-container .modal-bg {
+	opacity: 0.35;
+}
+
+/*
+ * Scoped under our own container class, not just `.neokeys-modal`, so this
+ * wins specificity against Obsidian's own `.modal-container .modal` rule
+ * (two classes beats one regardless of stylesheet order). An unscoped rule
+ * is exactly what broke Spacekeys' bottom-anchored modal after an Obsidian
+ * update (see jlumpe/obsidian-spacekeys#32) and caused it to render centered.
+ */
+.neokeys-modal-container .neokeys-modal {
+	position: absolute;
+	bottom: 0;
+	width: 100%;
+	max-width: 100%;
+	margin: 0;
+	border-radius: var(--radius-l) var(--radius-l) 0 0;
+	max-height: 40vh;
+	transition: opacity 0.1s ease-in-out;
+}
+
+.neokeys-modal-collapsed .neokeys-grid {
+	display: none;
+}
+
+.neokeys-header {
+	border-bottom: 1px solid var(--background-modifier-border);
+	padding-bottom: var(--size-4-2);
+	margin-bottom: var(--size-4-2);
+}
+
+.neokeys-header-title {
+	font-weight: var(--font-bold);
+	font-size: var(--font-ui-large);
+}
+
+.neokeys-header-desc {
+	color: var(--text-muted);
+	font-size: var(--font-ui-small);
+}
+
+.neokeys-header-desc.neokeys-hidden {
+	display: none;
+}
+
+.neokeys-breadcrumb {
+	display: flex;
+	gap: var(--size-2-2);
+	margin-bottom: var(--size-4-2);
+	min-height: calc(var(--font-ui-small) * 1.5);
+}
+
+.neokeys-breadcrumb-key {
+	background: var(--background-secondary);
+	border-radius: var(--radius-s);
+	padding: 0 var(--size-2-2);
+	font-family: var(--font-monospace);
+	font-size: var(--font-ui-smaller);
+}
+
+.neokeys-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(10rem, 1fr));
+	gap: var(--size-2-2) var(--size-4-2);
+	overflow-y: auto;
+}
+
+.neokeys-row {
+	display: flex;
+	align-items: baseline;
+	gap: var(--size-2-2);
+}
+
+.neokeys-key {
+	font-family: var(--font-monospace);
+	background: var(--background-secondary);
+	border-radius: var(--radius-s);
+	padding: 0 var(--size-2-2);
+	flex-shrink: 0;
+}
+
+.neokeys-label {
+	color: var(--text-normal);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.neokeys-row-group .neokeys-key {
+	color: var(--text-accent);
+}
+
+.neokeys-row-file .neokeys-key {
+	color: var(--text-success);
+}
+
+.neokeys-keymap-textarea {
+	width: 100%;
+	font-family: var(--font-monospace);
+}
+
+.neokeys-keymap-error {
+	color: var(--text-error);
+	font-size: var(--font-ui-small);
+	white-space: pre-wrap;
+	min-height: 0;
+}
+
+.neokeys-keymap-error-active {
+	margin-bottom: var(--size-4-2);
+}
