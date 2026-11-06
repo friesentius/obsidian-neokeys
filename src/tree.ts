@@ -42,3 +42,22 @@ export function entryLabel(entry: GroupEntry, resolveCommandName?: (id: string) 
 	}
 	return node.description ?? node.file;
 }
+
+/**
+ * The which-key header's label breadcrumb: one label per hop from the root to the current
+ * group, in Spacekeys terms "File > Open" rather than raw key glyphs. `path` is the full
+ * navigation stack including the root; the root itself contributes no label since nothing led
+ * into it.
+ */
+export function breadcrumbTrail(
+	path: GroupNode[],
+	resolveCommandName?: (id: string) => string | undefined,
+): string[] {
+	const labels: string[] = [];
+	for (let i = 1; i < path.length; i++) {
+		const parent = path[i - 1];
+		const entry = parent.entries.find((e) => e.node === path[i]);
+		labels.push(entry ? entryLabel(entry, resolveCommandName) : "?");
+	}
+	return labels;
+}

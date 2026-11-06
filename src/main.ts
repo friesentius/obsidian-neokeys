@@ -1,5 +1,8 @@
 import { Notice, Plugin } from "obsidian";
+import type { KeymapEventHandler } from "obsidian";
+import { parseComboLeaderString } from "./comboLeader";
 import { KeymapParseError, parseKeymapSource } from "./keymap";
+import { keyFromEvent, keysEqual } from "./keys";
 import { executeCommandById } from "./obsidianCommands";
 import { DEFAULT_SETTINGS, NeokeysSettingTab } from "./settings";
 import type { NeokeysSettings } from "./types";
@@ -7,6 +10,7 @@ import { WhichKeyModal } from "./ui/whichKeyModal";
 
 export default class NeokeysPlugin extends Plugin {
 	settings: NeokeysSettings = DEFAULT_SETTINGS;
+	private comboHandler: KeymapEventHandler | null = null;
 
 	async onload(): Promise<void> {
 		await this.loadSettings();
@@ -18,6 +22,11 @@ export default class NeokeysPlugin extends Plugin {
 		});
 
 		this.addSettingTab(new NeokeysSettingTab(this.app, this));
+		this.registerComboLeader();
+	}
+
+	onunload(): void {
+		this.unregisterComboLeader();
 	}
 
 	async loadSettings(): Promise<void> {
@@ -27,6 +36,29 @@ export default class NeokeysPlugin extends Plugin {
 
 	async saveSettings(): Promise<void> {
 		await this.saveData(this.settings);
+	}
+
+	/**
+	 * (Re-)register the optional settings-tab combo leader on the app's root scope, reading the
+	 * current `settings.comboLeader`. Call after any settings change; off/empty is a no-op.
+	 */
+	registerComboLeader(): void {
+		this.unregisterComboLeader();
+
+		const combo = parseComboLeaderString(this.settings.comboLeader);
+		if (!combo) return;
+
+		this.comboHandler = this.app.scope.register(null, null, (evt) => {
+			if (evt.isComposing || !keysEqual(keyFromEvent(evt), combo)) return;
+			this.activateLeader();
+			return false;
+		});
+	}
+
+	private unregisterComboLeader(): void {
+		if (!this.comboHandler) return;
+		this.app.scope.unregister(this.comboHandler);
+		this.comboHandler = null;
 	}
 
 	private activateLeader(): void {

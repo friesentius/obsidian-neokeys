@@ -1,8 +1,8 @@
-import { App, Modal } from "obsidian";
+import { App, Modal, Notice } from "obsidian";
 import { ShowDelayGate } from "../delay";
 import { keyFromEvent, keyGlyph } from "../keys";
-import { getCommandName } from "../obsidianCommands";
-import { entryLabel, findEntry, sortEntries } from "../tree";
+import { getCommandName, hasCommand } from "../obsidianCommands";
+import { breadcrumbTrail, entryLabel, findEntry, sortEntries } from "../tree";
 import type { GroupNode } from "../types";
 
 export interface WhichKeyCallbacks {
@@ -64,21 +64,27 @@ export class WhichKeyModal extends Modal {
 
 		this.breadcrumbEl.empty();
 		this.breadcrumbEl.toggleClass("neokeys-hidden", this.path.length <= 1);
-		for (let i = 1; i < this.path.length; i++) {
-			const parent = this.path[i - 1];
-			const entry = parent.entries.find((e) => e.node === this.path[i]);
-			this.breadcrumbEl.createSpan({ text: entry ? keyGlyph(entry.key) : "?", cls: "neokeys-breadcrumb-key" });
-		}
+		const labels = breadcrumbTrail(this.path, (id) => getCommandName(this.app, id));
+		labels.forEach((label, i) => {
+			if (i > 0) this.breadcrumbEl.createSpan({ text: ">", cls: "neokeys-breadcrumb-sep" });
+			this.breadcrumbEl.createSpan({ text: label, cls: "neokeys-breadcrumb-key" });
+		});
 
 		this.gridEl.empty();
 		for (const entry of sortEntries(group)) {
-			const row = this.gridEl.createDiv({ cls: `neokeys-row neokeys-row-${entry.node.kind}` });
+			const invalid = entry.node.kind === "command" && !hasCommand(this.app, entry.node.command);
+			const row = this.gridEl.createDiv({
+				cls: `neokeys-row neokeys-row-${entry.node.kind}${invalid ? " neokeys-row-invalid" : ""}`,
+			});
 			row.createSpan({ text: keyGlyph(entry.key), cls: "neokeys-key" });
 			const label = entryLabel(entry, (id) => getCommandName(this.app, id));
 			row.createSpan({
 				text: entry.node.kind === "group" ? `+${label}` : label,
 				cls: "neokeys-label",
 			});
+			if (invalid) {
+				row.createSpan({ text: "Unknown command", cls: "neokeys-invalid-badge" });
+			}
 		}
 	}
 
@@ -113,6 +119,11 @@ export class WhichKeyModal extends Modal {
 		if (entry.node.kind === "group") {
 			this.path.push(entry.node);
 			this.render();
+			return false;
+		}
+
+		if (entry.node.kind === "command" && !hasCommand(this.app, entry.node.command)) {
+			new Notice(`Neokeys: command "${entry.node.command}" is not available`, 6000);
 			return false;
 		}
 

@@ -1,4 +1,4 @@
-import { compareKeys, keyFromEvent, keyGlyph, keysEqual, parseKeyString, KeyParseError } from "../src/keys";
+import { compareKeys, keyFromEvent, keyGlyph, keysEqual, keyToString, parseKeyString, KeyParseError } from "../src/keys";
 
 describe("parseKeyString", () => {
 	it("resolves aliases to their raw key value", () => {
@@ -70,6 +70,18 @@ describe("keyFromEvent", () => {
 		const fromEvent = keyFromEvent({ key: "f", ctrlKey: true, shiftKey: false, altKey: false, metaKey: false });
 		const fromString = parseKeyString("c-f");
 		expect(keysEqual(fromEvent, fromString)).toBe(true);
+	});
+});
+
+describe("keyToString", () => {
+	it("is the inverse of parseKeyString for a modifier combo", () => {
+		expect(keyToString(parseKeyString("c-b"))).toBe("c-b");
+		expect(keyToString(parseKeyString("cs-f"))).toBe("c-F");
+		expect(keyToString(parseKeyString("sa-tab"))).toBe("sa-tab");
+	});
+
+	it("renders a bare key with no modifier prefix", () => {
+		expect(keyToString(parseKeyString("f"))).toBe("f");
 	});
 });
 
