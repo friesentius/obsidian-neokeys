@@ -1,4 +1,5 @@
 import { App, Notice, PluginSettingTab, Setting } from "obsidian";
+import type { SettingDefinitionItem } from "obsidian";
 import { KeymapParseError, parseKeymapSource } from "./keymap";
 import { DEFAULT_KEYMAP_YAML } from "./sampleKeymap";
 import type { NeokeysSettings } from "./types";
@@ -9,8 +10,24 @@ export const DEFAULT_SETTINGS: NeokeysSettings = {
 	showDelayMs: 200,
 };
 
+const LEADER_NAME = "Assign the leader hotkey";
+const LEADER_DESC =
+	'Neokeys ships no default hotkey. Open Settings → Hotkeys and bind a key or combo (e.g. Ctrl+B) to the "Neokeys: Leader" command.';
+const SHOW_DELAY_NAME = "Show delay";
+const SHOW_DELAY_DESC =
+	"Milliseconds to wait before the which-key popup appears. A fast, memorized sequence never flashes it. Set to 0 to show immediately.";
+const KEYMAP_DESC =
+	"Spacekeys-compatible YAML (JSON is also accepted, since JSON is valid YAML). Each group has items; each item is a group, a command (\"command: <id>\" or the short form \"<id> <description>\"), or a file (\"file: <path>\").";
+
+/**
+ * Settings tab. Obsidian 1.13+ renders it from getSettingDefinitions(), which
+ * also indexes it for settings search; older versions call display(). Both
+ * paths build their rows with the same helpers, so the controls behave the
+ * same everywhere.
+ */
 export class NeokeysSettingTab extends PluginSettingTab {
 	private errorEl: HTMLElement | null = null;
+	private keymapTextAreaEl: HTMLTextAreaElement | null = null;
 
 	constructor(
 		app: App,
@@ -19,21 +36,82 @@ export class NeokeysSettingTab extends PluginSettingTab {
 		super(app, plugin);
 	}
 
+	getSettingDefinitions(): SettingDefinitionItem[] {
+		return [
+			{
+				type: "group",
+				heading: "Leader key",
+				items: [
+					{
+						name: LEADER_NAME,
+						desc: LEADER_DESC,
+						aliases: ["hotkey", "prefix"],
+						render: (setting) => this.renderLeaderHotkey(setting),
+					},
+				],
+			},
+			{
+				type: "group",
+				heading: "Which-key popup",
+				items: [
+					{
+						name: SHOW_DELAY_NAME,
+						desc: SHOW_DELAY_DESC,
+						render: (setting) => this.renderShowDelay(setting),
+					},
+				],
+			},
+			{
+				type: "group",
+				heading: "Keymap",
+				items: [
+					{
+						name: "Keymap editor",
+						searchable: false,
+						render: (setting) => this.renderKeymapEditor(setting),
+					},
+					{
+						name: "Save keymap",
+						desc: KEYMAP_DESC,
+						aliases: ["yaml", "json", "keybindings"],
+						render: (setting) => {
+							setting.setName("Save keymap").setDesc(KEYMAP_DESC);
+							// infoEl, not descEl: setDesc() empties descEl.
+							this.errorEl = setting.infoEl.createDiv({ cls: "neokeys-keymap-error" });
+							this.renderSaveKeymapButton(setting);
+						},
+					},
+				],
+			},
+		];
+	}
+
+	/** Fallback renderer for Obsidian versions older than 1.13.0. */
 	display(): void {
 		const { containerEl } = this;
 		containerEl.empty();
 
 		new Setting(containerEl).setName("Leader key").setHeading();
-		new Setting(containerEl)
-			.setName("Assign the leader hotkey")
-			.setDesc(
-				'Neokeys ships no default hotkey. Open Settings → Hotkeys and bind a key or combo (e.g. Ctrl+B) to the "Neokeys: Leader" command.',
-			);
+		this.renderLeaderHotkey(new Setting(containerEl));
 
 		new Setting(containerEl).setName("Which-key popup").setHeading();
-		new Setting(containerEl)
-			.setName("Show delay")
-			.setDesc("Milliseconds to wait before the which-key popup appears. A fast, memorized sequence never flashes it. Set to 0 to show immediately.")
+		this.renderShowDelay(new Setting(containerEl));
+
+		new Setting(containerEl).setName("Keymap").setHeading();
+		new Setting(containerEl).setDesc(KEYMAP_DESC);
+		this.renderKeymapEditor(new Setting(containerEl));
+		this.errorEl = containerEl.createDiv({ cls: "neokeys-keymap-error" });
+		this.renderSaveKeymapButton(new Setting(containerEl));
+	}
+
+	private renderLeaderHotkey(setting: Setting): void {
+		setting.setName(LEADER_NAME).setDesc(LEADER_DESC);
+	}
+
+	private renderShowDelay(setting: Setting): void {
+		setting
+			.setName(SHOW_DELAY_NAME)
+			.setDesc(SHOW_DELAY_DESC)
 			.addText((text) =>
 				text
 					.setPlaceholder("200")
@@ -45,31 +123,24 @@ export class NeokeysSettingTab extends PluginSettingTab {
 						await this.plugin.saveSettings();
 					}),
 			);
+	}
 
-		new Setting(containerEl).setName("Keymap").setHeading();
-		new Setting(containerEl).setDesc(
-			"Spacekeys-compatible YAML (JSON is also accepted, since JSON is valid YAML). Each group has items; each item is a group, a command (\"command: <id>\" or the short form \"<id> <description>\"), or a file (\"file: <path>\").",
-		);
+	private renderKeymapEditor(setting: Setting): void {
+		setting.setClass("neokeys-keymap-editor").addTextArea((text) => {
+			this.keymapTextAreaEl = text.inputEl;
+			text.setValue(this.plugin.settings.keymapSource);
+			text.inputEl.rows = 18;
+			text.inputEl.addClass("neokeys-keymap-textarea");
+		});
+	}
 
-		let textAreaEl: HTMLTextAreaElement | undefined;
-		new Setting(containerEl)
-			.setClass("neokeys-keymap-editor")
-			.addTextArea((text) => {
-				textAreaEl = text.inputEl;
-				text.setValue(this.plugin.settings.keymapSource);
-				text.inputEl.rows = 18;
-				text.inputEl.addClass("neokeys-keymap-textarea");
-			});
-
-		this.errorEl = containerEl.createDiv({ cls: "neokeys-keymap-error" });
-
-		new Setting(containerEl).addButton((button) =>
+	private renderSaveKeymapButton(setting: Setting): void {
+		setting.addButton((button) =>
 			button
 				.setButtonText("Save keymap")
 				.setCta()
 				.onClick(async () => {
-					const source = textAreaEl?.value ?? "";
-					await this.saveKeymap(source);
+					await this.saveKeymap(this.keymapTextAreaEl?.value ?? "");
 				}),
 		);
 	}
