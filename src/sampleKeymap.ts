@@ -11,7 +11,7 @@ items:
     items:
       n: file-explorer:new-file New file
       s: editor:save-file Save file
-      d: app:delete-file
+      d: app:delete-file Delete current file
   w:
     title: Window
     description: Panes, tabs, and layout

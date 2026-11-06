@@ -26,14 +26,19 @@ export function sortEntries(group: GroupNode): GroupEntry[] {
 	});
 }
 
-/** The label to show for an entry's row: its own description/title, falling back to an identifier. */
-export function entryLabel(entry: GroupEntry): string {
+/**
+ * The label to show for an entry's row: its own description/title, falling
+ * back to the Obsidian command's own display name for a bare command entry
+ * (via `resolveCommandName`, since that lookup needs a live App), and only
+ * falling back further to a raw identifier when nothing else is available.
+ */
+export function entryLabel(entry: GroupEntry, resolveCommandName?: (id: string) => string | undefined): string {
 	const { node } = entry;
 	if (node.kind === "group") {
 		return node.title ?? node.description ?? entry.rawKey;
 	}
 	if (node.kind === "command") {
-		return node.description ?? node.command;
+		return node.description ?? resolveCommandName?.(node.command) ?? node.command;
 	}
 	return node.description ?? node.file;
 }

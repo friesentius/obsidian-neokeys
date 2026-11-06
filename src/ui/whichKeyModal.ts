@@ -1,6 +1,7 @@
 import { App, Modal } from "obsidian";
 import { ShowDelayGate } from "../delay";
 import { keyFromEvent, keyGlyph } from "../keys";
+import { getCommandName } from "../obsidianCommands";
 import { entryLabel, findEntry, sortEntries } from "../tree";
 import type { GroupNode } from "../types";
 
@@ -62,6 +63,7 @@ export class WhichKeyModal extends Modal {
 		this.descEl.toggleClass("neokeys-hidden", !group.description);
 
 		this.breadcrumbEl.empty();
+		this.breadcrumbEl.toggleClass("neokeys-hidden", this.path.length <= 1);
 		for (let i = 1; i < this.path.length; i++) {
 			const parent = this.path[i - 1];
 			const entry = parent.entries.find((e) => e.node === this.path[i]);
@@ -72,7 +74,11 @@ export class WhichKeyModal extends Modal {
 		for (const entry of sortEntries(group)) {
 			const row = this.gridEl.createDiv({ cls: `neokeys-row neokeys-row-${entry.node.kind}` });
 			row.createSpan({ text: keyGlyph(entry.key), cls: "neokeys-key" });
-			row.createSpan({ text: entryLabel(entry), cls: "neokeys-label" });
+			const label = entryLabel(entry, (id) => getCommandName(this.app, id));
+			row.createSpan({
+				text: entry.node.kind === "group" ? `+${label}` : label,
+				cls: "neokeys-label",
+			});
 		}
 	}
 

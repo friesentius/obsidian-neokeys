@@ -54,6 +54,12 @@
 	min-height: calc(var(--font-ui-small) * 1.5);
 }
 
+.neokeys-breadcrumb.neokeys-hidden {
+	display: none;
+	margin-bottom: 0;
+	min-height: 0;
+}
+
 .neokeys-breadcrumb-key {
 	background: var(--background-secondary);
 	border-radius: var(--radius-s);
@@ -64,14 +70,14 @@
 
 .neokeys-grid {
 	display: grid;
-	grid-template-columns: repeat(auto-fill, minmax(10rem, 1fr));
+	grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr));
 	gap: var(--size-2-2) var(--size-4-2);
 	overflow-y: auto;
 }
 
 .neokeys-row {
 	display: flex;
-	align-items: baseline;
+	align-items: flex-start;
 	gap: var(--size-2-2);
 }
 
@@ -85,13 +91,16 @@
 
 .neokeys-label {
 	color: var(--text-normal);
-	overflow: hidden;
-	text-overflow: ellipsis;
-	white-space: nowrap;
+	overflow-wrap: break-word;
 }
 
 .neokeys-row-group .neokeys-key {
 	color: var(--text-accent);
+}
+
+.neokeys-row-group .neokeys-label {
+	color: var(--text-accent);
+	font-weight: var(--font-semibold);
 }
 
 .neokeys-row-file .neokeys-key {

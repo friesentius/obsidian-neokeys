@@ -73,10 +73,16 @@ describe("entryLabel", () => {
 		expect(entryLabel(f)).toBe("File");
 	});
 
-	it("falls back to the command id when a command has no description", () => {
+	it("falls back to the command id when a command has no description and no resolver is given", () => {
 		const root = parseKeymapSource(SOURCE);
 		const z = findEntry(root, parseKeyString("z"))!;
 		expect(entryLabel(z)).toBe("app:zoom");
+	});
+
+	it("falls back to the resolved Obsidian command name before the raw id", () => {
+		const root = parseKeymapSource(SOURCE);
+		const z = findEntry(root, parseKeyString("z"))!;
+		expect(entryLabel(z, (id) => (id === "app:zoom" ? "Zoom in" : undefined))).toBe("Zoom in");
 	});
 
 	it("prefers a command's description over its id", () => {

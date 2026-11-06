@@ -1,5 +1,6 @@
 import { Notice, Plugin } from "obsidian";
 import { KeymapParseError, parseKeymapSource } from "./keymap";
+import { executeCommandById } from "./obsidianCommands";
 import { DEFAULT_SETTINGS, NeokeysSettingTab } from "./settings";
 import type { NeokeysSettings } from "./types";
 import { WhichKeyModal } from "./ui/whichKeyModal";
@@ -39,20 +40,10 @@ export default class NeokeysPlugin extends Plugin {
 		}
 
 		new WhichKeyModal(this.app, root, this.settings.showDelayMs, {
-			executeCommand: (id) => this.executeCommandById(id),
+			executeCommand: (id) => executeCommandById(this.app, id),
 			openFile: (path) => {
 				void this.app.workspace.openLinkText(path, "", false);
 			},
 		}).open();
-	}
-
-	private executeCommandById(id: string): void {
-		// `app.commands` is not part of the public Obsidian API, but it is the
-		// standard community idiom for invoking an arbitrary registered command
-		// by ID (there is no supported alternative); Spacekeys relies on the
-		// same object for its command picker.
-		// @ts-expect-error: `commands` is not declared on the public App type.
-		const commands = this.app.commands as unknown as { executeCommandById(commandId: string): boolean };
-		commands.executeCommandById(id);
 	}
 }
