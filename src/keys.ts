@@ -136,7 +136,8 @@ export function keyToString(key: ParsedKey): string {
 	if (key.shift) mods += "s";
 	if (key.alt) mods += "a";
 	if (key.meta) mods += "m";
-	return mods.length > 0 ? `${mods}-${key.key}` : key.key;
+	const base = key.key === " " ? "space" : key.key;
+	return mods.length > 0 ? `${mods}-${base}` : base;
 }
 
 /** Build a ParsedKey from a live (or test-fake) keyboard event. */

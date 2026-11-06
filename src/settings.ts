@@ -1,12 +1,12 @@
 import { App, ButtonComponent, Notice, PluginSettingTab, Setting } from "obsidian";
 import type { SettingDefinitionItem } from "obsidian";
-import { ComboLeaderError, describeComboLeader, parseComboLeaderString, validateComboLeader } from "./comboLeader";
+import { ComboLeaderError, describeComboLeader, parseComboLeaderString } from "./comboLeader";
 import { findInvalidCommands } from "./commandValidation";
 import { KeymapParseError, parseKeymapSource } from "./keymap";
 import { keyFromEvent, keyToString } from "./keys";
 import { hasCommand } from "./obsidianCommands";
 import { DEFAULT_KEYMAP_YAML } from "./sampleKeymap";
-import type { NeokeysSettings, ParsedKey } from "./types";
+import type { NeokeysSettings } from "./types";
 import type NeokeysPlugin from "./main";
 
 export const DEFAULT_SETTINGS: NeokeysSettings = {
@@ -30,7 +30,7 @@ const INVALID_COMMANDS_NAME = "Invalid commands";
 const INVALID_COMMANDS_DESC =
 	"Command IDs in your keymap that Obsidian doesn't currently recognize (a typo, or a plugin that's disabled). They're marked in the which-key popup too, and show an error instead of doing nothing if pressed.";
 
-const MODIFIER_KEY_NAMES = new Set(["Control", "Shift", "Alt", "Meta"]);
+const MODIFIER_KEY_NAMES = new Set(["Control", "Shift", "Alt", "AltGraph", "Meta", "OS", "CapsLock"]);
 
 /**
  * Settings tab. Obsidian 1.13+ renders it from getSettingDefinitions(), which
@@ -138,6 +138,7 @@ export class NeokeysSettingTab extends PluginSettingTab {
 
 	hide(): void {
 		this.cancelComboRecording();
+		super.hide();
 	}
 
 	private renderLeaderHotkey(setting: Setting): void {
@@ -200,14 +201,12 @@ export class NeokeysSettingTab extends PluginSettingTab {
 	}
 
 	private async applyComboLeader(value: string): Promise<void> {
-		let parsed: ParsedKey | null;
 		try {
-			parsed = parseComboLeaderString(value);
+			parseComboLeaderString(value);
 		} catch (err) {
 			this.showComboError(err);
 			return;
 		}
-		if (parsed) validateComboLeader(parsed);
 
 		this.plugin.settings.comboLeader = value;
 		await this.plugin.saveSettings();
@@ -218,7 +217,14 @@ export class NeokeysSettingTab extends PluginSettingTab {
 
 	private updateComboDisplay(): void {
 		if (!this.comboDisplayEl) return;
-		const combo = parseComboLeaderString(this.plugin.settings.comboLeader);
+		let combo;
+		try {
+			combo = parseComboLeaderString(this.plugin.settings.comboLeader);
+		} catch (err) {
+			if (!(err instanceof ComboLeaderError)) throw err;
+			this.comboDisplayEl.setText(`Invalid: "${this.plugin.settings.comboLeader}"`);
+			return;
+		}
 		this.comboDisplayEl.setText(combo ? describeComboLeader(combo) : "Not set");
 	}
 

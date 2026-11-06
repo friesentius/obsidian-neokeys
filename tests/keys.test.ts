@@ -83,6 +83,12 @@ describe("keyToString", () => {
 	it("renders a bare key with no modifier prefix", () => {
 		expect(keyToString(parseKeyString("f"))).toBe("f");
 	});
+
+	it("renders the space key as its alias so it parses back", () => {
+		expect(keyToString(parseKeyString("c-space"))).toBe("c-space");
+		expect(keyToString(parseKeyString("space"))).toBe("space");
+		expect(parseKeyString(keyToString(parseKeyString("c-space")))).toEqual(parseKeyString("c-space"));
+	});
 });
 
 describe("compareKeys", () => {

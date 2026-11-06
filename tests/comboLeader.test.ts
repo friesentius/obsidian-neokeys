@@ -1,12 +1,11 @@
 import {
 	ComboLeaderError,
-	comboLeaderToString,
 	describeComboLeader,
 	hasRequiredModifier,
 	parseComboLeaderString,
 	validateComboLeader,
 } from "../src/comboLeader";
-import { parseKeyString } from "../src/keys";
+import { keyFromEvent, keyToString, parseKeyString } from "../src/keys";
 
 describe("hasRequiredModifier", () => {
 	it("accepts ctrl, alt, or meta alone", () => {
@@ -53,11 +52,18 @@ describe("parseComboLeaderString", () => {
 	});
 });
 
-describe("comboLeaderToString", () => {
-	it("round-trips through parseComboLeaderString", () => {
-		const key = parseKeyString("c-b");
-		const str = comboLeaderToString(key);
-		expect(parseComboLeaderString(str)).toEqual(key);
+describe("recorded combo round-trip", () => {
+	const event = (key: string, mods: Partial<Record<"ctrlKey" | "shiftKey" | "altKey" | "metaKey", boolean>>) =>
+		keyFromEvent({ key, ctrlKey: false, shiftKey: false, altKey: false, metaKey: false, ...mods });
+
+	it.each([
+		["Ctrl+B", event("b", { ctrlKey: true })],
+		["Ctrl+Space", event(" ", { ctrlKey: true })],
+		["Alt+Shift+Space", event(" ", { altKey: true, shiftKey: true })],
+		["Ctrl+Shift+Tab", event("Tab", { ctrlKey: true, shiftKey: true })],
+		["Ctrl+Minus", event("-", { ctrlKey: true })],
+	])("stores %s as a string that parses back to the same key", (_label, key) => {
+		expect(parseComboLeaderString(keyToString(key))).toEqual(key);
 	});
 });
 

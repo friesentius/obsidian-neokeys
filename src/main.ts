@@ -1,6 +1,6 @@
 import { Notice, Plugin } from "obsidian";
 import type { KeymapEventHandler } from "obsidian";
-import { parseComboLeaderString } from "./comboLeader";
+import { ComboLeaderError, parseComboLeaderString } from "./comboLeader";
 import { KeymapParseError, parseKeymapSource } from "./keymap";
 import { keyFromEvent, keysEqual } from "./keys";
 import { executeCommandById } from "./obsidianCommands";
@@ -45,7 +45,14 @@ export default class NeokeysPlugin extends Plugin {
 	registerComboLeader(): void {
 		this.unregisterComboLeader();
 
-		const combo = parseComboLeaderString(this.settings.comboLeader);
+		let combo;
+		try {
+			combo = parseComboLeaderString(this.settings.comboLeader);
+		} catch (err) {
+			if (!(err instanceof ComboLeaderError)) throw err;
+			new Notice(`Neokeys: invalid combo leader "${this.settings.comboLeader}" - ${err.message}`, 8000);
+			return;
+		}
 		if (!combo) return;
 
 		this.comboHandler = this.app.scope.register(null, null, (evt) => {

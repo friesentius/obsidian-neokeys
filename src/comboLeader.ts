@@ -1,4 +1,4 @@
-import { KeyParseError, keyToString, parseKeyString } from "./keys";
+import { KeyParseError, parseKeyString } from "./keys";
 import type { ParsedKey } from "./types";
 
 export class ComboLeaderError extends Error {
@@ -48,11 +48,6 @@ export function parseComboLeaderString(source: string): ParsedKey | null {
 
 	validateComboLeader(key);
 	return key;
-}
-
-/** The combo-leader key string to persist for a captured ParsedKey. */
-export function comboLeaderToString(key: ParsedKey): string {
-	return keyToString(key);
 }
 
 const NAMED_KEY_LABELS: Record<string, string> = {
