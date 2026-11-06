@@ -1,4 +1,4 @@
-import { App, ButtonComponent, Notice, PluginSettingTab, Setting } from "obsidian";
+import { App, ButtonComponent, Notice, PluginSettingTab, Scope, Setting } from "obsidian";
 import type { SettingDefinitionItem } from "obsidian";
 import { ComboLeaderError, describeComboLeader, parseComboLeaderString } from "./comboLeader";
 import { findInvalidCommands } from "./commandValidation";
@@ -171,25 +171,27 @@ export class NeokeysSettingTab extends PluginSettingTab {
 		button.setButtonText("Press a combo... (Esc to cancel)");
 		button.setDisabled(true);
 
-		const handler = (evt: KeyboardEvent): void => {
-			if (evt.isComposing) return;
-			evt.preventDefault();
-			evt.stopPropagation();
+		// A scope pushed on top of Obsidian's keymap sees every key before
+		// Obsidian's own handlers (e.g. Escape closing the Settings window).
+		const scope = new Scope();
+		scope.register(null, null, (evt) => {
+			if (evt.isComposing) return false;
 
 			if (evt.key === "Escape") {
 				this.cancelComboRecording();
-				return;
+				return false;
 			}
-			if (MODIFIER_KEY_NAMES.has(evt.key)) return;
+			if (MODIFIER_KEY_NAMES.has(evt.key)) return false;
 
 			const key = keyFromEvent(evt);
 			this.cancelComboRecording();
 			void this.applyComboLeader(keyToString(key));
-		};
+			return false;
+		});
 
-		window.addEventListener("keydown", handler, true);
+		this.app.keymap.pushScope(scope);
 		this.stopRecordingCombo = () => {
-			window.removeEventListener("keydown", handler, true);
+			this.app.keymap.popScope(scope);
 			button.setButtonText("Record combo");
 			button.setDisabled(false);
 		};
