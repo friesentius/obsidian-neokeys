@@ -1,4 +1,4 @@
-import { compareKeys, keyFromEvent, keysEqual, parseKeyString, KeyParseError } from "../src/keys";
+import { compareKeys, keyFromEvent, keyGlyph, keysEqual, parseKeyString, KeyParseError } from "../src/keys";
 
 describe("parseKeyString", () => {
 	it("resolves aliases to their raw key value", () => {
@@ -78,5 +78,19 @@ describe("compareKeys", () => {
 		const keys = ["c-z", "a", "z", "c-a"].map(parseKeyString);
 		const sorted = [...keys].sort(compareKeys);
 		expect(sorted).toEqual(["a", "z", "c-a", "c-z"].map(parseKeyString));
+	});
+});
+
+describe("keyGlyph", () => {
+	it("spells out shift for an uppercase letter combined with another modifier", () => {
+		expect(keyGlyph(parseKeyString("cs-f"))).toBe("Ctrl+Shift+F");
+		expect(keyGlyph(parseKeyString("c-F"))).toBe("Ctrl+Shift+F");
+		expect(keyGlyph(parseKeyString("a-F"))).toBe("Alt+Shift+F");
+	});
+
+	it("leaves a bare uppercase letter and lowercase combos without shift", () => {
+		expect(keyGlyph(parseKeyString("F"))).toBe("F");
+		expect(keyGlyph(parseKeyString("c-f"))).toBe("Ctrl+f");
+		expect(keyGlyph(parseKeyString("!"))).toBe("!");
 	});
 });

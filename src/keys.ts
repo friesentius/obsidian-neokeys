@@ -175,10 +175,16 @@ export function keyGlyph(key: ParsedKey): string {
 	};
 	const base = glyphs[key.key] ?? (key.key.length === 1 ? key.key : key.key.toUpperCase());
 
+	// An uppercase letter is stored with shift folded in. Alone it reads fine
+	// ("F"), but with another modifier "Ctrl+F" would name plain Ctrl+F, so
+	// spell the shift out to label the key the user actually has to press.
+	const shiftedLetter =
+		key.key.length === 1 && key.key !== key.key.toLowerCase() && (key.ctrl || key.alt || key.meta);
+
 	const parts: string[] = [];
 	if (key.ctrl) parts.push("Ctrl");
 	if (key.alt) parts.push("Alt");
-	if (key.shift) parts.push("Shift");
+	if (key.shift || shiftedLetter) parts.push("Shift");
 	if (key.meta) parts.push("Cmd");
 	parts.push(base);
 	return parts.join("+");

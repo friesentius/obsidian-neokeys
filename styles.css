@@ -107,6 +107,15 @@
 	color: var(--text-success);
 }
 
+.neokeys-keymap-editor .setting-item-info {
+	display: none;
+}
+
+.neokeys-keymap-editor .setting-item-control {
+	flex: 1 1 auto;
+	width: 100%;
+}
+
 .neokeys-keymap-textarea {
 	width: 100%;
 	font-family: var(--font-monospace);
