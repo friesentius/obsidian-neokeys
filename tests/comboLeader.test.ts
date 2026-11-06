@@ -1,6 +1,7 @@
 import {
 	ComboLeaderError,
 	comboLeaderToString,
+	describeComboLeader,
 	hasRequiredModifier,
 	parseComboLeaderString,
 	validateComboLeader,
@@ -57,5 +58,22 @@ describe("comboLeaderToString", () => {
 		const key = parseKeyString("c-b");
 		const str = comboLeaderToString(key);
 		expect(parseComboLeaderString(str)).toEqual(key);
+	});
+});
+
+describe("describeComboLeader", () => {
+	it("formats modifiers and an uppercase letter Obsidian-Hotkeys style", () => {
+		expect(describeComboLeader(parseKeyString("c-j"))).toBe("Ctrl + J");
+		expect(describeComboLeader(parseKeyString("a-b"))).toBe("Alt + B");
+		expect(describeComboLeader(parseKeyString("m-b"))).toBe("Cmd + B");
+	});
+
+	it("spells out Shift for a shifted letter folded into its case", () => {
+		expect(describeComboLeader(parseKeyString("cs-f"))).toBe("Ctrl + Shift + F");
+	});
+
+	it("names a non-letter key and keeps an explicit shift modifier", () => {
+		expect(describeComboLeader(parseKeyString("c-enter"))).toBe("Ctrl + Enter");
+		expect(describeComboLeader(parseKeyString("cs-tab"))).toBe("Ctrl + Shift + Tab");
 	});
 });

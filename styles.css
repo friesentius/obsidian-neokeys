@@ -81,8 +81,9 @@
 
 .neokeys-row {
 	display: flex;
-	align-items: flex-start;
+	align-items: center;
 	gap: var(--size-2-2);
+	min-width: 0;
 }
 
 .neokeys-key {
@@ -96,6 +97,14 @@
 .neokeys-label {
 	color: var(--text-normal);
 	overflow-wrap: break-word;
+	min-width: 0;
+}
+
+.neokeys-row-invalid .neokeys-label {
+	flex: 1 1 auto;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
 }
 
 .neokeys-row-group .neokeys-key {
@@ -122,6 +131,8 @@
 	border: 1px solid var(--text-error);
 	border-radius: var(--radius-s);
 	padding: 0 var(--size-2-2);
+	white-space: nowrap;
+	flex-shrink: 0;
 }
 
 .neokeys-keymap-editor .setting-item-info {
@@ -131,6 +142,8 @@
 .neokeys-keymap-editor .setting-item-control {
 	flex: 1 1 auto;
 	width: 100%;
+	flex-wrap: wrap;
+	justify-content: flex-end;
 }
 
 .neokeys-keymap-textarea {
@@ -153,6 +166,7 @@
 	font-family: var(--font-monospace);
 	color: var(--text-muted);
 	margin-right: var(--size-4-2);
+	white-space: nowrap;
 }
 
 .neokeys-combo-error {

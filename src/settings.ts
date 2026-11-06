@@ -1,9 +1,9 @@
 import { App, ButtonComponent, Notice, PluginSettingTab, Setting } from "obsidian";
 import type { SettingDefinitionItem } from "obsidian";
-import { ComboLeaderError, parseComboLeaderString, validateComboLeader } from "./comboLeader";
+import { ComboLeaderError, describeComboLeader, parseComboLeaderString, validateComboLeader } from "./comboLeader";
 import { findInvalidCommands } from "./commandValidation";
 import { KeymapParseError, parseKeymapSource } from "./keymap";
-import { keyFromEvent, keyGlyph, keyToString } from "./keys";
+import { keyFromEvent, keyToString } from "./keys";
 import { hasCommand } from "./obsidianCommands";
 import { DEFAULT_KEYMAP_YAML } from "./sampleKeymap";
 import type { NeokeysSettings, ParsedKey } from "./types";
@@ -129,9 +129,10 @@ export class NeokeysSettingTab extends PluginSettingTab {
 
 		new Setting(containerEl).setName("Keymap").setHeading();
 		new Setting(containerEl).setDesc(KEYMAP_DESC);
-		this.renderKeymapEditor(new Setting(containerEl));
+		const keymapSetting = new Setting(containerEl);
+		this.renderKeymapEditor(keymapSetting);
 		this.errorEl = containerEl.createDiv({ cls: "neokeys-keymap-error" });
-		this.renderSaveKeymapButton(new Setting(containerEl));
+		this.renderSaveKeymapButton(keymapSetting);
 		this.renderInvalidCommands(new Setting(containerEl).setName(INVALID_COMMANDS_NAME).setDesc(INVALID_COMMANDS_DESC));
 	}
 
@@ -218,7 +219,7 @@ export class NeokeysSettingTab extends PluginSettingTab {
 	private updateComboDisplay(): void {
 		if (!this.comboDisplayEl) return;
 		const combo = parseComboLeaderString(this.plugin.settings.comboLeader);
-		this.comboDisplayEl.setText(combo ? keyGlyph(combo) : "Not set");
+		this.comboDisplayEl.setText(combo ? describeComboLeader(combo) : "Not set");
 	}
 
 	private showComboError(err: unknown): void {

@@ -54,3 +54,40 @@ export function parseComboLeaderString(source: string): ParsedKey | null {
 export function comboLeaderToString(key: ParsedKey): string {
 	return keyToString(key);
 }
+
+const NAMED_KEY_LABELS: Record<string, string> = {
+	enter: "Enter",
+	backspace: "Backspace",
+	escape: "Esc",
+	tab: "Tab",
+	arrowup: "Up",
+	arrowdown: "Down",
+	arrowleft: "Left",
+	arrowright: "Right",
+	" ": "Space",
+	delete: "Delete",
+	home: "Home",
+	end: "End",
+	pageup: "PageUp",
+	pagedown: "PageDown",
+	insert: "Insert",
+};
+
+/**
+ * Display a combo-leader key the way Obsidian's own Hotkeys settings do
+ * ("Ctrl + J"), rather than keyGlyph's compact which-key-grid style ("Ctrl+j").
+ */
+export function describeComboLeader(key: ParsedKey): string {
+	const base = NAMED_KEY_LABELS[key.key] ?? key.key.toUpperCase();
+	// A single letter's shift state is folded into its case (see keys.ts normalize()), so an
+	// uppercase letter alongside another modifier means Shift was actually held.
+	const shiftedLetter = key.key.length === 1 && key.key !== key.key.toLowerCase();
+
+	const parts: string[] = [];
+	if (key.ctrl) parts.push("Ctrl");
+	if (key.alt) parts.push("Alt");
+	if (key.shift || shiftedLetter) parts.push("Shift");
+	if (key.meta) parts.push("Cmd");
+	parts.push(base);
+	return parts.join(" + ");
+}
