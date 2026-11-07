@@ -200,13 +200,3 @@ export function keyGlyph(key: ParsedKey): string {
 	parts.push(base);
 	return parts.join("+");
 }
-
-/** Stable ordering for grid rows: by modifier count, then alphabetically by key. */
-export function compareKeys(a: ParsedKey, b: ParsedKey): number {
-	const na = normalize(a);
-	const nb = normalize(b);
-	const modCount = (k: ParsedKey) => Number(k.ctrl) + Number(k.shift) + Number(k.alt) + Number(k.meta);
-	const diff = modCount(na) - modCount(nb);
-	if (diff !== 0) return diff;
-	return na.key.localeCompare(nb.key);
-}

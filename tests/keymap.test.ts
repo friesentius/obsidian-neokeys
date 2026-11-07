@@ -70,6 +70,12 @@ items:
 		const root = parseKeymapSource("items: {}\n");
 		expect(root.entries).toEqual([]);
 	});
+
+	it("coerces a bare numeric-looking key to a string, matching plain-object key semantics", () => {
+		const root = parseKeymapSource("items:\n  1: workspace:goto-tab-1\n");
+		expect(root.entries[0].rawKey).toBe("1");
+		expect(root.entries[0].node).toEqual({ kind: "command", command: "workspace:goto-tab-1" });
+	});
 });
 
 describe("parseKeymapSource: invalid input produces clear, located errors", () => {
