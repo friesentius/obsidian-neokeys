@@ -64,7 +64,11 @@
 	background: var(--background-secondary);
 	border-radius: var(--radius-s);
 	padding: 0 var(--size-2-2);
-	font-family: var(--font-monospace);
+	font-size: var(--font-ui-smaller);
+}
+
+.neokeys-breadcrumb-sep {
+	color: var(--text-faint);
 	font-size: var(--font-ui-smaller);
 }
 
@@ -77,8 +81,9 @@
 
 .neokeys-row {
 	display: flex;
-	align-items: flex-start;
+	align-items: center;
 	gap: var(--size-2-2);
+	min-width: 0;
 }
 
 .neokeys-key {
@@ -92,6 +97,14 @@
 .neokeys-label {
 	color: var(--text-normal);
 	overflow-wrap: break-word;
+	min-width: 0;
+}
+
+.neokeys-row-invalid .neokeys-label {
+	flex: 1 1 auto;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
 }
 
 .neokeys-row-group .neokeys-key {
@@ -107,6 +120,21 @@
 	color: var(--text-success);
 }
 
+.neokeys-row-invalid .neokeys-key,
+.neokeys-row-invalid .neokeys-label {
+	color: var(--text-error);
+}
+
+.neokeys-invalid-badge {
+	color: var(--text-error);
+	font-size: var(--font-ui-smaller);
+	border: 1px solid var(--text-error);
+	border-radius: var(--radius-s);
+	padding: 0 var(--size-2-2);
+	white-space: nowrap;
+	flex-shrink: 0;
+}
+
 .neokeys-keymap-editor .setting-item-info {
 	display: none;
 }
@@ -114,6 +142,8 @@
 .neokeys-keymap-editor .setting-item-control {
 	flex: 1 1 auto;
 	width: 100%;
+	flex-wrap: wrap;
+	justify-content: flex-end;
 }
 
 .neokeys-keymap-textarea {
@@ -130,4 +160,32 @@
 
 .neokeys-keymap-error-active {
 	margin-bottom: var(--size-4-2);
+}
+
+.neokeys-combo-display {
+	font-family: var(--font-monospace);
+	color: var(--text-muted);
+	margin-right: var(--size-4-2);
+	white-space: nowrap;
+}
+
+.neokeys-combo-error {
+	color: var(--text-error);
+	font-size: var(--font-ui-small);
+	white-space: pre-wrap;
+	min-height: 0;
+}
+
+.neokeys-combo-error-active {
+	margin-bottom: var(--size-4-2);
+}
+
+.neokeys-invalid-commands {
+	color: var(--text-muted);
+	font-size: var(--font-ui-small);
+}
+
+.neokeys-invalid-command-row {
+	color: var(--text-error);
+	font-family: var(--font-monospace);
 }

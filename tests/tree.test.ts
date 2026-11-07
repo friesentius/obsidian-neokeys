@@ -1,6 +1,7 @@
 import { parseKeyString } from "../src/keys";
 import { parseKeymapSource } from "../src/keymap";
-import { entryLabel, findEntry, sortEntries } from "../src/tree";
+import { breadcrumbTrail, entryLabel, findEntry, sortEntries } from "../src/tree";
+import type { GroupNode } from "../src/types";
 
 const SOURCE = `
 title: Neokeys
@@ -66,5 +67,42 @@ describe("entryLabel", () => {
 		if (f.node.kind !== "group") throw new Error("expected group");
 		const n = findEntry(f.node, parseKeyString("n"))!;
 		expect(entryLabel(n)).toBe("New file");
+	});
+});
+
+describe("breadcrumbTrail", () => {
+	const NESTED_SOURCE = `
+title: Neokeys
+items:
+  f:
+    title: File
+    items:
+      o:
+        title: Open
+        description: Open things
+        items:
+          f:
+            command: app:open-file
+  z:
+    command: app:zoom
+`;
+
+	it("is empty at the root", () => {
+		const root = parseKeymapSource(NESTED_SOURCE);
+		expect(breadcrumbTrail([root])).toEqual([]);
+	});
+
+	it("builds one label per hop, two levels deep", () => {
+		const root = parseKeymapSource(NESTED_SOURCE);
+		const file = findEntry(root, parseKeyString("f"))!.node as GroupNode;
+		const open = findEntry(file, parseKeyString("o"))!.node as GroupNode;
+		expect(breadcrumbTrail([root, file, open])).toEqual(["File", "Open"]);
+	});
+
+	it("falls back to the raw key when a path segment's entry can't be found", () => {
+		const root = parseKeymapSource(NESTED_SOURCE);
+		const file = findEntry(root, parseKeyString("f"))!.node as GroupNode;
+		const orphan: GroupNode = { kind: "group", entries: [] };
+		expect(breadcrumbTrail([root, file, orphan])).toEqual(["File", "?"]);
 	});
 });

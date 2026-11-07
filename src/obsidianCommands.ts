@@ -16,10 +16,14 @@ function commandsApi(app: App): CommandsApi {
 	return app.commands as CommandsApi;
 }
 
-export function executeCommandById(app: App, id: string): void {
-	commandsApi(app).executeCommandById(id);
+export function executeCommandById(app: App, id: string): boolean {
+	return commandsApi(app).executeCommandById(id);
 }
 
 export function getCommandName(app: App, id: string): string | undefined {
 	return commandsApi(app).commands[id]?.name;
+}
+
+export function hasCommand(app: App, id: string): boolean {
+	return commandsApi(app).commands[id] !== undefined;
 }

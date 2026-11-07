@@ -7,9 +7,10 @@ hunting for a hotkey.
 
 ![Neokeys which-key popup, root menu, light theme](docs/screenshots/which-key-root-light.png)
 
-This is **Phase 0**: a hotkey-triggered leader, a YAML/JSON keymap editor, and the which-key
-popup. A settings-tab leader combo, a visual tree editor, and Spacekeys import are planned for
-later phases.
+This is **Phase 1**: a hotkey-triggered leader or an optional settings-tab combo leader, a
+YAML/JSON keymap editor with command-ID validation, and the which-key popup with a label
+breadcrumb. A visual tree editor, a conflicting-hotkey warning, and Spacekeys import are planned
+for later phases.
 
 ## Installing (for testing)
 
@@ -36,11 +37,22 @@ guidelines expect). To assign one:
 
 1. Open Settings → Hotkeys.
 2. Search for **Neokeys: Leader**.
-3. Click the `+` and press the key or combo you want as your leader (e.g. `Ctrl+B`).
+3. Click the `+` and press the key or combo you want as your leader (e.g. `Ctrl+J`; avoid combos
+   Obsidian already uses, like `Ctrl+B` for Bold).
 
 Pressing the leader opens the which-key popup at the root of your keymap. Type further keys to
 descend into a group, <kbd>Backspace</kbd> to go back up one level, and <kbd>Esc</kbd> to close
-the popup at any point.
+the popup at any point. The header shows a breadcrumb of the group labels you've descended
+through (e.g. `Window > View`), not just the raw keys you pressed.
+
+### Combo leader (optional)
+
+As an alternative to the Hotkeys command above, Settings → Neokeys has a **Combo leader** field:
+click **Record combo** and press the key combo you want, e.g. `Ctrl+J`. This opens the which-key
+popup directly, without needing a bound Obsidian command. It's off (empty) by default, so
+existing users see no change, and it must include a modifier (Ctrl, Alt, or Cmd) - a bare or
+shift-only combo is rejected with an explanation, since a modifier-free leader would collide with
+ordinary typing. Click the `x` button next to the field to clear it.
 
 ## The keymap
 
@@ -93,6 +105,13 @@ Click **Save keymap** to apply changes; an invalid keymap is rejected with an er
 points at the exact field (e.g. `items.f.items.d`) that needs fixing, and the previously saved
 keymap keeps working until you fix it.
 
+A keymap can still *parse* successfully but reference a command ID Obsidian doesn't currently
+recognize (a typo, or a plugin that's disabled) - this doesn't block saving, since the command
+might belong to a plugin you just haven't enabled yet. Settings → Neokeys lists any such entries
+under **Invalid commands**, by key path and command ID, and the which-key popup marks the same
+entries in red with an "Unknown command" badge; pressing one shows a notice instead of silently
+doing nothing.
+
 The **show delay** setting controls how long (in milliseconds) the popup waits before revealing
 the key/label grid, so a sequence you already know by muscle memory never flashes it. There is no
 forced abandon-timeout: a half-typed sequence waits indefinitely until it resolves, dead-ends, is
@@ -109,7 +128,7 @@ since there is no public API signal for "a hardware keyboard is attached."
 - `npm run dev` - esbuild in watch mode
 - `npm run build` - typecheck + production build
 - `npm test` - Jest unit tests (key parsing, keymap parsing/validation, tree resolution, delay
-  logic)
+  logic, combo-leader validation, command-ID validation, breadcrumb building)
 - `npm run lint` - ESLint with `eslint-plugin-obsidianmd`'s recommended config
 - `npm run validate` - mirrors the parts of Obsidian's community-plugin submission checks that
   don't require a live GitHub release (manifest/versions shape, `id`/`version` format)

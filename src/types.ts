@@ -36,4 +36,6 @@ export type KeymapNode = GroupNode | CommandNode | FileNode;
 export interface NeokeysSettings {
 	keymapSource: string;
 	showDelayMs: number;
+	/** Key-string form (see keys.ts), e.g. "c-b"; empty means no combo leader is set. */
+	comboLeader: string;
 }

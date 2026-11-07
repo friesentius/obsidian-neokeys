@@ -129,6 +129,17 @@ export function parseKeyString(raw: string): ParsedKey {
 	return normalize(key);
 }
 
+/** Inverse of {@link parseKeyString}: render a ParsedKey back to its key-string form, e.g. "c-b". */
+export function keyToString(key: ParsedKey): string {
+	let mods = "";
+	if (key.ctrl) mods += "c";
+	if (key.shift) mods += "s";
+	if (key.alt) mods += "a";
+	if (key.meta) mods += "m";
+	const base = key.key === " " ? "space" : key.key;
+	return mods.length > 0 ? `${mods}-${base}` : base;
+}
+
 /** Build a ParsedKey from a live (or test-fake) keyboard event. */
 export function keyFromEvent(evt: KeyboardEventLike): ParsedKey {
 	const raw = evt.key;
