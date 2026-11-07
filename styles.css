@@ -50,8 +50,9 @@
 	transform: translateY(100%);
 }
 
+/* !important: Obsidian sets an inline opacity on .modal-bg, which would otherwise win. */
 .neokeys-modal-container.neokeys-animate.neokeys-modal-collapsed .modal-bg {
-	opacity: 0;
+	opacity: 0 !important;
 }
 
 .neokeys-content {
