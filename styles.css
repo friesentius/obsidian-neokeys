@@ -227,6 +227,17 @@
 	gap: var(--size-4-2);
 }
 
+/*
+ * Compound selectors, not just the generic .neokeys-hidden rule above: that rule and this one's
+ * own `display: flex`/`display: block` have equal specificity, so whichever is declared later in
+ * the stylesheet wins a tie - a real bug caught in Obsidian's in-page settings dialog, where it
+ * left the YAML textarea visible (though not interactive) underneath the tree view.
+ */
+.neokeys-yaml-container.neokeys-hidden,
+.neokeys-tree-container.neokeys-hidden {
+	display: none;
+}
+
 .neokeys-keymap-save-row {
 	display: flex;
 	justify-content: flex-end;
