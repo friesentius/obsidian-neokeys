@@ -2,6 +2,7 @@ import { Notice, Plugin } from "obsidian";
 import type { KeymapEventHandler } from "obsidian";
 import { prefersReducedMotion, shouldAnimate } from "./animation";
 import { ComboLeaderError, parseComboLeaderString } from "./comboLeader";
+import { applyHeadingLevelToEditor } from "./headingLevel";
 import { KeymapParseError, parseKeymapSource } from "./keymap";
 import { keyFromEvent, keysEqual } from "./keys";
 import { executeCommandById } from "./obsidianCommands";
@@ -20,6 +21,18 @@ export default class NeokeysPlugin extends Plugin {
 			id: "leader",
 			name: "Leader",
 			callback: () => this.activateLeader(),
+		});
+
+		this.addCommand({
+			id: "increase-heading-level",
+			name: "Increase heading level",
+			editorCallback: (editor) => applyHeadingLevelToEditor(editor, "increase"),
+		});
+
+		this.addCommand({
+			id: "decrease-heading-level",
+			name: "Decrease heading level",
+			editorCallback: (editor) => applyHeadingLevelToEditor(editor, "decrease"),
 		});
 
 		this.addSettingTab(new NeokeysSettingTab(this.app, this));
