@@ -51,6 +51,20 @@ describe("hotkeyToParsedKey", () => {
 		expect(hotkeyToParsedKey({ modifiers: ["Mod", "Shift"], key: "b" }, false)).toEqual(parseKeyString("cs-b"));
 	});
 
+	it("keeps Shift on a caseless character so Ctrl+Shift+1 stays distinct from Ctrl+1", () => {
+		const shifted = hotkeyToParsedKey({ modifiers: ["Mod", "Shift"], key: "1" }, false);
+		const plain = hotkeyToParsedKey({ modifiers: ["Mod"], key: "1" }, false);
+		expect(shifted).toEqual({ key: "1", ctrl: true, shift: true, alt: false, meta: false });
+		expect(plain).toEqual(parseKeyString("c-1"));
+		expect(findHotkeyConflicts(shifted, [{ id: "workspace:goto-tab-1", name: "Go to tab #1", key: plain }])).toEqual(
+			[],
+		);
+		expect(findHotkeyConflicts(plain, [{ id: "other:cmd", name: "Other", key: shifted }])).toEqual([]);
+		expect(findHotkeyConflicts(shifted, [{ id: "other:cmd", name: "Other", key: shifted }])).toEqual([
+			{ id: "other:cmd", name: "Other" },
+		]);
+	});
+
 	it("lowercases a multi-character key name regardless of case", () => {
 		expect(hotkeyToParsedKey({ modifiers: ["Mod"], key: "Enter" }, false)).toEqual(parseKeyString("c-enter"));
 	});

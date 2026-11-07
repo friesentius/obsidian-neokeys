@@ -1,4 +1,3 @@
-import { keysEqual } from "./keys";
 import type { ParsedKey } from "./types";
 
 export interface CommandKeyBinding {
@@ -21,8 +20,8 @@ export interface RawHotkey {
 /**
  * Convert an Obsidian `Hotkey` (modifiers + a base key, "Mod" meaning the platform modifier) into
  * a Neokeys `ParsedKey`, folding shift into a single letter's case the same way every other key
- * source in this plugin does (see keys.ts): Obsidian stores a letter's `key` field uppercase
- * regardless of whether Shift was actually held (e.g. a bare Ctrl+B hotkey is `{modifiers:["Mod"],
+ * source in this plugin does (see keys.ts), while caseless characters keep an explicit shift flag.
+ * Obsidian stores a letter's `key` field uppercase regardless of whether Shift was actually held (e.g. a bare Ctrl+B hotkey is `{modifiers:["Mod"],
  * key:"B"}`), so the letter's case must be normalized from the modifier list, not trusted as-is.
  */
 export function hotkeyToParsedKey(hotkey: RawHotkey, isMac: boolean): ParsedKey {
@@ -48,9 +47,10 @@ export function hotkeyToParsedKey(hotkey: RawHotkey, isMac: boolean): ParsedKey 
 		}
 	}
 
-	// Single-character keys fold shift into the character's case (see keys.ts's own normalize()),
-	// so the shift flag itself is zeroed afterwards to match every other ParsedKey in this plugin.
-	if (hotkey.key.length === 1) {
+	// A letter folds shift into its case, matching every other ParsedKey in this plugin. A caseless
+	// character (digit, punctuation) keeps an explicit shift flag: Obsidian records Ctrl+Shift+1 as
+	// key "1" plus Shift, which must stay distinct from plain Ctrl+1.
+	if (hasCase(hotkey.key)) {
 		const key = mods.shift ? hotkey.key.toUpperCase() : hotkey.key.toLowerCase();
 		return { key, ctrl: mods.ctrl, shift: false, alt: mods.alt, meta: mods.meta };
 	}
@@ -65,5 +65,19 @@ export function hotkeyToParsedKey(hotkey: RawHotkey, isMac: boolean): ParsedKey 
  * obsidianCommands.ts instead, deliberately not unit-tested per this project's test strategy.
  */
 export function findHotkeyConflicts(leaderKey: ParsedKey, bindings: CommandKeyBinding[]): HotkeyConflict[] {
-	return bindings.filter((b) => keysEqual(b.key, leaderKey)).map((b) => ({ id: b.id, name: b.name }));
+	return bindings.filter((b) => hotkeysEqual(b.key, leaderKey)).map((b) => ({ id: b.id, name: b.name }));
+}
+
+function hasCase(key: string): boolean {
+	return key.length === 1 && key.toLowerCase() !== key.toUpperCase();
+}
+
+/**
+ * Like keys.ts's keysEqual, but keeps the shift flag on caseless characters: Obsidian hotkeys
+ * record the unshifted base key, so Ctrl+Shift+1 and Ctrl+1 share key "1" and differ only by shift.
+ */
+function hotkeysEqual(a: ParsedKey, b: ParsedKey): boolean {
+	const shiftA = a.shift && !hasCase(a.key);
+	const shiftB = b.shift && !hasCase(b.key);
+	return a.key === b.key && a.ctrl === b.ctrl && shiftA === shiftB && a.alt === b.alt && a.meta === b.meta;
 }
