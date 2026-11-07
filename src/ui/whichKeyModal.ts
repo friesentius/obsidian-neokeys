@@ -55,6 +55,12 @@ export class WhichKeyModal extends Modal {
 		this.scope.register(null, null, (evt) => this.handleKey(evt));
 
 		this.render();
+
+		// Force a style flush with the collapsed class applied before the gate can remove it, so a
+		// 0ms (or otherwise same-tick) show-delay still gets a committed "before" state to slide in
+		// from, instead of the add+remove collapsing into a no-op the browser never renders.
+		if (this.animation.enabled) void this.modalEl.offsetHeight;
+
 		this.delayGate = new ShowDelayGate(this.showDelayMs, () => {
 			this.modalEl.removeClass("neokeys-modal-collapsed");
 		});
@@ -110,7 +116,7 @@ export class WhichKeyModal extends Modal {
 	 * supersede the in-flight crossfade, never delaying or dropping a keypress.
 	 */
 	private renderCrossfade(): void {
-		if (!this.animation.enabled) {
+		if (!this.animation.enabled || this.animation.durationMs <= 0) {
 			this.render();
 			return;
 		}

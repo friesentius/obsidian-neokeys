@@ -26,8 +26,10 @@
 
 /*
  * Transitions are opt-in via .neokeys-animate (set only when animations are enabled and the OS
- * reduced-motion preference is off), so a disabled or reduced-motion user gets the exact same
- * instant appearance as before this feature existed - never a forced transition they didn't ask for.
+ * reduced-motion preference is off): without it, the collapsed -> shown change above is instant,
+ * never a forced transition a disabled or reduced-motion user didn't ask for. The whole bar now
+ * stays hidden until the show-delay fires (not just the grid, as before this feature existed),
+ * matching the delay's own "never flashes the UI" intent.
  */
 .neokeys-modal-container .neokeys-modal.neokeys-animate {
 	transition:
