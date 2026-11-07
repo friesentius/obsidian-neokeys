@@ -1,4 +1,4 @@
-import type { Editor, EditorSelection } from "obsidian";
+import type { Editor, EditorChange, EditorSelection } from "obsidian";
 import { applyHeadingLevel, applyHeadingLevelToEditor, nextHeadingLevel } from "../src/headingLevel";
 
 describe("nextHeadingLevel", () => {
@@ -73,14 +73,28 @@ describe("applyHeadingLevel", () => {
 	});
 });
 
-function fakeEditor(lines: string[], selections: EditorSelection[]): Editor {
-	return {
+/**
+ * Applies transaction changes the same way CodeMirror would: only the `from`-`to` range of each
+ * line is replaced, so a test can assert that content outside that range (where a cursor or
+ * selection might sit) is never touched.
+ */
+function fakeEditor(lines: string[], selections: EditorSelection[]) {
+	const transactionCalls: EditorChange[][] = [];
+	const editor = {
 		getLine: (line: number) => lines[line],
-		setLine: (line: number, text: string) => {
-			lines[line] = text;
-		},
 		listSelections: () => selections,
+		transaction: (tx: { changes?: EditorChange[] }) => {
+			const changes = tx.changes ?? [];
+			transactionCalls.push(changes);
+			for (const change of changes) {
+				const line = change.from.line;
+				const text = lines[line];
+				const toCh = change.to?.ch ?? change.from.ch;
+				lines[line] = text.slice(0, change.from.ch) + change.text + text.slice(toCh);
+			}
+		},
 	} as unknown as Editor;
+	return { editor, transactionCalls };
 }
 
 function caret(line: number, ch = 0): EditorSelection {
@@ -90,22 +104,66 @@ function caret(line: number, ch = 0): EditorSelection {
 describe("applyHeadingLevelToEditor", () => {
 	it("applies to the cursor's line when nothing is selected", () => {
 		const lines = ["Para one", "Para two", "Para three"];
-		const editor = fakeEditor(lines, [caret(1)]);
+		const { editor } = fakeEditor(lines, [caret(1)]);
 		applyHeadingLevelToEditor(editor, "increase");
 		expect(lines).toEqual(["Para one", "###### Para two", "Para three"]);
 	});
 
 	it("applies to every line spanned by a selection", () => {
 		const lines = ["Para one", "Para two", "Para three"];
-		const editor = fakeEditor(lines, [{ anchor: { line: 0, ch: 0 }, head: { line: 2, ch: 3 } }]);
+		const { editor } = fakeEditor(lines, [{ anchor: { line: 0, ch: 0 }, head: { line: 2, ch: 3 } }]);
 		applyHeadingLevelToEditor(editor, "increase");
 		expect(lines).toEqual(["###### Para one", "###### Para two", "###### Para three"]);
 	});
 
 	it("applies to each line touched by multiple cursors/selections", () => {
 		const lines = ["Para one", "Para two", "Para three", "Para four"];
-		const editor = fakeEditor(lines, [caret(0), { anchor: { line: 2, ch: 0 }, head: { line: 3, ch: 0 } }]);
+		const { editor } = fakeEditor(lines, [caret(0), { anchor: { line: 2, ch: 0 }, head: { line: 3, ch: 0 } }]);
 		applyHeadingLevelToEditor(editor, "increase");
 		expect(lines).toEqual(["###### Para one", "Para two", "###### Para three", "###### Para four"]);
+	});
+
+	it("applies every changed line in a single transaction, for one undo step", () => {
+		const lines = ["Para one", "Para two", "Para three"];
+		const { editor, transactionCalls } = fakeEditor(lines, [{ anchor: { line: 0, ch: 0 }, head: { line: 2, ch: 0 } }]);
+		applyHeadingLevelToEditor(editor, "increase");
+		expect(transactionCalls.length).toBe(1);
+		expect(transactionCalls[0].length).toBe(3);
+	});
+
+	it("does not call transaction when increasing a line already at H1 (no-op)", () => {
+		const lines = ["# Title"];
+		const { editor, transactionCalls } = fakeEditor(lines, [caret(0)]);
+		applyHeadingLevelToEditor(editor, "increase");
+		expect(transactionCalls.length).toBe(0);
+		expect(lines).toEqual(["# Title"]);
+	});
+
+	it("does not call transaction when decreasing plain text (no-op)", () => {
+		const lines = ["Just a line"];
+		const { editor, transactionCalls } = fakeEditor(lines, [caret(0)]);
+		applyHeadingLevelToEditor(editor, "decrease");
+		expect(transactionCalls.length).toBe(0);
+		expect(lines).toEqual(["Just a line"]);
+	});
+
+	it("only edits the heading marker, leaving a cursor positioned in the content unaffected", () => {
+		// Promoting plain text to H6 only inserts at ch 0; a cursor at ch 10 (inside "way home.")
+		// sits outside the edited range and is therefore never remapped to column 0.
+		const lines = ["Pick up milk, bread, and coffee on the way home."];
+		const { editor, transactionCalls } = fakeEditor(lines, [caret(0, 10)]);
+		applyHeadingLevelToEditor(editor, "increase");
+		expect(transactionCalls[0]).toEqual([
+			{ from: { line: 0, ch: 0 }, to: { line: 0, ch: 0 }, text: "###### " },
+		]);
+		expect(lines).toEqual(["###### Pick up milk, bread, and coffee on the way home."]);
+	});
+
+	it("shrinks the edit range to just the old heading marker when demoting H6 to plain text", () => {
+		const lines = ["###### Title"];
+		const { editor, transactionCalls } = fakeEditor(lines, [caret(0, 10)]);
+		applyHeadingLevelToEditor(editor, "decrease");
+		expect(transactionCalls[0]).toEqual([{ from: { line: 0, ch: 0 }, to: { line: 0, ch: 7 }, text: "" }]);
+		expect(lines).toEqual(["Title"]);
 	});
 });

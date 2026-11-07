@@ -1,4 +1,4 @@
-import type { Editor } from "obsidian";
+import type { Editor, EditorChange } from "obsidian";
 
 export type HeadingLevel = 1 | 2 | 3 | 4 | 5 | 6;
 export type HeadingDirection = "increase" | "decrease";
@@ -40,16 +40,36 @@ export function nextHeadingLevel(current: HeadingLevel | null, direction: Headin
 	return (current + 1) as HeadingLevel;
 }
 
+function headingPrefix(level: HeadingLevel | null, hasContent: boolean): string {
+	if (level === null) return "";
+	return hasContent ? `${"#".repeat(level)} ` : "#".repeat(level);
+}
+
 /** Apply {@link nextHeadingLevel} to one line of text, rewriting its heading marker (or adding/removing one). */
 export function applyHeadingLevel(line: string, direction: HeadingDirection): string {
 	const parsed = parseHeadingLine(line);
 	const currentLevel = parsed?.level ?? null;
 	const content = parsed?.content ?? line;
 	const next = nextHeadingLevel(currentLevel, direction);
-	if (next === null) {
-		return content;
-	}
-	return content.length > 0 ? `${"#".repeat(next)} ${content}` : "#".repeat(next);
+	return headingPrefix(next, content.length > 0) + content;
+}
+
+/**
+ * The edit needed to apply {@link applyHeadingLevel} to one line, scoped to just the heading
+ * marker (not the whole line): this keeps the cursor and any selection within the line's content
+ * exactly where they were, instead of CodeMirror collapsing them to the start of a whole-line
+ * replacement. Returns null when the direction is a no-op for this line (already at H1 while
+ * increasing, or already plain text while decreasing), so an unaffected line is never touched.
+ */
+function headingLineChange(line: number, text: string, direction: HeadingDirection): EditorChange | null {
+	const parsed = parseHeadingLine(text);
+	const currentLevel = parsed?.level ?? null;
+	const content = parsed?.content ?? text;
+	const oldPrefixLen = text.length - content.length;
+	const next = nextHeadingLevel(currentLevel, direction);
+	const newPrefix = headingPrefix(next, content.length > 0);
+	if (newPrefix === text.slice(0, oldPrefixLen)) return null;
+	return { from: { line, ch: 0 }, to: { line, ch: oldPrefixLen }, text: newPrefix };
 }
 
 /** Every line touched by at least one selection (zero-width selections count their caret's line). */
@@ -63,9 +83,14 @@ function affectedLines(editor: Editor): number[] {
 	return [...lines].sort((a, b) => a - b);
 }
 
-/** Apply {@link applyHeadingLevel} to every selected line, or the cursor's line when nothing is selected. */
+/**
+ * Apply {@link applyHeadingLevel} to every selected line, or the cursor's line when nothing is
+ * selected, as a single transaction so one undo reverts every line, and cursor/selection positions
+ * within each line's content are preserved rather than collapsing to column 0.
+ */
 export function applyHeadingLevelToEditor(editor: Editor, direction: HeadingDirection): void {
-	for (const line of affectedLines(editor)) {
-		editor.setLine(line, applyHeadingLevel(editor.getLine(line), direction));
-	}
+	const changes = affectedLines(editor)
+		.map((line) => headingLineChange(line, editor.getLine(line), direction))
+		.filter((change): change is EditorChange => change !== null);
+	if (changes.length > 0) editor.transaction({ changes });
 }
