@@ -291,7 +291,9 @@ export class NeokeysSettingTab extends PluginSettingTab {
 
 		for (const key of getCommandHotkeys(this.app, this.leaderCommandId)) {
 			for (const conflict of findHotkeyConflicts(key, otherBindings)) {
-				rows.push(`The leader hotkey also triggers "${conflict.name}" (${conflict.id}).`);
+				rows.push(
+					`${describeComboLeader(key)} (leader hotkey) also triggers "${conflict.name}" (${conflict.id}).`,
+				);
 			}
 		}
 
@@ -303,7 +305,9 @@ export class NeokeysSettingTab extends PluginSettingTab {
 		}
 		if (combo) {
 			for (const conflict of findHotkeyConflicts(combo, otherBindings)) {
-				rows.push(`The combo leader also triggers "${conflict.name}" (${conflict.id}).`);
+				rows.push(
+					`${describeComboLeader(combo)} (combo leader) also triggers "${conflict.name}" (${conflict.id}).`,
+				);
 			}
 		}
 
@@ -351,10 +355,20 @@ export class NeokeysSettingTab extends PluginSettingTab {
 	}
 
 	private applyViewMode(): void {
+		if (this.viewMode === "tree") {
+			try {
+				this.treeEditorView?.render();
+			} catch (err) {
+				// Stored keymap source should always be valid (every write path validates first),
+				// but data.json is external state a person or another tool can still hand-edit.
+				// Fall back to the YAML view, which can at least show what's actually there.
+				this.showKeymapError(err);
+				this.viewMode = "yaml";
+			}
+		}
 		this.treeContainerEl?.toggleClass("neokeys-hidden", this.viewMode !== "tree");
 		this.yamlContainerEl?.toggleClass("neokeys-hidden", this.viewMode !== "yaml");
 		this.viewToggleButton?.setButtonText(this.viewMode === "tree" ? "Edit as YAML/JSON" : "Back to tree editor");
-		if (this.viewMode === "tree") this.treeEditorView?.render();
 	}
 
 	/**

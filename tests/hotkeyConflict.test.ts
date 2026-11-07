@@ -1,4 +1,4 @@
-import { findHotkeyConflicts } from "../src/hotkeyConflict";
+import { findHotkeyConflicts, hotkeyToParsedKey } from "../src/hotkeyConflict";
 import { parseKeyString } from "../src/keys";
 
 describe("findHotkeyConflicts", () => {
@@ -30,5 +30,36 @@ describe("findHotkeyConflicts", () => {
 			{ id: "other:cmd", name: "Other", key: { key: "B", ctrl: true, shift: true, alt: false, meta: false } },
 		]);
 		expect(conflicts).toEqual([{ id: "other:cmd", name: "Other" }]);
+	});
+});
+
+describe("hotkeyToParsedKey", () => {
+	it("matches a real logged Obsidian hotkey for an unshifted Ctrl+B binding", () => {
+		// Obsidian's own hotkeys.json stores a bare letter's `key` uppercase even without Shift
+		// held (confirmed against a real recorded "Neokeys: Leader" binding in the Phase 1 e2e
+		// logs: {"modifiers":["Mod"],"key":"B"} for a plain Ctrl+B press on Linux).
+		const parsed = hotkeyToParsedKey({ modifiers: ["Mod"], key: "B" }, false);
+		expect(parsed).toEqual(parseKeyString("c-b"));
+	});
+
+	it("maps Mod to Cmd on macOS and to Ctrl elsewhere", () => {
+		expect(hotkeyToParsedKey({ modifiers: ["Mod"], key: "j" }, true)).toEqual(parseKeyString("m-j"));
+		expect(hotkeyToParsedKey({ modifiers: ["Mod"], key: "j" }, false)).toEqual(parseKeyString("c-j"));
+	});
+
+	it("uppercases a letter only when Shift is an explicit modifier", () => {
+		expect(hotkeyToParsedKey({ modifiers: ["Mod", "Shift"], key: "b" }, false)).toEqual(parseKeyString("cs-b"));
+	});
+
+	it("lowercases a multi-character key name regardless of case", () => {
+		expect(hotkeyToParsedKey({ modifiers: ["Mod"], key: "Enter" }, false)).toEqual(parseKeyString("c-enter"));
+	});
+
+	it("round-trips through findHotkeyConflicts against a real-shaped binding", () => {
+		const leaderKey = parseKeyString("c-b");
+		const conflicts = findHotkeyConflicts(leaderKey, [
+			{ id: "editor:toggle-bold", name: "Toggle bold", key: hotkeyToParsedKey({ modifiers: ["Mod"], key: "B" }, false) },
+		]);
+		expect(conflicts).toEqual([{ id: "editor:toggle-bold", name: "Toggle bold" }]);
 	});
 });

@@ -29,6 +29,9 @@ function nodeFromDraft(draft: EntryDraft, existingEntries: GroupEntry[] | null):
  * so it reflects whatever was most recently saved (including an edit made from the YAML view).
  */
 export class TreeEditorView {
+	/** Paths (joined with NUL) of groups collapsed by the user; survives across re-renders. */
+	private readonly collapsed = new Set<string>();
+
 	constructor(
 		private readonly app: App,
 		private readonly containerEl: HTMLElement,
@@ -41,20 +44,37 @@ export class TreeEditorView {
 		this.renderGroup(this.containerEl, this.getRoot(), [], true);
 	}
 
+	private pathKey(path: string[]): string {
+		return path.join("\u0000");
+	}
+
 	private renderGroup(container: HTMLElement, group: GroupNode, path: string[], isRoot: boolean): void {
 		const wrap = container.createDiv({ cls: "neokeys-tree-group" });
+		const collapsed = !isRoot && this.collapsed.has(this.pathKey(path));
 
 		const metaSetting = new Setting(wrap).setClass("neokeys-tree-group-meta");
 		metaSetting.setName(isRoot ? "Root menu" : "Group");
 
 		if (!isRoot) {
-			let titleValue = group.title ?? "";
-			metaSetting.addText((text) => {
-				text.setPlaceholder("Title").setValue(titleValue);
-				text.onChange((value) => (titleValue = value));
-				text.inputEl.addEventListener("blur", () => void this.commitMeta(path, { title: titleValue }));
-			});
+			metaSetting.addExtraButton((button) =>
+				button
+					.setIcon(collapsed ? "chevron-right" : "chevron-down")
+					.setTooltip(collapsed ? "Expand" : "Collapse")
+					.onClick(() => {
+						const key = this.pathKey(path);
+						if (collapsed) this.collapsed.delete(key);
+						else this.collapsed.add(key);
+						this.render();
+					}),
+			);
 		}
+
+		let titleValue = group.title ?? "";
+		metaSetting.addText((text) => {
+			text.setPlaceholder("Title").setValue(titleValue);
+			text.onChange((value) => (titleValue = value));
+			text.inputEl.addEventListener("blur", () => void this.commitMeta(path, { title: titleValue }));
+		});
 
 		let descValue = group.description ?? "";
 		metaSetting.addText((text) => {
@@ -63,14 +83,10 @@ export class TreeEditorView {
 			text.inputEl.addEventListener("blur", () => void this.commitMeta(path, { description: descValue }));
 		});
 
-		metaSetting.addButton((button) =>
-			button
-				.setButtonText("Add item")
-				.setCta()
-				.onClick(() => this.openAddModal(path)),
-		);
+		metaSetting.addButton((button) => button.setButtonText("Add item").onClick(() => this.openAddModal(path)));
 
 		const listEl = wrap.createDiv({ cls: "neokeys-tree-items" });
+		listEl.toggleClass("neokeys-hidden", collapsed);
 		if (group.entries.length === 0) {
 			listEl.createDiv({ cls: "neokeys-tree-empty", text: "No items yet." });
 		}
@@ -147,13 +163,20 @@ export class TreeEditorView {
 	}
 
 	private openEditModal(path: string[], entry: GroupEntry): void {
-		new EntryEditorModal(this.app, "Edit item", { rawKey: entry.rawKey, node: entry.node }, (draft) => {
-			const existingEntries = entry.node.kind === "group" ? entry.node.entries : null;
-			const node = nodeFromDraft(draft, existingEntries);
-			const result = updateEntry(this.getRoot(), path, entry.rawKey, draft.rawKey, node);
-			if (!result.ok) return result.error;
-			void this.persist(result.root);
-			return null;
-		}).open();
+		const existingEntries = entry.node.kind === "group" ? entry.node.entries : null;
+		const lockKind = existingEntries !== null && existingEntries.length > 0;
+		new EntryEditorModal(
+			this.app,
+			"Edit item",
+			{ rawKey: entry.rawKey, node: entry.node },
+			(draft) => {
+				const node = nodeFromDraft(draft, existingEntries);
+				const result = updateEntry(this.getRoot(), path, entry.rawKey, draft.rawKey, node);
+				if (!result.ok) return result.error;
+				void this.persist(result.root);
+				return null;
+			},
+			lockKind ? "Has items; change its items first to switch this away from a group." : undefined,
+		).open();
 	}
 }

@@ -39,6 +39,7 @@ export class EntryEditorModal extends Modal {
 		private readonly heading: string,
 		initial: { rawKey: string; node: KeymapNode } | null,
 		private readonly onSubmit: (draft: EntryDraft) => string | null,
+		private readonly kindLockedReason?: string,
 	) {
 		super(app);
 		this.kind = initial?.node.kind ?? "command";
@@ -70,17 +71,21 @@ export class EntryEditorModal extends Modal {
 		const { contentEl } = this;
 		contentEl.empty();
 
-		new Setting(contentEl).setName("Kind").addDropdown((dd) =>
-			dd
-				.addOption("group", "Group (submenu)")
-				.addOption("command", "Command")
-				.addOption("file", "File")
-				.setValue(this.kind)
-				.onChange((value) => {
-					this.kind = value as EntryKind;
-					this.render();
-				}),
-		);
+		new Setting(contentEl)
+			.setName("Kind")
+			.setDesc(this.kindLockedReason ?? "")
+			.addDropdown((dd) =>
+				dd
+					.addOption("group", "Group (submenu)")
+					.addOption("command", "Command")
+					.addOption("file", "File")
+					.setValue(this.kind)
+					.setDisabled(this.kindLockedReason !== undefined)
+					.onChange((value) => {
+						this.kind = value as EntryKind;
+						this.render();
+					}),
+			);
 
 		const keySetting = new Setting(contentEl)
 			.setName("Key")

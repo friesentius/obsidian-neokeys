@@ -1,6 +1,6 @@
 import type { App, Hotkey } from "obsidian";
 import { Platform } from "obsidian";
-import type { CommandKeyBinding } from "./hotkeyConflict";
+import { hotkeyToParsedKey, type CommandKeyBinding } from "./hotkeyConflict";
 import type { ParsedKey } from "./types";
 
 interface CommandsApi {
@@ -53,46 +53,11 @@ export function listCommands(app: App): { id: string; name: string }[] {
 		.map((c) => ({ id: c.id, name: c.name ?? c.id }));
 }
 
-/**
- * Convert an Obsidian `Hotkey` (modifiers + a base key, "Mod" meaning the platform modifier) into
- * a Neokeys `ParsedKey`, folding shift into a single letter's case the same way keys.ts does for
- * every other key source, so `keysEqual`/`findHotkeyConflicts` can compare them directly.
- */
-export function hotkeyToParsedKey(hotkey: Hotkey): ParsedKey {
-	const mods = { ctrl: false, shift: false, alt: false, meta: false };
-	for (const modifier of hotkey.modifiers) {
-		switch (modifier) {
-			case "Mod":
-				if (Platform.isMacOS) mods.meta = true;
-				else mods.ctrl = true;
-				break;
-			case "Ctrl":
-				mods.ctrl = true;
-				break;
-			case "Meta":
-				mods.meta = true;
-				break;
-			case "Alt":
-				mods.alt = true;
-				break;
-			case "Shift":
-				mods.shift = true;
-				break;
-		}
-	}
-
-	let key = hotkey.key;
-	if (key.length === 1 && mods.shift) key = key.toUpperCase();
-	else if (key.length > 1) key = key.toLowerCase();
-
-	return { key, ctrl: mods.ctrl, shift: mods.shift, alt: mods.alt, meta: mods.meta };
-}
-
 /** The effective key binding(s) (custom if set, else default) currently bound to `id`. */
 export function getCommandHotkeys(app: App, id: string): ParsedKey[] {
 	const manager = hotkeyManagerApi(app);
 	const hotkeys = manager.getHotkeys(id) ?? manager.getDefaultHotkeys(id) ?? [];
-	return hotkeys.map(hotkeyToParsedKey);
+	return hotkeys.map((h) => hotkeyToParsedKey(h, Platform.isMacOS));
 }
 
 /**
@@ -107,7 +72,7 @@ export function listOtherCommandHotkeys(app: App, excludeId: string): CommandKey
 		if (command.id === excludeId) continue;
 		const hotkeys = manager.getHotkeys(command.id) ?? manager.getDefaultHotkeys(command.id) ?? [];
 		for (const hotkey of hotkeys) {
-			bindings.push({ id: command.id, name: command.name, key: hotkeyToParsedKey(hotkey) });
+			bindings.push({ id: command.id, name: command.name, key: hotkeyToParsedKey(hotkey, Platform.isMacOS) });
 		}
 	}
 	return bindings;

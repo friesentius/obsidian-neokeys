@@ -127,13 +127,10 @@ export function parseGroup(value: unknown, path: string[] = []): GroupNode {
 	const entries: GroupNode["entries"] = [];
 
 	for (const [rawKeyUnknown, childValue] of items.entries()) {
-		if (typeof rawKeyUnknown !== "string") {
-			throw new KeymapParseError(
-				[...path, "items"],
-				`Key "${String(rawKeyUnknown)}" must be written as a quoted string (e.g. "1")`,
-			);
-		}
-		const rawKey = rawKeyUnknown;
+		// A bare (unquoted) key that looks like a number/boolean/null parses to that type rather
+		// than a string; coerce it back to the string a plain-object parse would have produced
+		// (JS object keys are always strings), so an existing keymap loads unchanged either way.
+		const rawKey = typeof rawKeyUnknown === "string" ? rawKeyUnknown : String(rawKeyUnknown);
 		const childPath = [...path, "items", rawKey];
 		let key;
 		try {
