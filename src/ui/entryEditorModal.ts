@@ -1,6 +1,7 @@
 import { App, ButtonComponent, Modal, Scope, Setting } from "obsidian";
 import { keyFromEvent, keyToString } from "../keys";
 import { CommandPickerModal } from "./commandPickerModal";
+import { getCommandName } from "../obsidianCommands";
 import { openModalInWindow } from "./modalWindow";
 import type { KeymapNode } from "../types";
 
@@ -50,6 +51,7 @@ export class EntryEditorModal extends Modal {
 			this.description = initial.node.description ?? "";
 		} else if (initial?.node.kind === "command") {
 			this.command = initial.node.command;
+			this.commandName = getCommandName(app, initial.node.command) ?? "";
 			this.description = initial.node.description ?? "";
 		} else if (initial?.node.kind === "file") {
 			this.file = initial.node.file;

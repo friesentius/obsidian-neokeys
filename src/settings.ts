@@ -140,7 +140,6 @@ export class NeokeysSettingTab extends PluginSettingTab {
 		this.renderShowDelay(new Setting(containerEl));
 
 		new Setting(containerEl).setName("Keymap").setHeading();
-		new Setting(containerEl).setDesc(KEYMAP_DESC);
 		this.renderKeymapEditor(new Setting(containerEl));
 		this.renderInvalidCommands(new Setting(containerEl).setName(INVALID_COMMANDS_NAME).setDesc(INVALID_COMMANDS_DESC));
 	}

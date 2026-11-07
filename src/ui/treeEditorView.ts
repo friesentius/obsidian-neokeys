@@ -74,13 +74,13 @@ export class TreeEditorView {
 		const titleInput = meta.createEl("input", { cls: "neokeys-tree-field-input", attr: { type: "text" } });
 		titleInput.placeholder = "Title";
 		titleInput.value = group.title ?? "";
-		titleInput.addEventListener("blur", () => void this.commitMeta([], { title: titleInput.value }));
+		titleInput.addEventListener("blur", () => void this.commitMeta([], { title: titleInput.value.trim() }));
 
 		meta.createEl("label", { cls: "neokeys-tree-field-label", text: "Description" });
 		const descInput = meta.createEl("input", { cls: "neokeys-tree-field-input", attr: { type: "text" } });
 		descInput.placeholder = "Description";
 		descInput.value = group.description ?? "";
-		descInput.addEventListener("blur", () => void this.commitMeta([], { description: descInput.value }));
+		descInput.addEventListener("blur", () => void this.commitMeta([], { description: descInput.value.trim() }));
 
 		this.renderChildren(wrap, group, []);
 	}
