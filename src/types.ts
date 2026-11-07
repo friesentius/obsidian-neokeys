@@ -39,6 +39,6 @@ export interface NeokeysSettings {
 	/** Key-string form (see keys.ts), e.g. "c-b"; empty means no combo leader is set. */
 	comboLeader: string;
 	animationsEnabled: boolean;
-	/** Milliseconds for the slide-in and crossfade animations; see clampAnimationDurationMs. */
+	/** Milliseconds for the slide-in and crossfade animations; see parseAnimationDurationInput. */
 	animationDurationMs: number;
 }

@@ -159,9 +159,10 @@ entries in red with an "Unknown command" badge; pressing one shows a notice inst
 doing nothing.
 
 The **show delay** setting controls how long (in milliseconds) the popup waits before revealing
-the key/label grid, so a sequence you already know by muscle memory never flashes it. There is no
-forced abandon-timeout: a half-typed sequence waits indefinitely until it resolves, dead-ends, is
-backspaced away, or you press Esc.
+the key/label grid (with animations on, the whole bar and its backdrop wait, then slide in), so a
+sequence you already know by muscle memory never flashes it. There is no forced abandon-timeout:
+a half-typed sequence waits indefinitely until it resolves, dead-ends, is backspaced away, or you
+press Esc.
 
 ## Compatibility
 

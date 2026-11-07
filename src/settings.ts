@@ -1,6 +1,6 @@
 import { App, ButtonComponent, Notice, PluginSettingTab, Scope, Setting } from "obsidian";
 import type { SettingDefinitionItem } from "obsidian";
-import { DEFAULT_ANIMATION_DURATION_MS, clampAnimationDurationMs } from "./animation";
+import { DEFAULT_ANIMATION_DURATION_MS, parseAnimationDurationInput } from "./animation";
 import { ComboLeaderError, describeComboLeader, parseComboLeaderString } from "./comboLeader";
 import { findInvalidCommands } from "./commandValidation";
 import { findHotkeyConflicts } from "./hotkeyConflict";
@@ -311,9 +311,7 @@ export class NeokeysSettingTab extends PluginSettingTab {
 					.setPlaceholder(String(DEFAULT_ANIMATION_DURATION_MS))
 					.setValue(String(this.plugin.settings.animationDurationMs))
 					.onChange(async (value) => {
-						const parsed = Number(value);
-						if (!Number.isFinite(parsed)) return;
-						this.plugin.settings.animationDurationMs = clampAnimationDurationMs(parsed);
+						this.plugin.settings.animationDurationMs = parseAnimationDurationInput(value);
 						await this.plugin.saveSettings();
 					}),
 			);

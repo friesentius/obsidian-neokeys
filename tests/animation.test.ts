@@ -3,6 +3,7 @@ import {
 	ANIMATION_DURATION_MIN_MS,
 	DEFAULT_ANIMATION_DURATION_MS,
 	clampAnimationDurationMs,
+	parseAnimationDurationInput,
 	prefersReducedMotion,
 	shouldAnimate,
 } from "../src/animation";
@@ -33,6 +34,24 @@ describe("clampAnimationDurationMs", () => {
 		expect(clampAnimationDurationMs(NaN)).toBe(DEFAULT_ANIMATION_DURATION_MS);
 		expect(clampAnimationDurationMs(Infinity)).toBe(DEFAULT_ANIMATION_DURATION_MS);
 		expect(clampAnimationDurationMs(-Infinity)).toBe(DEFAULT_ANIMATION_DURATION_MS);
+	});
+});
+
+describe("parseAnimationDurationInput", () => {
+	it("parses and clamps a numeric field", () => {
+		expect(parseAnimationDurationInput(" 300 ")).toBe(300);
+		expect(parseAnimationDurationInput("5000")).toBe(ANIMATION_DURATION_MAX_MS);
+		expect(parseAnimationDurationInput("0")).toBe(0);
+	});
+
+	it("falls back to the default for a cleared field instead of saving 0", () => {
+		expect(parseAnimationDurationInput("")).toBe(DEFAULT_ANIMATION_DURATION_MS);
+		expect(parseAnimationDurationInput("   ")).toBe(DEFAULT_ANIMATION_DURATION_MS);
+	});
+
+	it("falls back to the default for a non-numeric field", () => {
+		expect(parseAnimationDurationInput("abc")).toBe(DEFAULT_ANIMATION_DURATION_MS);
+		expect(parseAnimationDurationInput("12ms")).toBe(DEFAULT_ANIMATION_DURATION_MS);
 	});
 });
 

@@ -38,11 +38,11 @@ export class WhichKeyModal extends Modal {
 	}
 
 	onOpen(): void {
-		this.containerEl.addClass("neokeys-modal-container");
-		this.modalEl.addClass("neokeys-modal", "neokeys-modal-collapsed");
+		this.containerEl.addClass("neokeys-modal-container", "neokeys-modal-collapsed");
+		this.modalEl.addClass("neokeys-modal");
 		if (this.animation.enabled) {
-			this.modalEl.addClass("neokeys-animate");
-			this.modalEl.style.setProperty("--neokeys-anim-duration", `${this.animation.durationMs}ms`);
+			this.containerEl.addClass("neokeys-animate");
+			this.containerEl.style.setProperty("--neokeys-anim-duration", `${this.animation.durationMs}ms`);
 		}
 
 		this.contentWrapperEl = this.contentEl.createDiv({ cls: "neokeys-content" });
@@ -59,10 +59,10 @@ export class WhichKeyModal extends Modal {
 		// Force a style flush with the collapsed class applied before the gate can remove it, so a
 		// 0ms (or otherwise same-tick) show-delay still gets a committed "before" state to slide in
 		// from, instead of the add+remove collapsing into a no-op the browser never renders.
-		if (this.animation.enabled) void this.modalEl.offsetHeight;
+		if (this.animation.enabled) void this.containerEl.offsetHeight;
 
 		this.delayGate = new ShowDelayGate(this.showDelayMs, () => {
-			this.modalEl.removeClass("neokeys-modal-collapsed");
+			this.containerEl.removeClass("neokeys-modal-collapsed");
 		});
 		this.delayGate.poke();
 	}
@@ -116,7 +116,7 @@ export class WhichKeyModal extends Modal {
 	 * supersede the in-flight crossfade, never delaying or dropping a keypress.
 	 */
 	private renderCrossfade(): void {
-		if (!this.animation.enabled || this.animation.durationMs <= 0) {
+		if (!this.animation.enabled || this.animation.durationMs <= 0 || !this.delayGate.isShown) {
 			this.render();
 			return;
 		}

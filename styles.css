@@ -20,27 +20,38 @@
 	margin: 0;
 	border-radius: var(--radius-l) var(--radius-l) 0 0;
 	max-height: 40vh;
-	opacity: 1;
-	transform: translateY(0);
+	transition: opacity 0.1s ease-in-out;
+}
+
+/* Without animations, the show-delay hides only the grid: header and breadcrumb appear immediately. */
+.neokeys-modal-container.neokeys-modal-collapsed:not(.neokeys-animate) .neokeys-grid {
+	display: none;
 }
 
 /*
  * Transitions are opt-in via .neokeys-animate (set only when animations are enabled and the OS
- * reduced-motion preference is off): without it, the collapsed -> shown change above is instant,
- * never a forced transition a disabled or reduced-motion user didn't ask for. The whole bar now
- * stays hidden until the show-delay fires (not just the grid, as before this feature existed),
- * matching the delay's own "never flashes the UI" intent.
+ * reduced-motion preference is off). With it, the whole bar and the backdrop dim stay hidden until
+ * the show-delay fires, then the bar slides in from the bottom while the dim fades in alongside it.
  */
-.neokeys-modal-container .neokeys-modal.neokeys-animate {
+.neokeys-modal-container.neokeys-animate .neokeys-modal {
+	opacity: 1;
+	transform: translateY(0);
 	transition:
 		opacity var(--neokeys-anim-duration, 150ms) ease-out,
 		transform var(--neokeys-anim-duration, 150ms) ease-out;
 }
 
-/* Slide-in-from-bottom: the whole bar, not just the grid, stays hidden until the show-delay fires. */
-.neokeys-modal-container .neokeys-modal.neokeys-modal-collapsed {
+.neokeys-modal-container.neokeys-animate .modal-bg {
+	transition: opacity var(--neokeys-anim-duration, 150ms) ease-out;
+}
+
+.neokeys-modal-container.neokeys-animate.neokeys-modal-collapsed .neokeys-modal {
 	opacity: 0;
 	transform: translateY(100%);
+}
+
+.neokeys-modal-container.neokeys-animate.neokeys-modal-collapsed .modal-bg {
+	opacity: 0;
 }
 
 .neokeys-content {
