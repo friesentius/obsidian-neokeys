@@ -148,6 +148,7 @@
 .neokeys-yaml-note {
 	color: var(--text-muted);
 	font-size: var(--font-ui-small);
+	text-align: left;
 }
 
 .neokeys-keymap-textarea {
