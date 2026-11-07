@@ -20,11 +20,39 @@
 	margin: 0;
 	border-radius: var(--radius-l) var(--radius-l) 0 0;
 	max-height: 40vh;
-	transition: opacity 0.1s ease-in-out;
+	opacity: 1;
+	transform: translateY(0);
 }
 
-.neokeys-modal-collapsed .neokeys-grid {
-	display: none;
+/*
+ * Transitions are opt-in via .neokeys-animate (set only when animations are enabled and the OS
+ * reduced-motion preference is off), so a disabled or reduced-motion user gets the exact same
+ * instant appearance as before this feature existed - never a forced transition they didn't ask for.
+ */
+.neokeys-modal-container .neokeys-modal.neokeys-animate {
+	transition:
+		opacity var(--neokeys-anim-duration, 150ms) ease-out,
+		transform var(--neokeys-anim-duration, 150ms) ease-out;
+}
+
+/* Slide-in-from-bottom: the whole bar, not just the grid, stays hidden until the show-delay fires. */
+.neokeys-modal-container .neokeys-modal.neokeys-modal-collapsed {
+	opacity: 0;
+	transform: translateY(100%);
+}
+
+.neokeys-content {
+	opacity: 1;
+}
+
+.neokeys-animate .neokeys-content {
+	transition: opacity calc(var(--neokeys-anim-duration, 150ms) / 2) ease-in-out;
+}
+
+/* Crossfade between menus on navigation: content fades out, is swapped while invisible, fades in. */
+.neokeys-crossfade-out,
+.neokeys-crossfade-in {
+	opacity: 0;
 }
 
 .neokeys-header {

@@ -64,6 +64,15 @@ thing and you may prefer Neokeys to win.
 
 ![Hotkey conflicts warning, naming the colliding command](docs/screenshots/phase2/hotkey-conflict-dark.png)
 
+## Animations
+
+Settings → Neokeys has an **Animations** toggle (on by default) and an **Animation duration**
+field (0-1000ms, default 150). With animations on, the which-key popup slides in from the bottom
+edge when it first appears, and crossfades between menus as you navigate into or back out of a
+group. Keypress handling is never affected by this - a fast sequence of keys is read and acted on
+immediately regardless of what's currently animating. If your OS has a reduced-motion
+accessibility preference turned on, Neokeys never animates, no matter how the toggle is set.
+
 ## The keymap
 
 Open Settings → Neokeys to edit the keymap as an expandable **tree**: add, edit, delete, and
