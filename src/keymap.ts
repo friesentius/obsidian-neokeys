@@ -17,8 +17,13 @@ export class KeymapParseError extends Error {
 	}
 }
 
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null && !Array.isArray(value);
+/**
+ * Documents are parsed with `mapAsMap: true` so mapping key order (including keys that look like
+ * numbers, which a plain JS object would otherwise reorder ahead of letter keys) round-trips
+ * exactly through the tree editor's add/reorder/serialize cycle.
+ */
+function isYamlMap(value: unknown): value is Map<unknown, unknown> {
+	return value instanceof Map;
 }
 
 function requireString(value: unknown, path: string[], field: string): string {
@@ -37,10 +42,10 @@ const GROUP_KEYS = new Set(["title", "description", "items"]);
 const COMMAND_KEYS = new Set(["command", "description"]);
 const FILE_KEYS = new Set(["file", "description"]);
 
-function checkUnknownKeys(obj: Record<string, unknown>, allowed: Set<string>, path: string[]): void {
-	for (const key of Object.keys(obj)) {
-		if (!allowed.has(key)) {
-			throw new KeymapParseError(path, `Unknown field "${key}"`);
+function checkUnknownKeys(obj: Map<unknown, unknown>, allowed: Set<string>, path: string[]): void {
+	for (const key of obj.keys()) {
+		if (typeof key !== "string" || !allowed.has(key)) {
+			throw new KeymapParseError(path, `Unknown field "${String(key)}"`);
 		}
 	}
 }
@@ -64,14 +69,14 @@ function parseNode(value: unknown, path: string[]): KeymapNode {
 		return parseCommandShorthand(value, path);
 	}
 
-	if (!isPlainObject(value)) {
+	if (!isYamlMap(value)) {
 		throw new KeymapParseError(
 			path,
 			"Entry must be a string (command shorthand) or a mapping with items/command/file",
 		);
 	}
 
-	const presentKinds = ["items", "command", "file"].filter((k) => value[k] !== undefined);
+	const presentKinds = ["items", "command", "file"].filter((k) => value.get(k) !== undefined);
 	if (presentKinds.length === 0) {
 		throw new KeymapParseError(path, "Entry must have one of: items, command, file");
 	}
@@ -88,40 +93,47 @@ function parseNode(value: unknown, path: string[]): KeymapNode {
 
 	if (presentKinds[0] === "command") {
 		checkUnknownKeys(value, COMMAND_KEYS, path);
-		const command = requireString(value.command, path, "command");
-		const description = optionalString(value.description, path, "description");
+		const command = requireString(value.get("command"), path, "command");
+		const description = optionalString(value.get("description"), path, "description");
 		const node: CommandNode = { kind: "command", command };
 		if (description !== undefined) node.description = description;
 		return node;
 	}
 
 	checkUnknownKeys(value, FILE_KEYS, path);
-	const file = requireString(value.file, path, "file");
-	const description = optionalString(value.description, path, "description");
+	const file = requireString(value.get("file"), path, "file");
+	const description = optionalString(value.get("description"), path, "description");
 	const node: FileNode = { kind: "file", file };
 	if (description !== undefined) node.description = description;
 	return node;
 }
 
 export function parseGroup(value: unknown, path: string[] = []): GroupNode {
-	if (!isPlainObject(value)) {
+	if (!isYamlMap(value)) {
 		throw new KeymapParseError(path, "A group must be a mapping");
 	}
 
 	checkUnknownKeys(value, GROUP_KEYS, path);
 
-	const title = optionalString(value.title, path, "title");
-	const description = optionalString(value.description, path, "description");
-	const items = value.items;
+	const title = optionalString(value.get("title"), path, "title");
+	const description = optionalString(value.get("description"), path, "description");
+	const items = value.get("items");
 
-	if (!isPlainObject(items)) {
+	if (!isYamlMap(items)) {
 		throw new KeymapParseError([...path, "items"], '"items" must be a mapping of key strings to entries');
 	}
 
 	const seen = new Map<string, string>();
 	const entries: GroupNode["entries"] = [];
 
-	for (const [rawKey, childValue] of Object.entries(items)) {
+	for (const [rawKeyUnknown, childValue] of items.entries()) {
+		if (typeof rawKeyUnknown !== "string") {
+			throw new KeymapParseError(
+				[...path, "items"],
+				`Key "${String(rawKeyUnknown)}" must be written as a quoted string (e.g. "1")`,
+			);
+		}
+		const rawKey = rawKeyUnknown;
 		const childPath = [...path, "items", rawKey];
 		let key;
 		try {
@@ -157,7 +169,7 @@ export function parseGroup(value: unknown, path: string[] = []): GroupNode {
 export function parseKeymapSource(source: string): GroupNode {
 	let doc: unknown;
 	try {
-		doc = parseYamlOrJson(source);
+		doc = parseYamlOrJson(source, { mapAsMap: true });
 	} catch (err) {
 		if (err instanceof YAMLParseError) {
 			throw new KeymapParseError([], `Could not parse keymap: ${err.message}`);
