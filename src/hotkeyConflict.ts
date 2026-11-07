@@ -21,8 +21,9 @@ export interface RawHotkey {
  * Convert an Obsidian `Hotkey` (modifiers + a base key, "Mod" meaning the platform modifier) into
  * a Neokeys `ParsedKey`, folding shift into a single letter's case the same way every other key
  * source in this plugin does (see keys.ts), while caseless characters keep an explicit shift flag.
- * Obsidian stores a letter's `key` field uppercase regardless of whether Shift was actually held (e.g. a bare Ctrl+B hotkey is `{modifiers:["Mod"],
- * key:"B"}`), so the letter's case must be normalized from the modifier list, not trusted as-is.
+ * Obsidian stores a letter's `key` field uppercase regardless of whether Shift was actually held
+ * (e.g. a bare Ctrl+B hotkey is `{modifiers:["Mod"], key:"B"}`), so the letter's case must be
+ * normalized from the modifier list, not trusted as-is.
  */
 export function hotkeyToParsedKey(hotkey: RawHotkey, isMac: boolean): ParsedKey {
 	const mods = { ctrl: false, shift: false, alt: false, meta: false };
