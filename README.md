@@ -137,7 +137,10 @@ Any edit made in the tree editor rewrites the stored keymap in a normalized YAML
 dropped and the short command form (`"<command-id> <description>"`) is expanded into explicit
 `command`/`description` fields. Editing only through the YAML/JSON view never rewrites anything, so
 your comments and formatting are kept exactly as you wrote them there. Deleting a group that still
-has items asks for confirmation first; deleting anything else happens in one click.
+has items asks for confirmation first, naming the group and how many entries it contains; deleting
+anything else happens in one click.
+
+![Confirmation dialog before deleting a non-empty group, naming it and its entry count](docs/screenshots/phase2/tree-editor-delete-confirm-dark.png)
 
 A keymap can still *parse* successfully but reference a command ID Obsidian doesn't currently
 recognize (a typo, or a plugin that's disabled) - this doesn't block saving, since the command
