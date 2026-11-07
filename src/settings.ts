@@ -17,7 +17,7 @@ export const DEFAULT_SETTINGS: NeokeysSettings = {
 
 const LEADER_NAME = "Assign the leader hotkey";
 const LEADER_DESC =
-	'Neokeys ships no default hotkey. Open Settings → Hotkeys and bind a key or combo (e.g. Ctrl+B) to the "Neokeys: Leader" command.';
+	'Neokeys ships no default hotkey. Open Settings → Hotkeys and bind a key or combo (e.g. Ctrl+J) to the "Neokeys: Leader" command.';
 const COMBO_NAME = "Combo leader (optional)";
 const COMBO_DESC =
 	"An alternative to the Hotkeys command above: a key combo that opens the which-key popup from anywhere, without needing a bound command. Must include a modifier (Ctrl, Alt, or Cmd). Off by default.";

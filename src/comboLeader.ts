@@ -9,7 +9,7 @@ export class ComboLeaderError extends Error {
 }
 
 export const COMBO_LEADER_MODIFIER_HINT =
-	'A combo leader needs a modifier key (Ctrl, Alt, or Cmd) - for example "ctrl+b".';
+	'A combo leader needs a modifier key (Ctrl, Alt, or Cmd) - for example "ctrl+j".';
 
 /**
  * Whether `key` carries at least one of ctrl/alt/meta. Shift alone is not enough: for a

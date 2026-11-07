@@ -37,7 +37,8 @@ guidelines expect). To assign one:
 
 1. Open Settings → Hotkeys.
 2. Search for **Neokeys: Leader**.
-3. Click the `+` and press the key or combo you want as your leader (e.g. `Ctrl+B`).
+3. Click the `+` and press the key or combo you want as your leader (e.g. `Ctrl+J`; avoid combos
+   Obsidian already uses, like `Ctrl+B` for Bold).
 
 Pressing the leader opens the which-key popup at the root of your keymap. Type further keys to
 descend into a group, <kbd>Backspace</kbd> to go back up one level, and <kbd>Esc</kbd> to close
@@ -47,7 +48,7 @@ through (e.g. `Window > View`), not just the raw keys you pressed.
 ### Combo leader (optional)
 
 As an alternative to the Hotkeys command above, Settings → Neokeys has a **Combo leader** field:
-click **Record combo** and press the key combo you want, e.g. `Ctrl+B`. This opens the which-key
+click **Record combo** and press the key combo you want, e.g. `Ctrl+J`. This opens the which-key
 popup directly, without needing a bound Obsidian command. It's off (empty) by default, so
 existing users see no change, and it must include a modifier (Ctrl, Alt, or Cmd) - a bare or
 shift-only combo is rejected with an explanation, since a modifier-free leader would collide with
