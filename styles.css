@@ -100,13 +100,6 @@
 	min-width: 0;
 }
 
-.neokeys-row-invalid .neokeys-label {
-	flex: 1 1 auto;
-	overflow: hidden;
-	text-overflow: ellipsis;
-	white-space: nowrap;
-}
-
 .neokeys-row-group .neokeys-key {
 	color: var(--text-accent);
 }
@@ -135,8 +128,14 @@
 	flex-shrink: 0;
 }
 
+.neokeys-keymap-editor {
+	flex-direction: column;
+	align-items: stretch;
+}
+
 .neokeys-keymap-editor .setting-item-info {
-	display: none;
+	width: 100%;
+	margin-right: 0;
 }
 
 .neokeys-keymap-editor .setting-item-control {
@@ -144,6 +143,12 @@
 	width: 100%;
 	flex-wrap: wrap;
 	justify-content: flex-end;
+}
+
+.neokeys-yaml-note {
+	color: var(--text-muted);
+	font-size: var(--font-ui-small);
+	text-align: left;
 }
 
 .neokeys-keymap-textarea {
@@ -188,4 +193,164 @@
 .neokeys-invalid-command-row {
 	color: var(--text-error);
 	font-family: var(--font-monospace);
+}
+
+.neokeys-hotkey-conflicts {
+	color: var(--text-muted);
+	font-size: var(--font-ui-small);
+}
+
+.neokeys-hotkey-conflict-row {
+	color: var(--text-error);
+}
+
+/* --- Keymap editor: tree/YAML toggle and the tree itself --------------- */
+
+.neokeys-keymap-container {
+	width: 100%;
+}
+
+.neokeys-keymap-toggle-row {
+	display: flex;
+	justify-content: flex-end;
+	margin-bottom: var(--size-4-2);
+}
+
+.neokeys-hidden {
+	display: none;
+}
+
+.neokeys-yaml-container {
+	display: flex;
+	flex-direction: column;
+	gap: var(--size-4-2);
+}
+
+/*
+ * Compound selectors, not just the generic .neokeys-hidden rule above: that rule and this one's
+ * own `display: flex`/`display: block` have equal specificity, so whichever is declared later in
+ * the stylesheet wins a tie - a real bug caught in Obsidian's in-page settings dialog, where it
+ * left the YAML textarea visible (though not interactive) underneath the tree view.
+ */
+.neokeys-yaml-container.neokeys-hidden,
+.neokeys-tree-container.neokeys-hidden {
+	display: none;
+}
+
+.neokeys-keymap-save-row {
+	display: flex;
+	justify-content: flex-end;
+}
+
+.neokeys-tree-container {
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-m);
+	padding: var(--size-4-2);
+}
+
+.neokeys-tree-group {
+	display: flex;
+	flex-direction: column;
+	gap: var(--size-2-2);
+}
+
+.neokeys-tree-root-meta {
+	display: flex;
+	flex-direction: column;
+	gap: var(--size-2-1);
+	margin-bottom: var(--size-4-2);
+}
+
+.neokeys-tree-field-label {
+	font-size: var(--font-ui-smaller);
+	color: var(--text-muted);
+}
+
+.neokeys-tree-field-input {
+	width: 100%;
+}
+
+.neokeys-tree-add-row {
+	display: flex;
+	justify-content: flex-start;
+	padding: var(--size-2-1) var(--size-2-2);
+}
+
+.neokeys-tree-items {
+	display: flex;
+	flex-direction: column;
+	gap: var(--size-2-1);
+	margin-left: var(--size-4-3);
+	padding-left: var(--size-4-2);
+	border-left: 1px solid var(--background-modifier-border);
+}
+
+.neokeys-tree-empty {
+	color: var(--text-faint);
+	font-size: var(--font-ui-small);
+	font-style: italic;
+}
+
+.neokeys-tree-row {
+	display: flex;
+	align-items: center;
+	gap: var(--size-2-2);
+	padding: var(--size-2-1) var(--size-2-2);
+	border-radius: var(--radius-s);
+}
+
+.neokeys-tree-row:hover {
+	background: var(--background-secondary);
+}
+
+.neokeys-tree-key {
+	font-family: var(--font-monospace);
+	background: var(--background-secondary);
+	border-radius: var(--radius-s);
+	padding: 0 var(--size-2-2);
+	flex-shrink: 0;
+}
+
+.neokeys-tree-label {
+	flex: 0 1 auto;
+	min-width: 0;
+	overflow-wrap: break-word;
+}
+
+.neokeys-tree-row-group .neokeys-tree-key,
+.neokeys-tree-row-group .neokeys-tree-label {
+	color: var(--text-accent);
+	font-weight: var(--font-semibold);
+}
+
+.neokeys-tree-label-invalid {
+	color: var(--text-error);
+}
+
+.neokeys-tree-row-controls {
+	display: flex;
+	gap: var(--size-2-1);
+	flex-shrink: 0;
+	margin-left: auto;
+}
+
+/* --- Entry editor modal ------------------------------------------------- */
+
+.neokeys-entry-editor .modal-content {
+	display: flex;
+	flex-direction: column;
+	gap: var(--size-2-2);
+}
+
+.neokeys-entry-key-display {
+	font-family: var(--font-monospace);
+	color: var(--text-muted);
+	margin-right: var(--size-4-2);
+}
+
+.neokeys-entry-editor-error {
+	color: var(--text-error);
+	font-size: var(--font-ui-small);
+	white-space: pre-wrap;
+	min-height: 0;
 }

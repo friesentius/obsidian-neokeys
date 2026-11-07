@@ -2,11 +2,14 @@ import { App, ButtonComponent, Notice, PluginSettingTab, Scope, Setting } from "
 import type { SettingDefinitionItem } from "obsidian";
 import { ComboLeaderError, describeComboLeader, parseComboLeaderString } from "./comboLeader";
 import { findInvalidCommands } from "./commandValidation";
+import { findHotkeyConflicts } from "./hotkeyConflict";
 import { KeymapParseError, parseKeymapSource } from "./keymap";
+import { serializeKeymap } from "./keymapSerialize";
 import { keyFromEvent, keyToString } from "./keys";
-import { hasCommand } from "./obsidianCommands";
+import { getCommandHotkeys, hasCommand, listOtherCommandHotkeys } from "./obsidianCommands";
 import { DEFAULT_KEYMAP_YAML } from "./sampleKeymap";
-import type { NeokeysSettings } from "./types";
+import type { GroupNode, NeokeysSettings } from "./types";
+import { TreeEditorView } from "./ui/treeEditorView";
 import type NeokeysPlugin from "./main";
 
 export const DEFAULT_SETTINGS: NeokeysSettings = {
@@ -25,10 +28,15 @@ const SHOW_DELAY_NAME = "Show delay";
 const SHOW_DELAY_DESC =
 	"Milliseconds to wait before the which-key popup appears. A fast, memorized sequence never flashes it. Set to 0 to show immediately.";
 const KEYMAP_DESC =
-	"Spacekeys-compatible YAML (JSON is also accepted, since JSON is valid YAML). Each group has items; each item is a group, a command (\"command: <id>\" or the short form \"<id> <description>\"), or a file (\"file: <path>\").";
+	'Edit the keymap as a tree, or use "Edit as YAML/JSON" for the raw, Spacekeys-compatible source (each group has items; each item is a group, a command ("command: <id>" or the short form "<id> <description>"), or a file ("file: <path>")). Both views edit the same stored keymap - switching away from the YAML view saves it first, and an invalid edit there is never silently discarded.';
+const YAML_NOTE =
+	"Saving here keeps your text exactly as written, comments included. Any edit in the tree editor rewrites this source in a normalized form, dropping comments and expanding the short command form.";
 const INVALID_COMMANDS_NAME = "Invalid commands";
 const INVALID_COMMANDS_DESC =
 	"Command IDs in your keymap that Obsidian doesn't currently recognize (a typo, or a plugin that's disabled). They're marked in the which-key popup too, and show an error instead of doing nothing if pressed.";
+const HOTKEY_CONFLICTS_NAME = "Hotkey conflicts";
+const HOTKEY_CONFLICTS_DESC =
+	"Whether the leader hotkey or the combo leader above collides with another command's Obsidian hotkey.";
 
 const MODIFIER_KEY_NAMES = new Set(["Control", "Shift", "Alt", "AltGraph", "Meta", "OS", "CapsLock"]);
 
@@ -41,9 +49,15 @@ const MODIFIER_KEY_NAMES = new Set(["Control", "Shift", "Alt", "AltGraph", "Meta
 export class NeokeysSettingTab extends PluginSettingTab {
 	private errorEl: HTMLElement | null = null;
 	private keymapTextAreaEl: HTMLTextAreaElement | null = null;
+	private treeContainerEl: HTMLElement | null = null;
+	private yamlContainerEl: HTMLElement | null = null;
+	private treeEditorView: TreeEditorView | null = null;
+	private viewToggleButton: ButtonComponent | null = null;
+	private viewMode: "tree" | "yaml" = "tree";
 	private comboDisplayEl: HTMLElement | null = null;
 	private comboErrorEl: HTMLElement | null = null;
 	private invalidCommandsEl: HTMLElement | null = null;
+	private hotkeyConflictsEl: HTMLElement | null = null;
 	private stopRecordingCombo: (() => void) | null = null;
 
 	constructor(
@@ -71,6 +85,12 @@ export class NeokeysSettingTab extends PluginSettingTab {
 						aliases: ["combo", "modifier"],
 						render: (setting) => this.renderComboLeader(setting),
 					},
+					{
+						name: HOTKEY_CONFLICTS_NAME,
+						desc: HOTKEY_CONFLICTS_DESC,
+						searchable: false,
+						render: (setting) => this.renderHotkeyConflicts(setting),
+					},
 				],
 			},
 			{
@@ -90,19 +110,10 @@ export class NeokeysSettingTab extends PluginSettingTab {
 				items: [
 					{
 						name: "Keymap editor",
+						desc: KEYMAP_DESC,
+						aliases: ["yaml", "json", "keybindings", "tree"],
 						searchable: false,
 						render: (setting) => this.renderKeymapEditor(setting),
-					},
-					{
-						name: "Save keymap",
-						desc: KEYMAP_DESC,
-						aliases: ["yaml", "json", "keybindings"],
-						render: (setting) => {
-							setting.setName("Save keymap").setDesc(KEYMAP_DESC);
-							// infoEl, not descEl: setDesc() empties descEl.
-							this.errorEl = setting.infoEl.createDiv({ cls: "neokeys-keymap-error" });
-							this.renderSaveKeymapButton(setting);
-						},
 					},
 					{
 						name: INVALID_COMMANDS_NAME,
@@ -123,16 +134,13 @@ export class NeokeysSettingTab extends PluginSettingTab {
 		new Setting(containerEl).setName("Leader key").setHeading();
 		this.renderLeaderHotkey(new Setting(containerEl));
 		this.renderComboLeader(new Setting(containerEl));
+		this.renderHotkeyConflicts(new Setting(containerEl).setName(HOTKEY_CONFLICTS_NAME).setDesc(HOTKEY_CONFLICTS_DESC));
 
 		new Setting(containerEl).setName("Which-key popup").setHeading();
 		this.renderShowDelay(new Setting(containerEl));
 
 		new Setting(containerEl).setName("Keymap").setHeading();
-		new Setting(containerEl).setDesc(KEYMAP_DESC);
-		const keymapSetting = new Setting(containerEl);
-		this.renderKeymapEditor(keymapSetting);
-		this.errorEl = containerEl.createDiv({ cls: "neokeys-keymap-error" });
-		this.renderSaveKeymapButton(keymapSetting);
+		this.renderKeymapEditor(new Setting(containerEl));
 		this.renderInvalidCommands(new Setting(containerEl).setName(INVALID_COMMANDS_NAME).setDesc(INVALID_COMMANDS_DESC));
 	}
 
@@ -215,6 +223,7 @@ export class NeokeysSettingTab extends PluginSettingTab {
 		this.plugin.registerComboLeader();
 		this.clearComboError();
 		this.updateComboDisplay();
+		this.updateHotkeyConflicts();
 	}
 
 	private updateComboDisplay(): void {
@@ -260,39 +269,162 @@ export class NeokeysSettingTab extends PluginSettingTab {
 			);
 	}
 
+	/**
+	 * Which Obsidian command id Neokeys' own leader command runs under. Obsidian prefixes a
+	 * plugin's addCommand({id: "leader"}) with the plugin's manifest id, so this always matches
+	 * manifest.json rather than hardcoding "neokeys:leader".
+	 */
+	private get leaderCommandId(): string {
+		return `${this.plugin.manifest.id}:leader`;
+	}
+
+	private renderHotkeyConflicts(setting: Setting): void {
+		this.hotkeyConflictsEl = setting.infoEl.createDiv({ cls: "neokeys-hotkey-conflicts" });
+		this.updateHotkeyConflicts();
+	}
+
+	private updateHotkeyConflicts(): void {
+		if (!this.hotkeyConflictsEl) return;
+		this.hotkeyConflictsEl.empty();
+
+		const otherBindings = listOtherCommandHotkeys(this.app, this.leaderCommandId);
+		const rows: string[] = [];
+
+		for (const key of getCommandHotkeys(this.app, this.leaderCommandId)) {
+			for (const conflict of findHotkeyConflicts(key, otherBindings)) {
+				rows.push(
+					`${describeComboLeader(key)} (leader hotkey) also triggers "${conflict.name}" (${conflict.id}).`,
+				);
+			}
+		}
+
+		let combo;
+		try {
+			combo = parseComboLeaderString(this.plugin.settings.comboLeader);
+		} catch {
+			combo = null;
+		}
+		if (combo) {
+			for (const conflict of findHotkeyConflicts(combo, otherBindings)) {
+				rows.push(
+					`${describeComboLeader(combo)} (combo leader) also triggers "${conflict.name}" (${conflict.id}).`,
+				);
+			}
+		}
+
+		if (rows.length === 0) {
+			this.hotkeyConflictsEl.setText("None");
+			return;
+		}
+		for (const row of rows) {
+			this.hotkeyConflictsEl.createDiv({ text: row, cls: "neokeys-hotkey-conflict-row" });
+		}
+	}
+
 	private renderKeymapEditor(setting: Setting): void {
-		setting.setClass("neokeys-keymap-editor").addTextArea((text) => {
-			this.keymapTextAreaEl = text.inputEl;
-			text.setValue(this.plugin.settings.keymapSource);
-			text.inputEl.rows = 18;
-			text.inputEl.addClass("neokeys-keymap-textarea");
-		});
-	}
+		setting.setClass("neokeys-keymap-editor").setName("Keymap editor").setDesc(KEYMAP_DESC);
+		// infoEl, not descEl: setDesc() empties descEl.
+		this.errorEl = setting.infoEl.createDiv({ cls: "neokeys-keymap-error" });
 
-	private renderSaveKeymapButton(setting: Setting): void {
-		setting.addButton((button) =>
-			button
-				.setButtonText("Save keymap")
-				.setCta()
-				.onClick(async () => {
-					await this.saveKeymap(this.keymapTextAreaEl?.value ?? "");
-				}),
+		const container = setting.controlEl.createDiv({ cls: "neokeys-keymap-container" });
+
+		const toggleRow = container.createDiv({ cls: "neokeys-keymap-toggle-row" });
+		this.viewToggleButton = new ButtonComponent(toggleRow).onClick(() => void this.toggleView());
+
+		this.treeContainerEl = container.createDiv({ cls: "neokeys-tree-container" });
+		this.yamlContainerEl = container.createDiv({ cls: "neokeys-yaml-container" });
+
+		this.yamlContainerEl.createDiv({ cls: "neokeys-yaml-note", text: YAML_NOTE });
+
+		const textArea = this.yamlContainerEl.createEl("textarea", { cls: "neokeys-keymap-textarea" });
+		textArea.rows = 18;
+		textArea.value = this.plugin.settings.keymapSource;
+		this.keymapTextAreaEl = textArea;
+
+		const saveRow = this.yamlContainerEl.createDiv({ cls: "neokeys-keymap-save-row" });
+		new ButtonComponent(saveRow)
+			.setButtonText("Save keymap")
+			.setCta()
+			.onClick(() => void this.saveKeymap(textArea.value));
+
+		this.treeEditorView = new TreeEditorView(
+			this.app,
+			this.treeContainerEl,
+			() => parseKeymapSource(this.plugin.settings.keymapSource),
+			(root) => this.persistTree(root),
 		);
+
+		this.applyViewMode();
 	}
 
-	private async saveKeymap(source: string): Promise<void> {
+	private applyViewMode(): void {
+		if (this.viewMode === "tree") {
+			try {
+				this.treeEditorView?.render();
+			} catch (err) {
+				// Stored keymap source should always be valid (every write path validates first),
+				// but data.json is external state a person or another tool can still hand-edit.
+				// Fall back to the YAML view, which can at least show what's actually there.
+				this.showKeymapError(err);
+				this.viewMode = "yaml";
+			}
+		}
+		this.treeContainerEl?.toggleClass("neokeys-hidden", this.viewMode !== "tree");
+		this.yamlContainerEl?.toggleClass("neokeys-hidden", this.viewMode !== "yaml");
+		this.viewToggleButton?.setButtonText(this.viewMode === "tree" ? "Edit as YAML/JSON" : "Back to tree editor");
+	}
+
+	/**
+	 * Switches between the tree and YAML/JSON views. Leaving the YAML view with unsaved, invalid
+	 * text blocks the switch and shows the error instead of discarding it or overwriting the tree;
+	 * unsaved valid text is saved first, so both views always agree on the stored keymap.
+	 */
+	private async toggleView(): Promise<void> {
+		if (this.viewMode === "tree") {
+			this.viewMode = "yaml";
+			this.applyViewMode();
+			return;
+		}
+
+		const value = this.keymapTextAreaEl?.value ?? "";
+		if (value !== this.plugin.settings.keymapSource) {
+			const saved = await this.saveKeymapSource(value);
+			if (!saved) return;
+		}
+
+		this.viewMode = "tree";
+		this.applyViewMode();
+	}
+
+	/** Validate and persist YAML/JSON source from the escape-hatch view. Returns whether it saved. */
+	private async saveKeymapSource(source: string): Promise<boolean> {
 		try {
 			parseKeymapSource(source);
 		} catch (err) {
 			this.showKeymapError(err);
-			return;
+			return false;
 		}
 
 		this.plugin.settings.keymapSource = source;
 		await this.plugin.saveSettings();
 		this.clearKeymapError();
 		this.updateInvalidCommands();
-		new Notice("Neokeys keymap saved");
+		return true;
+	}
+
+	private async saveKeymap(source: string): Promise<void> {
+		const saved = await this.saveKeymapSource(source);
+		if (saved) new Notice("Neokeys keymap saved");
+	}
+
+	/** Persist a tree edit (already valid by construction) and refresh every dependent view. */
+	private async persistTree(root: GroupNode): Promise<void> {
+		this.plugin.settings.keymapSource = serializeKeymap(root);
+		await this.plugin.saveSettings();
+		if (this.keymapTextAreaEl) this.keymapTextAreaEl.value = this.plugin.settings.keymapSource;
+		this.clearKeymapError();
+		this.updateInvalidCommands();
+		this.treeEditorView?.render();
 	}
 
 	private showKeymapError(err: unknown): void {
