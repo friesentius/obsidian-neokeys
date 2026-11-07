@@ -62,6 +62,8 @@ hotkey, and names the colliding command if either one collides (e.g. binding the
 Neokeys doesn't block the binding - since Obsidian itself lets the same key trigger more than one
 thing and you may prefer Neokeys to win.
 
+![Hotkey conflicts warning, naming the colliding command](docs/screenshots/phase2/hotkey-conflict-dark.png)
+
 ## The keymap
 
 Open Settings → Neokeys to edit the keymap as an expandable **tree**: add, edit, delete, and
@@ -72,6 +74,8 @@ source instead (JSON is also accepted, since JSON is valid YAML) - both views ed
 keymap, so a change in one shows up in the other, and switching back from the YAML view with
 invalid text is blocked (with the error shown) rather than silently discarding your edit or
 overwriting the tree.
+
+![Tree editor showing a nested keymap, with move/edit/delete controls per item](docs/screenshots/phase2/tree-editor-overview-dark.png)
 
 The which-key popup shows a group's entries in the order you arrange them in the tree editor (or
 write them in the YAML's `items`) - reordering an item moves it in the popup too, not just in the
