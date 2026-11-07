@@ -1,4 +1,4 @@
-import { compareKeys, keyFromEvent, keyGlyph, keysEqual, keyToString, parseKeyString, KeyParseError } from "../src/keys";
+import { keyFromEvent, keyGlyph, keysEqual, keyToString, parseKeyString, KeyParseError } from "../src/keys";
 
 describe("parseKeyString", () => {
 	it("resolves aliases to their raw key value", () => {
@@ -88,14 +88,6 @@ describe("keyToString", () => {
 		expect(keyToString(parseKeyString("c-space"))).toBe("c-space");
 		expect(keyToString(parseKeyString("space"))).toBe("space");
 		expect(parseKeyString(keyToString(parseKeyString("c-space")))).toEqual(parseKeyString("c-space"));
-	});
-});
-
-describe("compareKeys", () => {
-	it("orders keys with fewer modifiers first, then alphabetically", () => {
-		const keys = ["c-z", "a", "z", "c-a"].map(parseKeyString);
-		const sorted = [...keys].sort(compareKeys);
-		expect(sorted).toEqual(["a", "z", "c-a", "c-z"].map(parseKeyString));
 	});
 });
 

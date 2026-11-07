@@ -139,8 +139,8 @@ export function removeEntry(root: GroupNode, path: string[], rawKey: string): Tr
 
 /**
  * Swap the entry `rawKey` with its previous (`delta: -1`) or next (`delta: 1`) sibling in the
- * group at `path`. This is purely the stored order in `entries`, the same order the serializer
- * writes back out; it does not affect the which-key popup's own kind-then-key display sort.
+ * group at `path`. This is the stored order in `entries`, the same order the serializer writes
+ * back out, and the order the which-key popup keeps within its groups/files/commands tiers.
  */
 export function moveEntry(root: GroupNode, path: string[], rawKey: string, delta: -1 | 1): TreeOpResult {
 	return replaceGroupAtPath(root, path, (group) => {
