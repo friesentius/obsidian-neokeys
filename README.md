@@ -42,7 +42,7 @@ guidelines expect). To assign one:
 Pressing the leader opens the which-key popup at the root of your keymap. Type further keys to
 descend into a group, <kbd>Backspace</kbd> to go back up one level, and <kbd>Esc</kbd> to close
 the popup at any point. The header shows a breadcrumb of the group labels you've descended
-through (e.g. `Window > View`), not just the raw keys you pressed.
+through (e.g. `Text > Heading`), not just the raw keys you pressed.
 
 ### Combo leader (optional)
 
@@ -115,18 +115,43 @@ items:
     items:
       n: file-explorer:new-file New file
       s: editor:save-file Save file
-      d: app:delete-file
-  w:
-    title: Window
-    description: Panes, tabs, and layout
+      d: app:delete-file Delete current file
+  t:
+    title: Text
+    description: Formatting for the current selection or line
     items:
-      n: workspace:new-tab New tab
-      v:
-        title: View
-        description: Switch how the note is displayed
+      h:
+        title: Heading
+        description: Set or remove the current line's heading level
         items:
-          r: markdown:toggle-preview Toggle reading view
+          '1': editor:set-heading-1 Heading 1
+          '+': neokeys:increase-heading-level Increase heading level
+          '-': neokeys:decrease-heading-level Decrease heading level
 ```
+
+### The default keymap
+
+A fresh install ships with four root groups: **File** (`f`), **Text** (`t`), **Window** (`w`),
+and **Command palette** (`p`). Text groups formatting under five subgroups - **Formatting** (`f`:
+bold, italic, strikethrough, code, highlight, blockquote, clear formatting), **Heading** (`h`:
+set heading 1-6, remove heading, toggle heading, and increase/decrease heading level), **Link**
+(`l`: Markdown link, wikilink, embed), **List** (`-`: bullet/numbered list, checklist, indent), and
+**Add** (`a`: table, code block, math, footnote, horizontal rule, callout, tag). Window groups
+tab/split/window management, loosely following the terminal multiplexer herdr's tab/pane/workspace
+mnemonics (`c` for new, not `n`, so `n`/`p` stay free for next/previous).
+
+#### Increase/decrease heading level
+
+Obsidian has no built-in command to shift a heading's level up or down - only jump to an absolute
+level (`editor:set-heading-1`..`-6`) or remove it (`editor:set-heading-0`). Neokeys adds its own
+`neokeys:increase-heading-level` and `neokeys:decrease-heading-level` commands (bound to `h +` /
+`h -` in the Heading submenu) that read the current line's heading level and step it by one.
+"Increase" means a bigger heading, i.e. toward H1; "decrease" means a smaller heading, i.e. toward
+plain text. Plain text, H6, H5, ..., H1 form one ladder with clamped (non-wrapping) ends:
+increasing plain text lands on H6 (the smallest heading) first, increasing H1 is a no-op;
+decreasing H6 removes the heading back to plain text, decreasing plain text is a no-op. Both
+commands apply to every line touched by the current selection, or the cursor's line when nothing
+is selected.
 
 A key string is an optional run of modifier letters (`c`/`s`/`a`/`m` for ctrl/shift/alt/meta)
 followed by a `-` and a base key, e.g. `c-enter` for Ctrl+Enter, or just a single character for
@@ -176,7 +201,8 @@ since there is no public API signal for "a hardware keyboard is attached."
 - `npm run build` - typecheck + production build
 - `npm test` - Jest unit tests (key parsing, keymap parsing/validation and serialization, tree
   edit operations, tree resolution/sorting, delay logic, combo-leader validation, command-ID
-  validation, breadcrumb building, hotkey-conflict detection, animation settings)
+  validation, breadcrumb building, hotkey-conflict detection, animation settings, heading-level
+  increase/decrease)
 - `npm run lint` - ESLint with `eslint-plugin-obsidianmd`'s recommended config
 - `npm run validate` - mirrors the parts of Obsidian's community-plugin submission checks that
   don't require a live GitHub release (manifest/versions shape, `id`/`version` format)
