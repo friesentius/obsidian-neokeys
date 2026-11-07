@@ -159,10 +159,10 @@ entries in red with an "Unknown command" badge; pressing one shows a notice inst
 doing nothing.
 
 The **show delay** setting controls how long (in milliseconds) the popup waits before revealing
-the key/label grid (with animations on, the whole bar and its backdrop wait, then slide in), so a
-sequence you already know by muscle memory never flashes it. There is no forced abandon-timeout:
-a half-typed sequence waits indefinitely until it resolves, dead-ends, is backspaced away, or you
-press Esc.
+the key/label grid (with animations on, the whole bar waits, then slides in as its backdrop fades
+in), so a sequence you already know by muscle memory never flashes it. There is no forced
+abandon-timeout: a half-typed sequence waits indefinitely until it resolves, dead-ends, is
+backspaced away, or you press Esc.
 
 ## Compatibility
 
@@ -176,7 +176,7 @@ since there is no public API signal for "a hardware keyboard is attached."
 - `npm run build` - typecheck + production build
 - `npm test` - Jest unit tests (key parsing, keymap parsing/validation and serialization, tree
   edit operations, tree resolution/sorting, delay logic, combo-leader validation, command-ID
-  validation, breadcrumb building, hotkey-conflict detection)
+  validation, breadcrumb building, hotkey-conflict detection, animation settings)
 - `npm run lint` - ESLint with `eslint-plugin-obsidianmd`'s recommended config
 - `npm run validate` - mirrors the parts of Obsidian's community-plugin submission checks that
   don't require a live GitHub release (manifest/versions shape, `id`/`version` format)
