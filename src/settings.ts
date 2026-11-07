@@ -1,5 +1,6 @@
 import { App, ButtonComponent, Notice, PluginSettingTab, Scope, Setting } from "obsidian";
 import type { SettingDefinitionItem } from "obsidian";
+import { DEFAULT_ANIMATION_DURATION_MS, parseAnimationDurationInput } from "./animation";
 import { ComboLeaderError, describeComboLeader, parseComboLeaderString } from "./comboLeader";
 import { findInvalidCommands } from "./commandValidation";
 import { findHotkeyConflicts } from "./hotkeyConflict";
@@ -16,6 +17,8 @@ export const DEFAULT_SETTINGS: NeokeysSettings = {
 	keymapSource: DEFAULT_KEYMAP_YAML,
 	showDelayMs: 200,
 	comboLeader: "",
+	animationsEnabled: true,
+	animationDurationMs: DEFAULT_ANIMATION_DURATION_MS,
 };
 
 const LEADER_NAME = "Assign the leader hotkey";
@@ -27,6 +30,11 @@ const COMBO_DESC =
 const SHOW_DELAY_NAME = "Show delay";
 const SHOW_DELAY_DESC =
 	"Milliseconds to wait before the which-key popup appears. A fast, memorized sequence never flashes it. Set to 0 to show immediately.";
+const ANIMATIONS_NAME = "Animations";
+const ANIMATIONS_DESC =
+	"Slide the which-key popup in from the bottom edge, and crossfade between menus when navigating. Always off when your OS's reduced-motion accessibility preference is on, regardless of this toggle.";
+const ANIMATION_DURATION_NAME = "Animation duration";
+const ANIMATION_DURATION_DESC = "Milliseconds for the slide-in and crossfade animations (0-1000).";
 const KEYMAP_DESC =
 	'Edit the keymap as a tree, or use "Edit as YAML/JSON" for the raw, Spacekeys-compatible source (each group has items; each item is a group, a command ("command: <id>" or the short form "<id> <description>"), or a file ("file: <path>")). Both views edit the same stored keymap - switching away from the YAML view saves it first, and an invalid edit there is never silently discarded.';
 const YAML_NOTE =
@@ -102,6 +110,17 @@ export class NeokeysSettingTab extends PluginSettingTab {
 						desc: SHOW_DELAY_DESC,
 						render: (setting) => this.renderShowDelay(setting),
 					},
+					{
+						name: ANIMATIONS_NAME,
+						desc: ANIMATIONS_DESC,
+						aliases: ["animation", "motion", "slide", "crossfade", "reduced motion"],
+						render: (setting) => this.renderAnimationsEnabled(setting),
+					},
+					{
+						name: ANIMATION_DURATION_NAME,
+						desc: ANIMATION_DURATION_DESC,
+						render: (setting) => this.renderAnimationDuration(setting),
+					},
 				],
 			},
 			{
@@ -138,6 +157,8 @@ export class NeokeysSettingTab extends PluginSettingTab {
 
 		new Setting(containerEl).setName("Which-key popup").setHeading();
 		this.renderShowDelay(new Setting(containerEl));
+		this.renderAnimationsEnabled(new Setting(containerEl));
+		this.renderAnimationDuration(new Setting(containerEl));
 
 		new Setting(containerEl).setName("Keymap").setHeading();
 		this.renderKeymapEditor(new Setting(containerEl));
@@ -264,6 +285,33 @@ export class NeokeysSettingTab extends PluginSettingTab {
 						const parsed = Number(value);
 						if (!Number.isFinite(parsed) || parsed < 0) return;
 						this.plugin.settings.showDelayMs = Math.round(parsed);
+						await this.plugin.saveSettings();
+					}),
+			);
+	}
+
+	private renderAnimationsEnabled(setting: Setting): void {
+		setting
+			.setName(ANIMATIONS_NAME)
+			.setDesc(ANIMATIONS_DESC)
+			.addToggle((toggle) =>
+				toggle.setValue(this.plugin.settings.animationsEnabled).onChange(async (value) => {
+					this.plugin.settings.animationsEnabled = value;
+					await this.plugin.saveSettings();
+				}),
+			);
+	}
+
+	private renderAnimationDuration(setting: Setting): void {
+		setting
+			.setName(ANIMATION_DURATION_NAME)
+			.setDesc(ANIMATION_DURATION_DESC)
+			.addText((text) =>
+				text
+					.setPlaceholder(String(DEFAULT_ANIMATION_DURATION_MS))
+					.setValue(String(this.plugin.settings.animationDurationMs))
+					.onChange(async (value) => {
+						this.plugin.settings.animationDurationMs = parseAnimationDurationInput(value);
 						await this.plugin.saveSettings();
 					}),
 			);

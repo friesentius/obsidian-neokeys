@@ -23,8 +23,50 @@
 	transition: opacity 0.1s ease-in-out;
 }
 
-.neokeys-modal-collapsed .neokeys-grid {
+/* Without animations, the show-delay hides only the grid: header and breadcrumb appear immediately. */
+.neokeys-modal-container.neokeys-modal-collapsed:not(.neokeys-animate) .neokeys-grid {
 	display: none;
+}
+
+/*
+ * Transitions are opt-in via .neokeys-animate (set only when animations are enabled and the OS
+ * reduced-motion preference is off). With it, the whole bar and the backdrop dim stay hidden until
+ * the show-delay fires, then the bar slides in from the bottom while the dim fades in alongside it.
+ */
+.neokeys-modal-container.neokeys-animate .neokeys-modal {
+	opacity: 1;
+	transform: translateY(0);
+	transition:
+		opacity var(--neokeys-anim-duration, 150ms) ease-out,
+		transform var(--neokeys-anim-duration, 150ms) ease-out;
+}
+
+.neokeys-modal-container.neokeys-animate .modal-bg {
+	transition: opacity var(--neokeys-anim-duration, 150ms) ease-out;
+}
+
+.neokeys-modal-container.neokeys-animate.neokeys-modal-collapsed .neokeys-modal {
+	opacity: 0;
+	transform: translateY(100%);
+}
+
+/* !important: Obsidian sets an inline opacity on .modal-bg, which would otherwise win. */
+.neokeys-modal-container.neokeys-animate.neokeys-modal-collapsed .modal-bg {
+	opacity: 0 !important;
+}
+
+.neokeys-content {
+	opacity: 1;
+}
+
+.neokeys-animate .neokeys-content {
+	transition: opacity calc(var(--neokeys-anim-duration, 150ms) / 2) ease-in-out;
+}
+
+/* Crossfade between menus on navigation: content fades out, is swapped while invisible, fades in. */
+.neokeys-crossfade-out,
+.neokeys-crossfade-in {
+	opacity: 0;
 }
 
 .neokeys-header {

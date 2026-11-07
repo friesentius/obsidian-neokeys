@@ -10,18 +10,27 @@ export interface WhichKeyCallbacks {
 	openFile(path: string): void;
 }
 
+export interface WhichKeyAnimationOptions {
+	enabled: boolean;
+	durationMs: number;
+}
+
 export class WhichKeyModal extends Modal {
 	private path: GroupNode[];
 	private delayGate!: ShowDelayGate;
+	private contentWrapperEl!: HTMLElement;
 	private breadcrumbEl!: HTMLElement;
 	private headerTitleEl!: HTMLElement;
 	private descEl!: HTMLElement;
 	private gridEl!: HTMLElement;
+	/** Bumped on every navigation so a deferred crossfade step can detect it has been superseded. */
+	private crossfadeToken = 0;
 
 	constructor(
 		app: App,
 		private readonly root: GroupNode,
 		private readonly showDelayMs: number,
+		private readonly animation: WhichKeyAnimationOptions,
 		private readonly callbacks: WhichKeyCallbacks,
 	) {
 		super(app);
@@ -29,26 +38,38 @@ export class WhichKeyModal extends Modal {
 	}
 
 	onOpen(): void {
-		this.containerEl.addClass("neokeys-modal-container");
-		this.modalEl.addClass("neokeys-modal", "neokeys-modal-collapsed");
+		this.containerEl.addClass("neokeys-modal-container", "neokeys-modal-collapsed");
+		this.modalEl.addClass("neokeys-modal");
+		if (this.animation.enabled) {
+			this.containerEl.addClass("neokeys-animate");
+			this.containerEl.style.setProperty("--neokeys-anim-duration", `${this.animation.durationMs}ms`);
+		}
 
-		const header = this.contentEl.createDiv({ cls: "neokeys-header" });
+		this.contentWrapperEl = this.contentEl.createDiv({ cls: "neokeys-content" });
+		const header = this.contentWrapperEl.createDiv({ cls: "neokeys-header" });
 		this.headerTitleEl = header.createDiv({ cls: "neokeys-header-title" });
 		this.descEl = header.createDiv({ cls: "neokeys-header-desc" });
-		this.breadcrumbEl = this.contentEl.createDiv({ cls: "neokeys-breadcrumb" });
-		this.gridEl = this.contentEl.createDiv({ cls: "neokeys-grid" });
+		this.breadcrumbEl = this.contentWrapperEl.createDiv({ cls: "neokeys-breadcrumb" });
+		this.gridEl = this.contentWrapperEl.createDiv({ cls: "neokeys-grid" });
 
 		this.scope.register(null, null, (evt) => this.handleKey(evt));
 
 		this.render();
+
+		// Force a style flush with the collapsed class applied before the gate can remove it, so a
+		// 0ms (or otherwise same-tick) show-delay still gets a committed "before" state to slide in
+		// from, instead of the add+remove collapsing into a no-op the browser never renders.
+		if (this.animation.enabled) void this.containerEl.offsetHeight;
+
 		this.delayGate = new ShowDelayGate(this.showDelayMs, () => {
-			this.modalEl.removeClass("neokeys-modal-collapsed");
+			this.containerEl.removeClass("neokeys-modal-collapsed");
 		});
 		this.delayGate.poke();
 	}
 
 	onClose(): void {
 		this.delayGate?.cancel();
+		this.crossfadeToken++;
 		this.contentEl.empty();
 	}
 
@@ -88,6 +109,38 @@ export class WhichKeyModal extends Modal {
 		}
 	}
 
+	/**
+	 * Re-renders for a navigation (push/pop group), crossfading the old menu into the new one when
+	 * animations are on. The logical path has already been updated by the caller, so this is purely
+	 * visual: a rapid sequence of keypresses each update `this.path` immediately and just restart or
+	 * supersede the in-flight crossfade, never delaying or dropping a keypress.
+	 */
+	private renderCrossfade(): void {
+		if (!this.animation.enabled || this.animation.durationMs <= 0 || !this.delayGate.isShown) {
+			this.render();
+			return;
+		}
+
+		const token = ++this.crossfadeToken;
+		const halfDuration = this.animation.durationMs / 2;
+		this.contentWrapperEl.addClass("neokeys-crossfade-out");
+
+		window.setTimeout(() => {
+			if (token !== this.crossfadeToken) return; // superseded by a later navigation
+
+			this.render();
+			this.contentWrapperEl.removeClass("neokeys-crossfade-out");
+			this.contentWrapperEl.addClass("neokeys-crossfade-in");
+
+			// Force the "faded out" state to paint before removing it, so the browser has something
+			// to transition from; otherwise the add+remove in the same tick could collapse into no-op.
+			window.requestAnimationFrame(() => {
+				if (token !== this.crossfadeToken) return;
+				this.contentWrapperEl.removeClass("neokeys-crossfade-in");
+			});
+		}, halfDuration);
+	}
+
 	private handleKey(evt: KeyboardEvent): false {
 		if (evt.isComposing) {
 			return false;
@@ -101,7 +154,7 @@ export class WhichKeyModal extends Modal {
 		if (evt.key === "Backspace") {
 			if (this.path.length > 1) {
 				this.path.pop();
-				this.render();
+				this.renderCrossfade();
 			} else {
 				this.close();
 			}
@@ -118,7 +171,7 @@ export class WhichKeyModal extends Modal {
 
 		if (entry.node.kind === "group") {
 			this.path.push(entry.node);
-			this.render();
+			this.renderCrossfade();
 			return false;
 		}
 

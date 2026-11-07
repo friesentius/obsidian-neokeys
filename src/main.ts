@@ -1,5 +1,6 @@
 import { Notice, Plugin } from "obsidian";
 import type { KeymapEventHandler } from "obsidian";
+import { prefersReducedMotion, shouldAnimate } from "./animation";
 import { ComboLeaderError, parseComboLeaderString } from "./comboLeader";
 import { KeymapParseError, parseKeymapSource } from "./keymap";
 import { keyFromEvent, keysEqual } from "./keys";
@@ -78,11 +79,18 @@ export default class NeokeysPlugin extends Plugin {
 			return;
 		}
 
-		new WhichKeyModal(this.app, root, this.settings.showDelayMs, {
-			executeCommand: (id) => executeCommandById(this.app, id),
-			openFile: (path) => {
-				void this.app.workspace.openLinkText(path, "", false);
+		const animate = shouldAnimate(this.settings.animationsEnabled, prefersReducedMotion(window));
+		new WhichKeyModal(
+			this.app,
+			root,
+			this.settings.showDelayMs,
+			{ enabled: animate, durationMs: this.settings.animationDurationMs },
+			{
+				executeCommand: (id) => executeCommandById(this.app, id),
+				openFile: (path) => {
+					void this.app.workspace.openLinkText(path, "", false);
+				},
 			},
-		}).open();
+		).open();
 	}
 }
