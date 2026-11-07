@@ -72,13 +72,17 @@ function headingLineChange(line: number, text: string, direction: HeadingDirecti
 	return { from: { line, ch: 0 }, to: { line, ch: oldPrefixLen }, text: newPrefix };
 }
 
-/** Every line touched by at least one selection (zero-width selections count their caret's line). */
+/**
+ * Every line touched by at least one selection (zero-width selections count their caret's line).
+ * A multi-line selection that ends at column 0 of its last line selects none of that line's text,
+ * so that line is left out, matching Obsidian's other line-oriented commands.
+ */
 function affectedLines(editor: Editor): number[] {
 	const lines = new Set<number>();
-	for (const selection of editor.listSelections()) {
-		const start = Math.min(selection.anchor.line, selection.head.line);
-		const end = Math.max(selection.anchor.line, selection.head.line);
-		for (let line = start; line <= end; line++) lines.add(line);
+	for (const { anchor, head } of editor.listSelections()) {
+		const [from, to] = anchor.line <= head.line ? [anchor, head] : [head, anchor];
+		const end = to.line > from.line && to.ch === 0 ? to.line - 1 : to.line;
+		for (let line = from.line; line <= end; line++) lines.add(line);
 	}
 	return [...lines].sort((a, b) => a - b);
 }

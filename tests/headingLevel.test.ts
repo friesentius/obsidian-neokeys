@@ -118,14 +118,35 @@ describe("applyHeadingLevelToEditor", () => {
 
 	it("applies to each line touched by multiple cursors/selections", () => {
 		const lines = ["Para one", "Para two", "Para three", "Para four"];
-		const { editor } = fakeEditor(lines, [caret(0), { anchor: { line: 2, ch: 0 }, head: { line: 3, ch: 0 } }]);
+		const { editor } = fakeEditor(lines, [caret(0), { anchor: { line: 2, ch: 0 }, head: { line: 3, ch: 4 } }]);
 		applyHeadingLevelToEditor(editor, "increase");
 		expect(lines).toEqual(["###### Para one", "Para two", "###### Para three", "###### Para four"]);
 	});
 
+	it("skips the last line of a multi-line selection that ends at its column 0", () => {
+		const lines = ["Para one", "Para two", "Para three"];
+		const { editor } = fakeEditor(lines, [{ anchor: { line: 0, ch: 0 }, head: { line: 2, ch: 0 } }]);
+		applyHeadingLevelToEditor(editor, "increase");
+		expect(lines).toEqual(["###### Para one", "###### Para two", "Para three"]);
+	});
+
+	it("skips a column-0 trailing line for a backward selection too", () => {
+		const lines = ["Para one", "Para two", "Para three"];
+		const { editor } = fakeEditor(lines, [{ anchor: { line: 2, ch: 0 }, head: { line: 0, ch: 3 } }]);
+		applyHeadingLevelToEditor(editor, "increase");
+		expect(lines).toEqual(["###### Para one", "###### Para two", "Para three"]);
+	});
+
+	it("still applies to a caret at column 0", () => {
+		const lines = ["Para one", "Para two"];
+		const { editor } = fakeEditor(lines, [caret(1, 0)]);
+		applyHeadingLevelToEditor(editor, "increase");
+		expect(lines).toEqual(["Para one", "###### Para two"]);
+	});
+
 	it("applies every changed line in a single transaction, for one undo step", () => {
 		const lines = ["Para one", "Para two", "Para three"];
-		const { editor, transactionCalls } = fakeEditor(lines, [{ anchor: { line: 0, ch: 0 }, head: { line: 2, ch: 0 } }]);
+		const { editor, transactionCalls } = fakeEditor(lines, [{ anchor: { line: 0, ch: 0 }, head: { line: 2, ch: 4 } }]);
 		applyHeadingLevelToEditor(editor, "increase");
 		expect(transactionCalls.length).toBe(1);
 		expect(transactionCalls[0].length).toBe(3);
