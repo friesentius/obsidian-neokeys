@@ -151,7 +151,8 @@ plain text. Plain text, H6, H5, ..., H1 form one ladder with clamped (non-wrappi
 increasing plain text lands on H6 (the smallest heading) first, increasing H1 is a no-op;
 decreasing H6 removes the heading back to plain text, decreasing plain text is a no-op. Both
 commands apply to every line touched by the current selection, or the cursor's line when nothing
-is selected.
+is selected; a multi-line selection that ends at the very start of a line leaves that last line
+alone.
 
 A key string is an optional run of modifier letters (`c`/`s`/`a`/`m` for ctrl/shift/alt/meta)
 followed by a `-` and a base key, e.g. `c-enter` for Ctrl+Enter, or just a single character for
