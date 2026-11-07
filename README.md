@@ -133,6 +133,12 @@ invalid keymap is rejected with an error message that points at the exact field 
 `items.f.items.d`) that needs fixing, and the previously saved keymap keeps working until you fix
 it.
 
+Any edit made in the tree editor rewrites the stored keymap in a normalized YAML form: comments are
+dropped and the short command form (`"<command-id> <description>"`) is expanded into explicit
+`command`/`description` fields. Editing only through the YAML/JSON view never rewrites anything, so
+your comments and formatting are kept exactly as you wrote them there. Deleting a group that still
+has items asks for confirmation first; deleting anything else happens in one click.
+
 A keymap can still *parse* successfully but reference a command ID Obsidian doesn't currently
 recognize (a typo, or a plugin that's disabled) - this doesn't block saving, since the command
 might belong to a plugin you just haven't enabled yet. Settings → Neokeys lists any such entries

@@ -29,6 +29,8 @@ const SHOW_DELAY_DESC =
 	"Milliseconds to wait before the which-key popup appears. A fast, memorized sequence never flashes it. Set to 0 to show immediately.";
 const KEYMAP_DESC =
 	'Edit the keymap as a tree, or use "Edit as YAML/JSON" for the raw, Spacekeys-compatible source (each group has items; each item is a group, a command ("command: <id>" or the short form "<id> <description>"), or a file ("file: <path>")). Both views edit the same stored keymap - switching away from the YAML view saves it first, and an invalid edit there is never silently discarded.';
+const YAML_NOTE =
+	"Saving here keeps your text exactly as written, comments included. Any edit in the tree editor rewrites this source in a normalized form, dropping comments and expanding the short command form.";
 const INVALID_COMMANDS_NAME = "Invalid commands";
 const INVALID_COMMANDS_DESC =
 	"Command IDs in your keymap that Obsidian doesn't currently recognize (a typo, or a plugin that's disabled). They're marked in the which-key popup too, and show an error instead of doing nothing if pressed.";
@@ -332,6 +334,8 @@ export class NeokeysSettingTab extends PluginSettingTab {
 
 		this.treeContainerEl = container.createDiv({ cls: "neokeys-tree-container" });
 		this.yamlContainerEl = container.createDiv({ cls: "neokeys-yaml-container" });
+
+		this.yamlContainerEl.createDiv({ cls: "neokeys-yaml-note", text: YAML_NOTE });
 
 		const textArea = this.yamlContainerEl.createEl("textarea", { cls: "neokeys-keymap-textarea" });
 		textArea.rows = 18;

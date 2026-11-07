@@ -175,3 +175,19 @@ export function setGroupMeta(
 		return updated;
 	});
 }
+
+/** Whether applying `meta` via setGroupMeta would change `group`'s title or description. */
+export function groupMetaChanged(group: GroupNode, meta: { title?: string; description?: string }): boolean {
+	return (
+		(meta.title !== undefined && meta.title !== (group.title ?? "")) ||
+		(meta.description !== undefined && meta.description !== (group.description ?? ""))
+	);
+}
+
+/** Total number of entries inside `group`, counting every nested group's entries too. */
+export function countEntries(group: GroupNode): number {
+	return group.entries.reduce(
+		(total, entry) => total + 1 + (entry.node.kind === "group" ? countEntries(entry.node) : 0),
+		0,
+	);
+}

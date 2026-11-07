@@ -145,6 +145,11 @@
 	justify-content: flex-end;
 }
 
+.neokeys-yaml-note {
+	color: var(--text-muted);
+	font-size: var(--font-ui-small);
+}
+
 .neokeys-keymap-textarea {
 	width: 100%;
 	font-family: var(--font-monospace);

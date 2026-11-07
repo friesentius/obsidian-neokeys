@@ -1,8 +1,18 @@
 import { App, ButtonComponent, ExtraButtonComponent } from "obsidian";
 import { getCommandName, hasCommand } from "../obsidianCommands";
 import { entryLabel } from "../tree";
-import { addEntry, moveEntry, removeEntry, setGroupMeta, updateEntry } from "../treeOps";
+import {
+	addEntry,
+	countEntries,
+	getGroupAtPath,
+	groupMetaChanged,
+	moveEntry,
+	removeEntry,
+	setGroupMeta,
+	updateEntry,
+} from "../treeOps";
 import type { CommandNode, FileNode, GroupEntry, GroupNode, KeymapNode } from "../types";
+import { ConfirmDeleteModal } from "./confirmDeleteModal";
 import { EntryEditorModal, type EntryDraft } from "./entryEditorModal";
 
 function nodeFromDraft(draft: EntryDraft, existingEntries: GroupEntry[] | null): KeymapNode {
@@ -90,7 +100,10 @@ export class TreeEditorView {
 	}
 
 	private async commitMeta(path: string[], meta: { title?: string; description?: string }): Promise<void> {
-		const result = setGroupMeta(this.getRoot(), path, meta);
+		const root = this.getRoot();
+		const group = getGroupAtPath(root, path);
+		if (!group || !groupMetaChanged(group, meta)) return;
+		const result = setGroupMeta(root, path, meta);
 		if (result.ok) await this.persist(result.root);
 	}
 
@@ -152,14 +165,30 @@ export class TreeEditorView {
 		new ExtraButtonComponent(controls)
 			.setIcon("trash")
 			.setTooltip("Delete")
-			.onClick(async () => {
-				const result = removeEntry(this.getRoot(), path, entry.rawKey);
-				if (result.ok) await this.persist(result.root);
-			});
+			.onClick(() => this.deleteEntry(path, entry));
 
 		if (entry.node.kind === "group") {
 			this.renderChildren(entryWrap, entry.node, childPath);
 		}
+	}
+
+	private deleteEntry(path: string[], entry: GroupEntry): void {
+		const remove = (): void => {
+			const result = removeEntry(this.getRoot(), path, entry.rawKey);
+			if (result.ok) void this.persist(result.root);
+		};
+		if (entry.node.kind !== "group" || entry.node.entries.length === 0) {
+			remove();
+			return;
+		}
+		const count = countEntries(entry.node);
+		const items = count === 1 ? "1 item" : `${count} items`;
+		const name = entry.node.title ? `"${entry.rawKey}" (${entry.node.title})` : `"${entry.rawKey}"`;
+		new ConfirmDeleteModal(
+			this.app,
+			`Delete the group ${name} and the ${items} inside it? This can't be undone.`,
+			remove,
+		).open();
 	}
 
 	private openAddModal(path: string[]): void {

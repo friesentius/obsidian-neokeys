@@ -1,6 +1,15 @@
 import { parseKeymapSource } from "../src/keymap";
 import { serializeKeymap } from "../src/keymapSerialize";
-import { addEntry, getGroupAtPath, moveEntry, removeEntry, setGroupMeta, updateEntry } from "../src/treeOps";
+import {
+	addEntry,
+	countEntries,
+	getGroupAtPath,
+	groupMetaChanged,
+	moveEntry,
+	removeEntry,
+	setGroupMeta,
+	updateEntry,
+} from "../src/treeOps";
 import type { CommandNode, GroupNode } from "../src/types";
 
 const SOURCE = `
@@ -209,5 +218,33 @@ describe("setGroupMeta", () => {
 
 	it("errors for a nonexistent path", () => {
 		expect(setGroupMeta(root(), ["nope"], { title: "x" }).ok).toBe(false);
+	});
+});
+
+describe("groupMetaChanged", () => {
+	it("is false when the values match what is stored (including absent fields as empty)", () => {
+		const r = root();
+		expect(groupMetaChanged(r, { title: "Neokeys" })).toBe(false);
+		expect(groupMetaChanged(r, { description: "" })).toBe(false);
+		expect(groupMetaChanged(r, {})).toBe(false);
+	});
+
+	it("is true when either field differs", () => {
+		const r = root();
+		expect(groupMetaChanged(r, { title: "Other" })).toBe(true);
+		expect(groupMetaChanged(r, { title: "" })).toBe(true);
+		expect(groupMetaChanged(r, { description: "New" })).toBe(true);
+	});
+});
+
+describe("countEntries", () => {
+	it("counts every entry including those in nested groups", () => {
+		const r = root();
+		expect(countEntries(r)).toBe(4);
+		expect(countEntries(getGroupAtPath(r, ["f"])!)).toBe(2);
+	});
+
+	it("is zero for an empty group", () => {
+		expect(countEntries({ kind: "group", entries: [] })).toBe(0);
 	});
 });
