@@ -14,6 +14,7 @@ import {
 import type { CommandNode, FileNode, GroupEntry, GroupNode, KeymapNode } from "../types";
 import { ConfirmDeleteModal } from "./confirmDeleteModal";
 import { EntryEditorModal, type EntryDraft } from "./entryEditorModal";
+import { openModalInWindow } from "./modalWindow";
 
 function nodeFromDraft(draft: EntryDraft, existingEntries: GroupEntry[] | null): KeymapNode {
 	if (draft.kind === "group") {
@@ -63,6 +64,7 @@ export class TreeEditorView {
 	private pathKey(path: string[]): string {
 		return path.join("\u0000");
 	}
+
 
 	private renderRoot(container: HTMLElement, group: GroupNode): void {
 		const wrap = container.createDiv({ cls: "neokeys-tree-group" });
@@ -184,38 +186,47 @@ export class TreeEditorView {
 		const count = countEntries(entry.node);
 		const items = count === 1 ? "1 item" : `${count} items`;
 		const name = entry.node.title ? `"${entry.rawKey}" (${entry.node.title})` : `"${entry.rawKey}"`;
-		new ConfirmDeleteModal(
-			this.app,
-			`Delete the group ${name} and the ${items} inside it? This can't be undone.`,
-			remove,
-		).open();
+		openModalInWindow(
+			new ConfirmDeleteModal(
+				this.app,
+				`Delete the group ${name} and the ${items} inside it? This can't be undone.`,
+				remove,
+			),
+			this.containerEl.win,
+		);
 	}
 
 	private openAddModal(path: string[]): void {
-		new EntryEditorModal(this.app, "Add item", null, (draft) => {
-			const node = nodeFromDraft(draft, null);
-			const result = addEntry(this.getRoot(), path, draft.rawKey, node);
-			if (!result.ok) return result.error;
-			void this.persist(result.root);
-			return null;
-		}).open();
+		openModalInWindow(
+			new EntryEditorModal(this.app, "Add item", null, (draft) => {
+				const node = nodeFromDraft(draft, null);
+				const result = addEntry(this.getRoot(), path, draft.rawKey, node);
+				if (!result.ok) return result.error;
+				void this.persist(result.root);
+				return null;
+			}),
+			this.containerEl.win,
+		);
 	}
 
 	private openEditModal(path: string[], entry: GroupEntry): void {
 		const existingEntries = entry.node.kind === "group" ? entry.node.entries : null;
 		const lockKind = existingEntries !== null && existingEntries.length > 0;
-		new EntryEditorModal(
-			this.app,
-			"Edit item",
-			{ rawKey: entry.rawKey, node: entry.node },
-			(draft) => {
-				const node = nodeFromDraft(draft, existingEntries);
-				const result = updateEntry(this.getRoot(), path, entry.rawKey, draft.rawKey, node);
-				if (!result.ok) return result.error;
-				void this.persist(result.root);
-				return null;
-			},
-			lockKind ? "Has items; change its items first to switch this away from a group." : undefined,
-		).open();
+		openModalInWindow(
+			new EntryEditorModal(
+				this.app,
+				"Edit item",
+				{ rawKey: entry.rawKey, node: entry.node },
+				(draft) => {
+					const node = nodeFromDraft(draft, existingEntries);
+					const result = updateEntry(this.getRoot(), path, entry.rawKey, draft.rawKey, node);
+					if (!result.ok) return result.error;
+					void this.persist(result.root);
+					return null;
+				},
+				lockKind ? "Has items; change its items first to switch this away from a group." : undefined,
+			),
+			this.containerEl.win,
+		);
 	}
 }

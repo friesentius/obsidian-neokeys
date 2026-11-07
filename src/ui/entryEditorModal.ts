@@ -1,6 +1,7 @@
 import { App, ButtonComponent, Modal, Scope, Setting } from "obsidian";
 import { keyFromEvent, keyToString } from "../keys";
 import { CommandPickerModal } from "./commandPickerModal";
+import { openModalInWindow } from "./modalWindow";
 import type { KeymapNode } from "../types";
 
 export type EntryKind = "group" | "command" | "file";
@@ -108,11 +109,14 @@ export class EntryEditorModal extends Modal {
 				.setDesc(this.command ? `${this.commandName || this.command} (${this.command})` : "No command chosen")
 				.addButton((button) =>
 					button.setButtonText("Choose command...").onClick(() => {
-						new CommandPickerModal(this.app, (picked) => {
-							this.command = picked.id;
-							this.commandName = picked.name;
-							this.render();
-						}).open();
+						openModalInWindow(
+							new CommandPickerModal(this.app, (picked) => {
+								this.command = picked.id;
+								this.commandName = picked.name;
+								this.render();
+							}),
+							this.contentEl.win,
+						);
 					}),
 				);
 		}
