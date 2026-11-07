@@ -1,4 +1,4 @@
-import { App, ExtraButtonComponent, Setting } from "obsidian";
+import { App, ButtonComponent, ExtraButtonComponent } from "obsidian";
 import { getCommandName, hasCommand } from "../obsidianCommands";
 import { entryLabel } from "../tree";
 import { addEntry, moveEntry, removeEntry, setGroupMeta, updateEntry } from "../treeOps";
@@ -27,6 +27,12 @@ function nodeFromDraft(draft: EntryDraft, existingEntries: GroupEntry[] | null):
  * handles add/edit/delete/reorder/group-meta edits by rebuilding and persisting the GroupNode
  * tree through treeOps.ts. Always reads the current tree via `getRoot()` rather than caching it,
  * so it reflects whatever was most recently saved (including an edit made from the YAML view).
+ *
+ * Each group renders exactly one header: the root gets its title/description as inline fields
+ * above its children (it has no parent row to host them), and every nested group's header is the
+ * single row its parent draws for it (chevron, key, title, move/edit/delete) - editing a nested
+ * group's title or description goes through the same "Edit item" dialog as any other entry,
+ * rather than a second set of inline inputs living under its own header.
  */
 export class TreeEditorView {
 	/** Paths (joined with NUL) of groups collapsed by the user; survives across re-renders. */
@@ -41,58 +47,46 @@ export class TreeEditorView {
 
 	render(): void {
 		this.containerEl.empty();
-		this.renderGroup(this.containerEl, this.getRoot(), [], true);
+		this.renderRoot(this.containerEl, this.getRoot());
 	}
 
 	private pathKey(path: string[]): string {
 		return path.join("\u0000");
 	}
 
-	private renderGroup(container: HTMLElement, group: GroupNode, path: string[], isRoot: boolean): void {
+	private renderRoot(container: HTMLElement, group: GroupNode): void {
 		const wrap = container.createDiv({ cls: "neokeys-tree-group" });
-		const collapsed = !isRoot && this.collapsed.has(this.pathKey(path));
+		const meta = wrap.createDiv({ cls: "neokeys-tree-root-meta" });
 
-		const metaSetting = new Setting(wrap).setClass("neokeys-tree-group-meta");
-		metaSetting.setName(isRoot ? "Root menu" : "Group");
+		meta.createEl("label", { cls: "neokeys-tree-field-label", text: "Title" });
+		const titleInput = meta.createEl("input", { cls: "neokeys-tree-field-input", attr: { type: "text" } });
+		titleInput.placeholder = "Title";
+		titleInput.value = group.title ?? "";
+		titleInput.addEventListener("blur", () => void this.commitMeta([], { title: titleInput.value }));
 
-		if (!isRoot) {
-			metaSetting.addExtraButton((button) =>
-				button
-					.setIcon(collapsed ? "chevron-right" : "chevron-down")
-					.setTooltip(collapsed ? "Expand" : "Collapse")
-					.onClick(() => {
-						const key = this.pathKey(path);
-						if (collapsed) this.collapsed.delete(key);
-						else this.collapsed.add(key);
-						this.render();
-					}),
-			);
-		}
+		meta.createEl("label", { cls: "neokeys-tree-field-label", text: "Description" });
+		const descInput = meta.createEl("input", { cls: "neokeys-tree-field-input", attr: { type: "text" } });
+		descInput.placeholder = "Description";
+		descInput.value = group.description ?? "";
+		descInput.addEventListener("blur", () => void this.commitMeta([], { description: descInput.value }));
 
-		let titleValue = group.title ?? "";
-		metaSetting.addText((text) => {
-			text.setPlaceholder("Title").setValue(titleValue);
-			text.onChange((value) => (titleValue = value));
-			text.inputEl.addEventListener("blur", () => void this.commitMeta(path, { title: titleValue }));
-		});
+		this.renderChildren(wrap, group, []);
+	}
 
-		let descValue = group.description ?? "";
-		metaSetting.addText((text) => {
-			text.setPlaceholder("Description").setValue(descValue);
-			text.onChange((value) => (descValue = value));
-			text.inputEl.addEventListener("blur", () => void this.commitMeta(path, { description: descValue }));
-		});
-
-		metaSetting.addButton((button) => button.setButtonText("Add item").onClick(() => this.openAddModal(path)));
-
+	private renderChildren(wrap: HTMLElement, group: GroupNode, path: string[]): void {
 		const listEl = wrap.createDiv({ cls: "neokeys-tree-items" });
+		const collapsed = path.length > 0 && this.collapsed.has(this.pathKey(path));
 		listEl.toggleClass("neokeys-hidden", collapsed);
+
 		if (group.entries.length === 0) {
 			listEl.createDiv({ cls: "neokeys-tree-empty", text: "No items yet." });
 		}
 		group.entries.forEach((entry, index) => {
 			this.renderEntry(listEl, path, entry, index, group.entries.length);
 		});
+
+		const addRow = listEl.createDiv({ cls: "neokeys-tree-add-row" });
+		new ButtonComponent(addRow).setButtonText("Add item").onClick(() => this.openAddModal(path));
 	}
 
 	private async commitMeta(path: string[], meta: { title?: string; description?: string }): Promise<void> {
@@ -107,9 +101,25 @@ export class TreeEditorView {
 		index: number,
 		siblingCount: number,
 	): void {
-		const row = listEl.createDiv({ cls: `neokeys-tree-row neokeys-tree-row-${entry.node.kind}` });
+		const isGroup = entry.node.kind === "group";
+		const childPath = [...path, entry.rawKey];
+		const entryWrap = isGroup ? listEl.createDiv({ cls: "neokeys-tree-group" }) : listEl;
+
+		const row = entryWrap.createDiv({ cls: `neokeys-tree-row neokeys-tree-row-${entry.node.kind}` });
 		const invalid = entry.node.kind === "command" && !hasCommand(this.app, entry.node.command);
 		const label = entryLabel(entry, (id) => getCommandName(this.app, id));
+
+		if (isGroup) {
+			const collapsed = this.collapsed.has(this.pathKey(childPath));
+			new ExtraButtonComponent(row)
+				.setIcon(collapsed ? "chevron-right" : "chevron-down")
+				.setTooltip(collapsed ? "Expand" : "Collapse")
+				.onClick(() => {
+					if (collapsed) this.collapsed.delete(this.pathKey(childPath));
+					else this.collapsed.add(this.pathKey(childPath));
+					this.render();
+				});
+		}
 
 		row.createSpan({ cls: "neokeys-tree-key", text: entry.rawKey });
 		row.createSpan({
@@ -148,7 +158,7 @@ export class TreeEditorView {
 			});
 
 		if (entry.node.kind === "group") {
-			this.renderGroup(listEl, entry.node, [...path, entry.rawKey], false);
+			this.renderChildren(entryWrap, entry.node, childPath);
 		}
 	}
 
