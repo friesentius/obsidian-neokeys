@@ -1,6 +1,7 @@
 import { parseKeyString } from "../src/keys";
 import { parseKeymapSource } from "../src/keymap";
 import { breadcrumbTrail, entryLabel, findEntry, sortEntries } from "../src/tree";
+import { moveEntry } from "../src/treeOps";
 import type { GroupNode } from "../src/types";
 
 const SOURCE = `
@@ -35,9 +36,19 @@ describe("findEntry", () => {
 });
 
 describe("sortEntries", () => {
-	it("orders groups first, then files, then commands, alphabetically within each tier", () => {
+	it("orders groups first, then files, then commands; stored order within each tier", () => {
 		const root = parseKeymapSource(SOURCE);
 		const sorted = sortEntries(root);
+		// "z" is stored before "a": stored order, not alphabetical, within the commands tier.
+		expect(sorted.map((e) => e.rawKey)).toEqual(["f", "z", "a"]);
+	});
+
+	it("reflects a reorder made through treeOps, so the which-key menu shows the new order", () => {
+		const root = parseKeymapSource(SOURCE);
+		const result = moveEntry(root, [], "a", -1);
+		expect(result.ok).toBe(true);
+		if (!result.ok) return;
+		const sorted = sortEntries(result.root);
 		expect(sorted.map((e) => e.rawKey)).toEqual(["f", "a", "z"]);
 	});
 });

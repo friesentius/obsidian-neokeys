@@ -1,4 +1,4 @@
-import { compareKeys, keysEqual } from "./keys";
+import { keysEqual } from "./keys";
 import type { GroupEntry, GroupNode, ParsedKey } from "./types";
 
 /** Find the entry in `group` whose key matches `pressed`, if any. */
@@ -17,13 +17,13 @@ function kindOrder(entry: GroupEntry): number {
 	}
 }
 
-/** Sort entries for display: groups, then files, then commands; alphabetically by key within each tier. */
+/**
+ * Sort entries for display: groups, then files, then commands; within each tier, in the order
+ * they're stored (the order the tree editor's reorder buttons and the YAML's item order control),
+ * relying on Array.prototype.sort's stability to keep that relative order intact.
+ */
 export function sortEntries(group: GroupNode): GroupEntry[] {
-	return [...group.entries].sort((a, b) => {
-		const kindDiff = kindOrder(a) - kindOrder(b);
-		if (kindDiff !== 0) return kindDiff;
-		return compareKeys(a.key, b.key);
-	});
+	return [...group.entries].sort((a, b) => kindOrder(a) - kindOrder(b));
 }
 
 /**

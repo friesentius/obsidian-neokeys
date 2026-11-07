@@ -7,10 +7,9 @@ hunting for a hotkey.
 
 ![Neokeys which-key popup, root menu, light theme](docs/screenshots/which-key-root-light.png)
 
-This is **Phase 1**: a hotkey-triggered leader or an optional settings-tab combo leader, a
-YAML/JSON keymap editor with command-ID validation, and the which-key popup with a label
-breadcrumb. A visual tree editor, a conflicting-hotkey warning, and Spacekeys import are planned
-for later phases.
+This is **Phase 2**: a hotkey-triggered leader or an optional settings-tab combo leader, a visual
+tree editor for the keymap (with a YAML/JSON escape hatch), a conflicting-hotkey warning, and the
+which-key popup with a label breadcrumb. Spacekeys import is planned for a later phase.
 
 ## Installing (for testing)
 
@@ -54,13 +53,33 @@ existing users see no change, and it must include a modifier (Ctrl, Alt, or Cmd)
 shift-only combo is rejected with an explanation, since a modifier-free leader would collide with
 ordinary typing. Click the `x` button next to the field to clear it.
 
+### Hotkey conflicts
+
+Settings → Neokeys has a **Hotkey conflicts** row that checks both the leader hotkey (from
+Settings → Hotkeys) and the combo leader above against every other command's current Obsidian
+hotkey, and names the colliding command if either one collides (e.g. binding the leader to
+`Ctrl+B` shows that it also triggers Obsidian's own "Toggle bold"). This is a warning only -
+Neokeys doesn't block the binding - since Obsidian itself lets the same key trigger more than one
+thing and you may prefer Neokeys to win.
+
 ## The keymap
 
-Open Settings → Neokeys to edit the keymap as YAML (JSON is also accepted, since JSON is valid
-YAML). The schema is Spacekeys-compatible, with a `title` added to each group so the which-key
-popup can show a heading for the section you're in.
+Open Settings → Neokeys to edit the keymap as an expandable **tree**: add, edit, delete, and
+reorder groups, commands, and files; edit a group's title and description inline; and pick a
+command from Obsidian's currently registered commands with a searchable picker, rather than typing
+a raw command ID by hand. Click **Edit as YAML/JSON** to switch to the raw, Spacekeys-compatible
+source instead (JSON is also accepted, since JSON is valid YAML) - both views edit the same stored
+keymap, so a change in one shows up in the other, and switching back from the YAML view with
+invalid text is blocked (with the error shown) rather than silently discarding your edit or
+overwriting the tree.
 
-Every entry under `items` is one of:
+The which-key popup shows a group's entries in the order you arrange them in the tree editor (or
+write them in the YAML's `items`) - reordering an item moves it in the popup too, not just in the
+editor. Within that stored order, groups are always listed before files, and files before
+commands, so submenus stay easy to find first.
+
+The schema is Spacekeys-compatible, with a `title` added to each group so the which-key popup can
+show a heading for the section you're in. Every entry under `items` is one of:
 
 - **A group** - has nested `items`, plus an optional `title` and `description` shown as the
   popup's header when you're inside it.
@@ -101,9 +120,10 @@ A handful of named keys are recognized as aliases: `space`, `up`/`down`/`left`/`
 `esc`, `tab`, `backspace`, `delete`, `home`, `end`, `pageup`, `pagedown`, `insert`, and
 `f1`–`f12`.
 
-Click **Save keymap** to apply changes; an invalid keymap is rejected with an error message that
-points at the exact field (e.g. `items.f.items.d`) that needs fixing, and the previously saved
-keymap keeps working until you fix it.
+Tree edits save immediately. In the YAML/JSON view, click **Save keymap** to apply changes; an
+invalid keymap is rejected with an error message that points at the exact field (e.g.
+`items.f.items.d`) that needs fixing, and the previously saved keymap keeps working until you fix
+it.
 
 A keymap can still *parse* successfully but reference a command ID Obsidian doesn't currently
 recognize (a typo, or a plugin that's disabled) - this doesn't block saving, since the command
@@ -127,8 +147,9 @@ since there is no public API signal for "a hardware keyboard is attached."
 - `npm install`
 - `npm run dev` - esbuild in watch mode
 - `npm run build` - typecheck + production build
-- `npm test` - Jest unit tests (key parsing, keymap parsing/validation, tree resolution, delay
-  logic, combo-leader validation, command-ID validation, breadcrumb building)
+- `npm test` - Jest unit tests (key parsing, keymap parsing/validation and serialization, tree
+  edit operations, tree resolution/sorting, delay logic, combo-leader validation, command-ID
+  validation, breadcrumb building, hotkey-conflict detection)
 - `npm run lint` - ESLint with `eslint-plugin-obsidianmd`'s recommended config
 - `npm run validate` - mirrors the parts of Obsidian's community-plugin submission checks that
   don't require a live GitHub release (manifest/versions shape, `id`/`version` format)
