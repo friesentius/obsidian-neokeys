@@ -67,9 +67,11 @@ thing and you may prefer Neokeys to win.
 ## The keymap
 
 Open Settings → Neokeys to edit the keymap as an expandable **tree**: add, edit, delete, and
-reorder groups, commands, and files; edit a group's title and description inline; and pick a
-command from Obsidian's currently registered commands with a searchable picker, rather than typing
-a raw command ID by hand. Click **Edit as YAML/JSON** to switch to the raw, Spacekeys-compatible
+reorder groups, commands, and files; edit a group's title and description (along with any entry's
+key) through the same **Edit** dialog used for commands and files, since the root menu is the only
+place those fields are shown inline; and pick a command from Obsidian's currently registered
+commands with a searchable picker, rather than typing a raw command ID by hand. Click
+**Edit as YAML/JSON** to switch to the raw, Spacekeys-compatible
 source instead (JSON is also accepted, since JSON is valid YAML) - both views edit the same stored
 keymap, so a change in one shows up in the other, and switching back from the YAML view with
 invalid text is blocked (with the error shown) rather than silently discarding your edit or
