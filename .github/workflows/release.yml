@@ -19,7 +19,7 @@ jobs:
       - id: check
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: node scripts/release-decision.mjs >> "$GITHUB_OUTPUT"
+        run: node scripts/release-decision.mjs
 
   release:
     needs: decide
@@ -49,18 +49,21 @@ jobs:
       - run: npm test
       - run: npm run build
       - run: npm run validate -- --tag "$VERSION"
-      # Tag only after lint/typecheck/test/build/validate pass, so a failure
-      # here never leaves a tag that makes the next run treat this version
-      # as already released.
+      - uses: actions/attest-build-provenance@v4
+        with:
+          subject-path: "main.js, manifest.json, styles.css"
+      # Tag only after lint/typecheck/test/build/validate/attest pass. The
+      # decision above only checks for an existing *release*, not a tag, so
+      # if this step's tag push succeeds but a later step (release create,
+      # asset check) fails, the next push sees the tag already exists with
+      # no release and fails loudly here instead of silently skipping -
+      # delete the orphan tag and re-push main to retry.
       - name: Tag release commit
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git tag -a "$VERSION" -m "$VERSION"
           git push origin "$VERSION"
-      - uses: actions/attest-build-provenance@v4
-        with:
-          subject-path: "main.js, manifest.json, styles.css"
       - env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
