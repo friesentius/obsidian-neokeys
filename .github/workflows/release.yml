@@ -32,6 +32,7 @@ jobs:
       contents: write
       id-token: write
       attestations: write
+      pull-requests: read
     env:
       VERSION: ${{ needs.decide.outputs.version }}
     steps:
@@ -69,7 +70,7 @@ jobs:
           # The release PR's description is the release notes (dev -> main
           # release PRs are written that way); prepend it to the generated
           # commit list.
-          pr_body=$(gh api "repos/${GITHUB_REPOSITORY}/commits/${GITHUB_SHA}/pulls" --jq '.[0].body // empty' || true)
+          pr_body=$(gh api "repos/${GITHUB_REPOSITORY}/commits/${GITHUB_SHA}/pulls" --jq '.[0].body // empty')
           gh release create "$VERSION" \
             --title "$VERSION" \
             --notes "$pr_body" \
