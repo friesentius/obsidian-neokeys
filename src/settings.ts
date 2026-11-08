@@ -34,7 +34,7 @@ const ANIMATIONS_NAME = "Animations";
 const ANIMATIONS_DESC =
 	"Slide the which-key popup in from the bottom edge, and crossfade between menus when navigating. Always off when your OS's reduced-motion accessibility preference is on, regardless of this toggle.";
 const ANIMATION_DURATION_NAME = "Animation duration";
-const ANIMATION_DURATION_DESC = "Milliseconds for the slide-in and crossfade animations (0-1000).";
+const ANIMATION_DURATION_DESC = "Milliseconds for the slide-in and crossfade animations (0‑1000).";
 const KEYMAP_DESC =
 	'Edit the keymap as a tree, or use "Edit as YAML/JSON" for the raw, Spacekeys-compatible source (each group has items; each item is a group, a command ("command: <id>" or the short form "<id> <description>"), or a file ("file: <path>")). Both views edit the same stored keymap - switching away from the YAML view saves it first, and an invalid edit there is never silently discarded.';
 const YAML_NOTE =
