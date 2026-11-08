@@ -2,18 +2,43 @@ name: Release
 
 on:
   push:
-    tags:
-      - "*"
+    branches: [main]
+  workflow_dispatch:
 
 jobs:
+  decide:
+    runs-on: ubuntu-latest
+    outputs:
+      should_release: ${{ steps.check.outputs.should_release }}
+      version: ${{ steps.check.outputs.version }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - id: check
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node scripts/release-decision.mjs >> "$GITHUB_OUTPUT"
+
   release:
+    needs: decide
+    # manifest.json's version only publishes from main, and only when no
+    # release for it exists yet; a workflow_dispatch on any other ref (e.g.
+    # dev, where manifest.json can hold an unreleased version) only runs
+    # the decide job above and never reaches this job.
+    if: needs.decide.outputs.should_release == 'true' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
       contents: write
       id-token: write
       attestations: write
+    env:
+      VERSION: ${{ needs.decide.outputs.version }}
     steps:
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v5
         with:
           node-version: 22
@@ -23,17 +48,39 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
-      - run: npm run validate -- --tag "${GITHUB_REF_NAME}"
+      - run: npm run validate -- --tag "$VERSION"
+      # Tag only after lint/typecheck/test/build/validate pass, so a failure
+      # here never leaves a tag that makes the next run treat this version
+      # as already released.
+      - name: Tag release commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "$VERSION" -m "$VERSION"
+          git push origin "$VERSION"
       - uses: actions/attest-build-provenance@v4
         with:
           subject-path: "main.js, manifest.json, styles.css"
       - env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release create "${GITHUB_REF_NAME}" \
-            --title "${GITHUB_REF_NAME}" \
-            --generate-notes \
-            main.js manifest.json styles.css
+          # The release PR's description is the release notes (dev -> main
+          # release PRs are written that way); prepend it to the generated
+          # commit list. Falls back to generated notes alone when this push
+          # didn't come from a merged PR (e.g. workflow_dispatch).
+          pr_body=$(gh api "repos/${GITHUB_REPOSITORY}/commits/${GITHUB_SHA}/pulls" --jq '.[0].body // empty' || true)
+          if [ -n "$pr_body" ]; then
+            gh release create "$VERSION" \
+              --title "$VERSION" \
+              --notes "$pr_body" \
+              --generate-notes \
+              main.js manifest.json styles.css
+          else
+            gh release create "$VERSION" \
+              --title "$VERSION" \
+              --generate-notes \
+              main.js manifest.json styles.css
+          fi
       - env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: node scripts/validate-release.mjs --check-release-assets "${GITHUB_REF_NAME}"
+        run: node scripts/validate-release.mjs --check-release-assets "$VERSION"

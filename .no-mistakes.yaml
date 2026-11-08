@@ -1,0 +1,11 @@
+# Per-repo no-mistakes overrides.
+#
+# Feature and fix PRs land on `dev`; a release is a `dev` -> `main` PR
+# (version bump + release notes) opened by hand. Without this the gate
+# falls back to the repository's default branch, `main`, and every
+# feature branch would skip `dev` entirely.
+#
+# Running the gate on `dev` itself still produces no PR: `base_branch` is
+# repo-wide and the PR step is skipped when the pushed branch *is* the base.
+pr:
+  base_branch: dev
