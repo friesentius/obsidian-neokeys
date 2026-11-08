@@ -13,13 +13,10 @@ which-key popup with a label breadcrumb. Spacekeys import is planned for a later
 
 ## Installation
 
-### From Obsidian's Community plugins (once listed)
+### From Obsidian's Community plugins
 
 1. Open Settings → Community plugins → Browse.
 2. Search for **Neokeys** and select **Install**, then **Enable**.
-
-Neokeys is not yet listed in Obsidian's community plugin directory.
-Until then, install it from a release or from source.
 
 ### From a release (manual)
 
