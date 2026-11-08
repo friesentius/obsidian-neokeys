@@ -40,7 +40,6 @@ items:
           '5': editor:set-heading-5 Heading 5
           '6': editor:set-heading-6 Heading 6
           '0': editor:set-heading-0 Remove heading
-          t: editor:set-heading Toggle heading
           '+': neokeys:increase-heading-level Increase heading level
           '-': neokeys:decrease-heading-level Decrease heading level
       l:
@@ -82,6 +81,8 @@ items:
       p: workspace:previous-tab Previous tab
       m: workspace:move-to-new-window Move tab to new window
       u: workspace:undo-close-pane Undo close tab
+      v: workspace:split-vertical Split right
+      '-': workspace:split-horizontal Split down
       g:
         title: Go to tab
         description: Jump directly to a tab by position
@@ -95,12 +96,6 @@ items:
           '7': workspace:goto-tab-7 Tab 7
           '8': workspace:goto-tab-8 Tab 8
           l: workspace:goto-last-tab Last tab
-      s:
-        title: Split
-        description: Split the current pane
-        items:
-          v: workspace:split-vertical Split right
-          h: workspace:split-horizontal Split down
       f:
         title: Focus pane
         description: Move focus to an adjacent split

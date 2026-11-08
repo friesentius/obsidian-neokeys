@@ -18,26 +18,14 @@ function parseHeadingLine(line: string): { level: HeadingLevel; content: string 
 }
 
 /**
- * The next heading level in the "increase" (bigger heading, toward H1) or "decrease" (smaller
- * heading, toward plain text) direction. `null` means plain text (no heading).
- *
- * The two ends are clamped rather than wrapping or cycling:
- * - Increasing plain text lands on H6 (the smallest heading) first; increasing H1 is a no-op,
- *   since H1 is already the biggest heading.
- * - Decreasing H6 removes the heading (back to plain text); decreasing plain text is a no-op,
- *   since there's nothing smaller than no heading.
- *
- * This makes plain-text/H6/H5/.../H1 one continuous ladder in both directions.
+ * The next heading level in the "increase" (none -> H1 -> H2 -> ... -> H6 -> none) or "decrease"
+ * (none -> H6 -> H5 -> ... -> H1 -> none) direction. `null` means plain text (no heading). Both
+ * directions wrap around the full none/H1/.../H6 cycle rather than clamping at either end.
  */
 export function nextHeadingLevel(current: HeadingLevel | null, direction: HeadingDirection): HeadingLevel | null {
-	if (direction === "increase") {
-		if (current === null) return 6;
-		if (current === 1) return 1;
-		return (current - 1) as HeadingLevel;
-	}
-	if (current === null) return null;
-	if (current === 6) return null;
-	return (current + 1) as HeadingLevel;
+	const step = direction === "increase" ? 1 : -1;
+	const next = (((current ?? 0) + step) + 7) % 7;
+	return next === 0 ? null : (next as HeadingLevel);
 }
 
 function headingPrefix(level: HeadingLevel | null, hasContent: boolean): string {
@@ -58,8 +46,8 @@ export function applyHeadingLevel(line: string, direction: HeadingDirection): st
  * The edit needed to apply {@link applyHeadingLevel} to one line, scoped to just the heading
  * marker (not the whole line): this keeps the cursor and any selection within the line's content
  * exactly where they were, instead of CodeMirror collapsing them to the start of a whole-line
- * replacement. Returns null when the direction is a no-op for this line (already at H1 while
- * increasing, or already plain text while decreasing), so an unaffected line is never touched.
+ * replacement. Returns null when the resulting prefix is unchanged, so an unaffected line is
+ * never touched.
  */
 function headingLineChange(line: number, text: string, direction: HeadingDirection): EditorChange | null {
 	const parsed = parseHeadingLine(text);
