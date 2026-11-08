@@ -207,7 +207,9 @@ since there is no public API signal for "a hardware keyboard is attached."
   edit operations, tree resolution/sorting, delay logic, combo-leader validation, command-ID
   validation, breadcrumb building, hotkey-conflict detection, animation settings, heading-level
   increase/decrease)
-- `npm run lint` - ESLint with `eslint-plugin-obsidianmd`'s recommended config
+- `npm run lint` - ESLint with `eslint-plugin-obsidianmd`'s recommended config, plus
+  `@eslint/css`'s `no-important` on `styles.css`, mirroring the community directory's source and
+  CSS scans (see `eslint.config.mjs` for why the plugin version is pinned)
 - `npm run validate` - mirrors the parts of Obsidian's community-plugin submission checks that
   don't require a live GitHub release (manifest/versions shape, `id`/`version` format)
 
