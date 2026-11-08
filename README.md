@@ -224,8 +224,8 @@ To cut a release: bump the version with `npm version <patch|minor|major> --no-gi
 then open a `dev` -> `main` PR whose description is the release notes. Merging that PR into
 `main` publishes the release with no manual tagging: `.github/workflows/release.yml` reads
 `manifest.json`'s version on every push to `main` and, only when no release for that exact
-version exists yet, creates the annotated tag, runs lint/typecheck/test/build/validate, and
-publishes the GitHub release with the PR body as notes. Merging a PR without a version bump
+version exists yet, runs lint/typecheck/test/build/validate, then creates the annotated tag,
+then publishes the GitHub release with the PR body as notes. Merging a PR without a version bump
 (or re-merging the same version) is a no-op release run.
 
 ## License

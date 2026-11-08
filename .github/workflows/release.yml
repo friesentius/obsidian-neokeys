@@ -3,7 +3,6 @@ name: Release
 on:
   push:
     branches: [main]
-  workflow_dispatch:
 
 jobs:
   decide:
@@ -23,11 +22,7 @@ jobs:
 
   release:
     needs: decide
-    # manifest.json's version only publishes from main, and only when no
-    # release for it exists yet; a workflow_dispatch on any other ref (e.g.
-    # dev, where manifest.json can hold an unreleased version) only runs
-    # the decide job above and never reaches this job.
-    if: needs.decide.outputs.should_release == 'true' && github.ref == 'refs/heads/main'
+    if: needs.decide.outputs.should_release == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -57,7 +52,7 @@ jobs:
       # if this step's tag push succeeds but a later step (release create,
       # asset check) fails, the next push sees the tag already exists with
       # no release and fails loudly here instead of silently skipping -
-      # delete the orphan tag and re-push main to retry.
+      # delete the orphan tag and re-run the failed workflow run to retry.
       - name: Tag release commit
         run: |
           git config user.name "github-actions[bot]"
@@ -69,21 +64,13 @@ jobs:
         run: |
           # The release PR's description is the release notes (dev -> main
           # release PRs are written that way); prepend it to the generated
-          # commit list. Falls back to generated notes alone when this push
-          # didn't come from a merged PR (e.g. workflow_dispatch).
+          # commit list.
           pr_body=$(gh api "repos/${GITHUB_REPOSITORY}/commits/${GITHUB_SHA}/pulls" --jq '.[0].body // empty' || true)
-          if [ -n "$pr_body" ]; then
-            gh release create "$VERSION" \
-              --title "$VERSION" \
-              --notes "$pr_body" \
-              --generate-notes \
-              main.js manifest.json styles.css
-          else
-            gh release create "$VERSION" \
-              --title "$VERSION" \
-              --generate-notes \
-              main.js manifest.json styles.css
-          fi
+          gh release create "$VERSION" \
+            --title "$VERSION" \
+            --notes "$pr_body" \
+            --generate-notes \
+            main.js manifest.json styles.css
       - env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: node scripts/validate-release.mjs --check-release-assets "$VERSION"
