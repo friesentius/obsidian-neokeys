@@ -7,10 +7,6 @@ hunting for a hotkey.
 
 ![Neokeys which-key popup, root menu, light theme](docs/screenshots/which-key-root-light.png)
 
-This is **Phase 2**: a hotkey-triggered leader or an optional settings-tab combo leader, a visual
-tree editor for the keymap (with a YAML/JSON escape hatch), a conflicting-hotkey warning, and the
-which-key popup with a label breadcrumb. Spacekeys import is planned for a later phase.
-
 ## Installation
 
 ### From Obsidian's Community plugins
@@ -228,6 +224,11 @@ version exists yet, runs lint/typecheck/test/build/validate, then creates the an
 then publishes the GitHub release with the PR body as notes, followed by the generated commit
 list. Merging a PR without a version bump (or re-merging the same version) is a no-op release
 run.
+
+## Support
+
+If Neokeys is useful to you, you can support its development on
+[Ko-fi](https://ko-fi.com/friesentius).
 
 ## License
 
