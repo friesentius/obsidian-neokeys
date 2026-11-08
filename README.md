@@ -229,6 +229,11 @@ then publishes the GitHub release with the PR body as notes, followed by the gen
 list. Merging a PR without a version bump (or re-merging the same version) is a no-op release
 run.
 
+## Support
+
+If Neokeys is useful to you, you can support its development on
+[Ko-fi](https://ko-fi.com/friesentius).
+
 ## License
 
 [MIT](LICENSE)
