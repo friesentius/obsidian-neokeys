@@ -125,11 +125,12 @@ items:
 A fresh install ships with four root groups: **File** (`f`), **Text** (`t`), **Window** (`w`),
 and **Command palette** (`p`). Text groups formatting under five subgroups - **Formatting** (`f`:
 bold, italic, strikethrough, code, highlight, blockquote, clear formatting), **Heading** (`h`:
-set heading 1-6, remove heading, toggle heading, and increase/decrease heading level), **Link**
+set heading 1-6, remove heading, and increase/decrease heading level), **Link**
 (`l`: Markdown link, wikilink, embed), **List** (`-`: bullet/numbered list, checklist, indent), and
 **Add** (`a`: table, code block, math, footnote, horizontal rule, callout, tag). Window groups
 tab/split/window management, loosely following the terminal multiplexer herdr's tab/pane/workspace
-mnemonics (`c` for new, not `n`, so `n`/`p` stay free for next/previous).
+mnemonics (`c` for new, not `n`, so `n`/`p` stay free for next/previous); splitting is bound
+directly on `v` (split right) and `-` (split down), not through a submenu.
 
 #### Increase/decrease heading level
 
@@ -137,13 +138,11 @@ Obsidian has no built-in command to shift a heading's level up or down - only ju
 level (`editor:set-heading-1`..`-6`) or remove it (`editor:set-heading-0`). Neokeys adds its own
 `neokeys:increase-heading-level` and `neokeys:decrease-heading-level` commands (bound to `h +` /
 `h -` in the Heading submenu) that read the current line's heading level and step it by one.
-"Increase" means a bigger heading, i.e. toward H1; "decrease" means a smaller heading, i.e. toward
-plain text. Plain text, H6, H5, ..., H1 form one ladder with clamped (non-wrapping) ends:
-increasing plain text lands on H6 (the smallest heading) first, increasing H1 is a no-op;
-decreasing H6 removes the heading back to plain text, decreasing plain text is a no-op. Both
-commands apply to every line touched by the current selection, or the cursor's line when nothing
-is selected; a multi-line selection that ends at the very start of a line leaves that last line
-alone.
+"Increase" cycles plain text -> H1 -> H2 -> ... -> H6 -> plain text; "decrease" is the exact
+reverse, plain text -> H6 -> H5 -> ... -> H1 -> plain text. Both ends wrap rather than stopping, so
+either command can be pressed repeatedly to cycle through every level. Both commands apply to
+every line touched by the current selection, or the cursor's line when nothing is selected; a
+multi-line selection that ends at the very start of a line leaves that last line alone.
 
 A key string is an optional run of modifier letters (`c`/`s`/`a`/`m` for ctrl/shift/alt/meta)
 followed by a `-` and a base key, e.g. `c-enter` for Ctrl+Enter, or just a single character for
