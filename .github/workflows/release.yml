@@ -10,6 +10,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      id-token: write
+      attestations: write
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
@@ -22,12 +24,16 @@ jobs:
       - run: npm test
       - run: npm run build
       - run: npm run validate -- --tag "${GITHUB_REF_NAME}"
+      - uses: actions/attest-build-provenance@v4
+        with:
+          subject-path: "main.js, manifest.json, styles.css"
       - env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh release create "${GITHUB_REF_NAME}" \
             --title "${GITHUB_REF_NAME}" \
             --generate-notes \
+            --draft \
             main.js manifest.json styles.css
       - env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -11,9 +11,22 @@ This is **Phase 2**: a hotkey-triggered leader or an optional settings-tab combo
 tree editor for the keymap (with a YAML/JSON escape hatch), a conflicting-hotkey warning, and the
 which-key popup with a label breadcrumb. Spacekeys import is planned for a later phase.
 
-## Installing (for testing)
+## Installation
 
-Neokeys is not yet listed in Obsidian's community plugin directory. To try it:
+### From Obsidian's Community plugins
+
+1. Open Settings → Community plugins → Browse.
+2. Search for **Neokeys** and select **Install**, then **Enable**.
+
+### From a release (manual)
+
+1. Download `main.js`, `manifest.json`, and `styles.css` from the
+   [latest release](https://github.com/friesentius/obsidian-neokeys/releases/latest) into
+   `<your-vault>/.obsidian/plugins/neokeys/`.
+2. Reload Obsidian (or disable/re-enable the plugin) and turn on **Neokeys** under
+   Settings → Community plugins.
+
+### From source
 
 1. Clone or download this repository into `<your-vault>/.obsidian/plugins/neokeys/`.
 2. Build the plugin: `npm install && npm run build`.
