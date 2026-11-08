@@ -15,19 +15,10 @@ which-key popup with a label breadcrumb. Spacekeys import is planned for a later
 
 Neokeys is not yet listed in Obsidian's community plugin directory. To try it:
 
-**Manual copy**
-
-1. Build the plugin (`npm install && npm run build`), or download `main.js`, `manifest.json`,
-   and `styles.css` from a release.
-2. Copy those three files into `<your-vault>/.obsidian/plugins/neokeys/`.
+1. Clone or download this repository into `<your-vault>/.obsidian/plugins/neokeys/`.
+2. Build the plugin: `npm install && npm run build`.
 3. Reload Obsidian (or disable/re-enable the plugin) and turn on **Neokeys** under
    Settings → Community plugins.
-
-**BRAT**
-
-1. Install the [BRAT](https://github.com/TfTHacker/obsidian42-brat) plugin.
-2. In BRAT's settings, add this repository (`friesentius/obsidian-neokeys`) as a beta plugin.
-3. Enable Neokeys under Settings → Community plugins.
 
 ## Setting up the leader key
 
