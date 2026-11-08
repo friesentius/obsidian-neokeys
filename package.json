@@ -1,6 +1,6 @@
 {
 	"name": "neokeys",
-	"version": "0.1.1",
+	"version": "0.1.2",
 	"description": "Neovim-inspired leader keys and sequential keybindings for Obsidian.",
 	"main": "main.js",
 	"scripts": {
