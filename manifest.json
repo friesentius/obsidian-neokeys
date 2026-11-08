@@ -1,8 +1,8 @@
 {
 	"id": "neokeys",
 	"name": "Neokeys",
-	"version": "0.1.0",
-	"minAppVersion": "1.0.0",
+	"version": "0.1.1",
+	"minAppVersion": "1.2.3",
 	"description": "Neovim-inspired leader keys and sequential keybindings.",
 	"author": "friesentius",
 	"authorUrl": "https://github.com/friesentius",
