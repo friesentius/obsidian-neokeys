@@ -213,6 +213,22 @@ since there is no public API signal for "a hardware keyboard is attached."
 - `npm run validate` - mirrors the parts of Obsidian's community-plugin submission checks that
   don't require a live GitHub release (manifest/versions shape, `id`/`version` format)
 
+### Branching and releases
+
+Feature and fix PRs target `dev`, not `main` (`.no-mistakes.yaml` sets this as the default PR
+base branch); CI runs on pushes and PRs to both. `main` stays the GitHub default branch, since
+Obsidian reads the default branch's manifest for the community-plugin listing.
+
+To cut a release: bump the version with `npm version <patch|minor|major> --no-git-tag-version`
+(updates `package.json`, `manifest.json`, and `versions.json` without creating a git tag),
+then open a `dev` -> `main` PR whose description is the release notes. Merging that PR into
+`main` publishes the release with no manual tagging: `.github/workflows/release.yml` reads
+`manifest.json`'s version on every push to `main` and, only when no release for that exact
+version exists yet, runs lint/typecheck/test/build/validate, then creates the annotated tag,
+then publishes the GitHub release with the PR body as notes, followed by the generated commit
+list. Merging a PR without a version bump (or re-merging the same version) is a no-op release
+run.
+
 ## License
 
 [MIT](LICENSE)

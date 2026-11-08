@@ -2,18 +2,43 @@ name: Release
 
 on:
   push:
-    tags:
-      - "*"
+    branches: [main]
+
+concurrency:
+  group: release
+  cancel-in-progress: false
 
 jobs:
+  decide:
+    runs-on: ubuntu-latest
+    outputs:
+      should_release: ${{ steps.check.outputs.should_release }}
+      version: ${{ steps.check.outputs.version }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - id: check
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node scripts/release-decision.mjs
+
   release:
+    needs: decide
+    if: needs.decide.outputs.should_release == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: write
       id-token: write
       attestations: write
+      pull-requests: read
+    env:
+      VERSION: ${{ needs.decide.outputs.version }}
     steps:
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v5
         with:
           node-version: 22
@@ -23,17 +48,34 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
-      - run: npm run validate -- --tag "${GITHUB_REF_NAME}"
+      - run: npm run validate -- --tag "$VERSION"
       - uses: actions/attest-build-provenance@v4
         with:
           subject-path: "main.js, manifest.json, styles.css"
+      # Tag only after lint/typecheck/test/build/validate/attest pass. The
+      # decision above only checks for an existing *release*, not a tag, so
+      # if this step's tag push succeeds but a later step (release create,
+      # asset check) fails, the next push sees the tag already exists with
+      # no release and fails loudly here instead of silently skipping -
+      # delete the orphan tag and re-run the failed workflow run to retry.
+      - name: Tag release commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "$VERSION" -m "$VERSION"
+          git push origin "$VERSION"
       - env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release create "${GITHUB_REF_NAME}" \
-            --title "${GITHUB_REF_NAME}" \
+          # The release PR's description is the release notes (dev -> main
+          # release PRs are written that way); prepend it to the generated
+          # commit list.
+          pr_body=$(gh api "repos/${GITHUB_REPOSITORY}/commits/${GITHUB_SHA}/pulls" --jq '.[0].body // empty')
+          gh release create "$VERSION" \
+            --title "$VERSION" \
+            --notes "$pr_body" \
             --generate-notes \
             main.js manifest.json styles.css
       - env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: node scripts/validate-release.mjs --check-release-assets "${GITHUB_REF_NAME}"
+        run: node scripts/validate-release.mjs --check-release-assets "$VERSION"
