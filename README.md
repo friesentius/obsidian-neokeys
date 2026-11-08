@@ -15,6 +15,16 @@ which-key popup with a label breadcrumb. Spacekeys import is planned for a later
 
 Neokeys is not yet listed in Obsidian's community plugin directory. To try it:
 
+### From a release
+
+1. Download `main.js`, `manifest.json`, and `styles.css` from the
+   [latest release](https://github.com/friesentius/obsidian-neokeys/releases/latest) into
+   `<your-vault>/.obsidian/plugins/neokeys/`.
+2. Reload Obsidian (or disable/re-enable the plugin) and turn on **Neokeys** under
+   Settings → Community plugins.
+
+### From source
+
 1. Clone or download this repository into `<your-vault>/.obsidian/plugins/neokeys/`.
 2. Build the plugin: `npm install && npm run build`.
 3. Reload Obsidian (or disable/re-enable the plugin) and turn on **Neokeys** under
