@@ -7,10 +7,6 @@ hunting for a hotkey.
 
 ![Neokeys which-key popup, root menu, light theme](docs/screenshots/which-key-root-light.png)
 
-This is **Phase 2**: a hotkey-triggered leader or an optional settings-tab combo leader, a visual
-tree editor for the keymap (with a YAML/JSON escape hatch), a conflicting-hotkey warning, and the
-which-key popup with a label breadcrumb. Spacekeys import is planned for a later phase.
-
 ## Installation
 
 ### From Obsidian's Community plugins
