@@ -1,5 +1,14 @@
 import { defineConfig, globalIgnores } from "eslint/config";
+import css from "@eslint/css";
 import obsidianmd from "eslint-plugin-obsidianmd";
+
+// eslint-plugin-obsidianmd is pinned to exactly 0.5.0 (not ^0.5.1) in
+// package.json: Obsidian's community-directory scanner's no-unsupported-api
+// findings match 0.5.0, but 0.5.1's PR obsidianmd/eslint-plugin#243 made the
+// rule trust old, pre-1.0 typings' matching call shapes over the current
+// @since tag, which hides every finding the scanner reports for this repo.
+// Revisit this pin once the scanner (or its documented plugin version) moves
+// past that behavior.
 
 export default defineConfig([
 	// Build output and Node build/tooling scripts are not plugin source.
@@ -22,5 +31,26 @@ export default defineConfig([
 			},
 		},
 		rules: {},
+	},
+	{
+		// 0.5.0 (see the pin note above) predates the recommended config's
+		// scripts/** exemption from the Obsidian-runtime rules, so this rule
+		// still reports a plain console.log() here even though scripts/ never
+		// runs inside Obsidian. Restoring just that exemption locally.
+		files: ["scripts/**/*.{js,mjs,cjs,ts}"],
+		rules: {
+			"obsidianmd/rule-custom-message": "off",
+		},
+	},
+	{
+		// The community directory's CSS LINT check ("Avoid !important") isn't
+		// part of eslint-plugin-obsidianmd (it lints JS/TS only); @eslint/css's
+		// no-important is the equivalent, actively-maintained rule for it.
+		files: ["**/*.css"],
+		language: "css/css",
+		plugins: { css },
+		rules: {
+			"css/no-important": "error",
+		},
 	},
 ]);

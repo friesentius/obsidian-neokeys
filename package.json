@@ -1,6 +1,6 @@
 {
 	"name": "neokeys",
-	"version": "0.1.0",
+	"version": "0.1.1",
 	"description": "Neovim-inspired leader keys and sequential keybindings for Obsidian.",
 	"main": "main.js",
 	"scripts": {
@@ -16,12 +16,13 @@
 	"author": "friesentius",
 	"license": "MIT",
 	"devDependencies": {
+		"@eslint/css": "^2.0.1",
 		"@eslint/js": "^9.39.0",
 		"@types/jest": "^30.0.0",
 		"@types/node": "^22.10.2",
 		"esbuild": "^0.25.0",
 		"eslint": "^9.39.5",
-		"eslint-plugin-obsidianmd": "^0.5.1",
+		"eslint-plugin-obsidianmd": "0.5.0",
 		"jest": "^30.0.0",
 		"obsidian": "^1.14.4",
 		"ts-jest": "^29.2.5",

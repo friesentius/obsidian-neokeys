@@ -1,10 +1,6 @@
 /* Neokeys which-key popup: a Spacekeys-style bottom, full-width bar built on
    Obsidian's Modal so it gets correct keyboard-scope capture for free. */
 
-.neokeys-modal-container .modal-bg {
-	opacity: 0.35;
-}
-
 /*
  * Scoped under our own container class, not just `.neokeys-modal`, so this
  * wins specificity against Obsidian's own `.modal-container .modal` rule
@@ -41,8 +37,18 @@
 		transform var(--neokeys-anim-duration, 150ms) ease-out;
 }
 
+/*
+ * Obsidian's Modal always drives .modal-bg's opacity itself, inline, landing at 0.85;
+ * .modal-bg has no stylesheet opacity of its own to override (its only rule sets
+ * background-color from --background-modifier-cover), so a plain opacity rule here
+ * never has anything to win against and was dead weight. The fade below instead
+ * transitions background-color between that variable and transparent: no inline
+ * style sets background-color, so normal specificity wins without !important, and
+ * the rendered dim (background-color's 0.4 alpha times the inline 0.85) is the same
+ * native look Obsidian's own modals have.
+ */
 .neokeys-modal-container.neokeys-animate .modal-bg {
-	transition: opacity var(--neokeys-anim-duration, 150ms) ease-out;
+	transition: background-color var(--neokeys-anim-duration, 150ms) ease-out;
 }
 
 .neokeys-modal-container.neokeys-animate.neokeys-modal-collapsed .neokeys-modal {
@@ -50,9 +56,8 @@
 	transform: translateY(100%);
 }
 
-/* !important: Obsidian sets an inline opacity on .modal-bg, which would otherwise win. */
 .neokeys-modal-container.neokeys-animate.neokeys-modal-collapsed .modal-bg {
-	opacity: 0 !important;
+	background-color: transparent;
 }
 
 .neokeys-content {
