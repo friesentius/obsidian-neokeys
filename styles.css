@@ -280,7 +280,8 @@
  * left the YAML textarea visible (though not interactive) underneath the tree view.
  */
 .neokeys-yaml-container.neokeys-hidden,
-.neokeys-tree-container.neokeys-hidden {
+.neokeys-tree-container.neokeys-hidden,
+.neokeys-tree-items.neokeys-hidden {
 	display: none;
 }
 
