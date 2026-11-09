@@ -134,11 +134,13 @@ export class EntryEditorModal extends Modal {
 
 		new Setting(contentEl)
 			.setName("Description")
-			.addText((text) => {
+			.addTextArea((text) => {
 				text
 					.setPlaceholder("Optional description")
 					.setValue(this.description)
 					.onChange((value) => (this.description = value));
+				// A textarea wraps, so long existing descriptions are shown in full instead of cut off.
+				text.inputEl.rows = 2;
 				text.inputEl.addClass("neokeys-entry-description-input");
 			});
 

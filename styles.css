@@ -397,6 +397,7 @@
 
 .neokeys-entry-description-input {
 	width: 100%;
+	resize: vertical;
 }
 
 .neokeys-entry-editor-error {
