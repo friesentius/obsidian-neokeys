@@ -88,7 +88,7 @@ overwriting the tree.
 
 ![Tree editor showing a nested keymap, with move/edit/delete controls per item](docs/screenshots/phase2/tree-editor-overview-dark.png)
 
-![Tree editor's Edit dialog for a group, with its title and description editable in full width](docs/screenshots/phase2/tree-editor-group-edit-dialog-light.png)
+![Tree editor's Edit dialog for a group, with its kind locked while it has items and its full description shown in a wrapping text box](docs/screenshots/phase2/tree-editor-group-edit-dialog-light.png)
 
 The which-key popup shows a group's entries in the order you arrange them in the tree editor (or
 write them in the YAML's `items`) - reordering an item moves it in the popup too, not just in the
