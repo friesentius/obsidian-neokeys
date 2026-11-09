@@ -32,7 +32,8 @@ export class EntryEditorModal extends Modal {
 	private command = "";
 	private commandName = "";
 	private file = "";
-	private errorEl!: HTMLElement;
+	private errorEl: HTMLElement | null = null;
+	private buttonContainerEl!: HTMLElement;
 	private keyDisplayEl!: HTMLElement;
 	private stopRecording: (() => void) | null = null;
 
@@ -73,22 +74,24 @@ export class EntryEditorModal extends Modal {
 	private render(): void {
 		const { contentEl } = this;
 		contentEl.empty();
+		this.errorEl = null;
 
-		new Setting(contentEl)
-			.setName("Kind")
-			.setDesc(this.kindLockedReason ?? "")
-			.addDropdown((dd) =>
-				dd
-					.addOption("group", "Group (submenu)")
-					.addOption("command", "Command")
-					.addOption("file", "File")
-					.setValue(this.kind)
-					.setDisabled(this.kindLockedReason !== undefined)
-					.onChange((value) => {
-						this.kind = value as EntryKind;
-						this.render();
-					}),
-			);
+		const kindSetting = new Setting(contentEl).setName("Kind");
+		if (this.kindLockedReason !== undefined) {
+			kindSetting.setDesc(this.kindLockedReason);
+		}
+		kindSetting.addDropdown((dd) =>
+			dd
+				.addOption("group", "Group (submenu)")
+				.addOption("command", "Command")
+				.addOption("file", "File")
+				.setValue(this.kind)
+				.setDisabled(this.kindLockedReason !== undefined)
+				.onChange((value) => {
+					this.kind = value as EntryKind;
+					this.render();
+				}),
+		);
 
 		const keySetting = new Setting(contentEl)
 			.setName("Key")
@@ -131,18 +134,28 @@ export class EntryEditorModal extends Modal {
 
 		new Setting(contentEl)
 			.setName("Description")
-			.addText((text) => text.setValue(this.description).onChange((value) => (this.description = value)));
+			.addText((text) => {
+				text
+					.setPlaceholder("Optional description")
+					.setValue(this.description)
+					.onChange((value) => (this.description = value));
+				text.inputEl.addClass("neokeys-entry-description-input");
+			});
 
-		this.errorEl = contentEl.createDiv({ cls: "neokeys-entry-editor-error" });
+		this.buttonContainerEl = contentEl.createDiv({ cls: "modal-button-container" });
+		new ButtonComponent(this.buttonContainerEl).setButtonText("Cancel").onClick(() => this.close());
+		new ButtonComponent(this.buttonContainerEl)
+			.setButtonText("Save")
+			.setCta()
+			.onClick(() => this.submit());
+	}
 
-		new Setting(contentEl)
-			.addButton((button) => button.setButtonText("Cancel").onClick(() => this.close()))
-			.addButton((button) =>
-				button
-					.setButtonText("Save")
-					.setCta()
-					.onClick(() => this.submit()),
-			);
+	private showError(message: string): void {
+		if (!this.errorEl) {
+			this.errorEl = this.contentEl.createDiv({ cls: "neokeys-entry-editor-error" });
+			this.contentEl.insertBefore(this.errorEl, this.buttonContainerEl);
+		}
+		this.errorEl.setText(message);
 	}
 
 	private startRecording(button: ButtonComponent): void {
@@ -181,15 +194,15 @@ export class EntryEditorModal extends Modal {
 
 	private submit(): void {
 		if (this.rawKey.trim().length === 0) {
-			this.errorEl.setText("Set a key first.");
+			this.showError("Set a key first.");
 			return;
 		}
 		if (this.kind === "command" && this.command.trim().length === 0) {
-			this.errorEl.setText("Choose a command first.");
+			this.showError("Choose a command first.");
 			return;
 		}
 		if (this.kind === "file" && this.file.trim().length === 0) {
-			this.errorEl.setText("Set a file path first.");
+			this.showError("Set a file path first.");
 			return;
 		}
 
@@ -205,7 +218,7 @@ export class EntryEditorModal extends Modal {
 
 		const error = this.onSubmit(draft);
 		if (error) {
-			this.errorEl.setText(error);
+			this.showError(error);
 			return;
 		}
 		this.close();

@@ -395,6 +395,10 @@
 	margin-right: var(--size-4-2);
 }
 
+.neokeys-entry-description-input {
+	width: 100%;
+}
+
 .neokeys-entry-editor-error {
 	color: var(--text-error);
 	font-size: var(--font-ui-small);
