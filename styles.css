@@ -393,6 +393,7 @@
 	font-family: var(--font-monospace);
 	color: var(--text-muted);
 	margin-right: var(--size-4-2);
+	white-space: nowrap;
 }
 
 .neokeys-entry-description-input {
