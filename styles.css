@@ -408,3 +408,308 @@
 	white-space: pre-wrap;
 	min-height: 0;
 }
+
+/* --- Mobile dial ---------------------------------------------------------- */
+
+/*
+ * A fixed, full-screen layer that claims no pointer events of its own: only the anchor (always)
+ * and the backdrop, pill and items (while open) do, so an idle dial never eats an edge swipe. It
+ * sits below --layer-modal, so Settings and the command palette cover it. Its bottom offset
+ * clears whichever reaches highest: Obsidian's bottom bars (the plugin measures the editing
+ * toolbar and the floating navigation bar into --neokeys-dial-chrome; the toolbar already sits
+ * on top of the keyboard), the on-screen keyboard itself (Obsidian keeps --keyboard-height live
+ * on :root), or the home-indicator safe area.
+ */
+.neokeys-dial {
+	--neokeys-dial-scrim: rgba(0, 0, 0, 0.45);
+	--neokeys-dial-chrome: 0px;
+	--neokeys-dial-bottom: max(
+		var(--neokeys-dial-chrome),
+		var(--keyboard-height, 0px),
+		var(--safe-area-inset-bottom, 0px)
+	);
+	--neokeys-dial-edge: 12px;
+	--neokeys-dial-anchor-size: 56px;
+	position: fixed;
+	inset: 0;
+	z-index: var(--layer-popover);
+	pointer-events: none;
+	-webkit-touch-callout: none;
+	-webkit-user-select: none;
+	user-select: none;
+}
+
+/* While a sidebar drawer covers the screen, the plugin hides the dial (both the compound selector and the generic rule below say display: none). */
+.neokeys-dial.neokeys-dial-hidden {
+	display: none;
+}
+
+/* A scrim dims the note while the dial is open, so the pill and fan read as a layer over it and a tap on it cancels. Obsidian's own cover colour is too faint for that on a phone. */
+.neokeys-dial-backdrop {
+	position: absolute;
+	inset: 0;
+	background-color: var(--neokeys-dial-scrim);
+	opacity: 0;
+	pointer-events: none;
+	touch-action: none;
+}
+
+.neokeys-dial-open .neokeys-dial-backdrop {
+	opacity: 1;
+	pointer-events: auto;
+}
+
+.neokeys-dial-anchor {
+	--icon-size: var(--icon-l);
+	--icon-stroke: var(--icon-l-stroke-width);
+	position: absolute;
+	bottom: calc(var(--neokeys-dial-bottom) + var(--neokeys-dial-edge));
+	right: calc(var(--safe-area-inset-right, 0px) + var(--neokeys-dial-edge));
+	width: var(--neokeys-dial-anchor-size);
+	height: var(--neokeys-dial-anchor-size);
+	padding: 0;
+	margin: 0;
+	border: none;
+	border-radius: 50%;
+	background-color: var(--interactive-accent);
+	color: var(--text-on-accent);
+	box-shadow: var(--shadow-s);
+	opacity: 0.6;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	pointer-events: auto;
+	touch-action: none;
+	cursor: pointer;
+}
+
+.neokeys-dial-left .neokeys-dial-anchor {
+	right: auto;
+	left: calc(var(--safe-area-inset-left, 0px) + var(--neokeys-dial-edge));
+}
+
+.neokeys-dial-open .neokeys-dial-anchor,
+.neokeys-dial-anchor:active {
+	opacity: 1;
+}
+
+/*
+ * The breadcrumb pill sits just below Obsidian's view header so it never covers the header's
+ * buttons; when a level needs the room (a small phone with its keyboard up), the plugin raises it
+ * over the header instead (.neokeys-dial-raised).
+ */
+.neokeys-dial-pill {
+	position: absolute;
+	top: calc(var(--view-header-top-offset, var(--safe-area-inset-top, 0px)) + var(--view-header-height, 44px) + var(--size-4-2));
+	left: 50%;
+	transform: translateX(-50%);
+	max-width: calc(100% - 2 * var(--neokeys-dial-edge));
+	display: flex;
+	align-items: center;
+	gap: var(--size-2-1);
+	padding: var(--size-2-1);
+	border-radius: var(--touch-size-m, 44px);
+	background-color: var(--background-primary);
+	border: 1px solid var(--background-modifier-border);
+	box-shadow: var(--shadow-l);
+	visibility: hidden;
+	pointer-events: none;
+}
+
+.neokeys-dial-open .neokeys-dial-pill {
+	visibility: visible;
+	pointer-events: auto;
+}
+
+body.theme-light .neokeys-dial {
+	--neokeys-dial-scrim: rgba(0, 0, 0, 0.3);
+}
+
+.neokeys-dial-raised .neokeys-dial-pill {
+	top: calc(var(--safe-area-inset-top, 0px) + var(--size-4-2));
+}
+
+.neokeys-dial-pill-button {
+	--icon-size: var(--icon-m);
+	width: var(--touch-size-s, 40px);
+	height: var(--touch-size-s, 40px);
+	flex-shrink: 0;
+	padding: 0;
+	margin: 0;
+	border: none;
+	border-radius: 50%;
+	background-color: transparent;
+	color: var(--text-muted);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	touch-action: none;
+	box-shadow: none;
+}
+
+.neokeys-dial-pill-button:active {
+	background-color: var(--background-modifier-hover);
+	color: var(--text-normal);
+}
+
+.neokeys-dial-crumbs {
+	min-width: 0;
+	overflow: hidden;
+	white-space: nowrap;
+	text-overflow: ellipsis;
+	font-size: var(--font-ui-small);
+	color: var(--text-normal);
+	padding: 0 var(--size-2-1);
+}
+
+.neokeys-dial-crumb-sep {
+	color: var(--text-faint);
+	margin: 0 var(--size-2-1);
+}
+
+.neokeys-dial-crumb-armed {
+	color: var(--text-accent);
+	font-weight: var(--font-semibold);
+}
+
+.neokeys-dial-crumb-invalid {
+	color: var(--text-error);
+}
+
+.neokeys-dial-fan {
+	position: absolute;
+	inset: 0;
+	pointer-events: none;
+}
+
+/* Positions come from the layout module as custom properties, so the stylesheet owns every static style. */
+.neokeys-dial-item {
+	position: absolute;
+	left: 0;
+	top: 0;
+	width: var(--neokeys-dial-size);
+	height: var(--neokeys-dial-size);
+	transform: translate(calc(var(--neokeys-dial-x) - 50%), calc(var(--neokeys-dial-y) - 50%));
+	border-radius: 50%;
+	background-color: var(--background-primary);
+	border: 1px solid var(--background-modifier-border);
+	box-shadow: var(--shadow-s);
+	color: var(--text-normal);
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	gap: 1px;
+	padding: 0 var(--size-2-1);
+	overflow: hidden;
+	pointer-events: none;
+}
+
+/* The key is a small chip above the label: on a touch screen the label is what identifies an item, the key is a reminder for a hardware keyboard. */
+.neokeys-dial-item-key {
+	flex-shrink: 0;
+	font-family: var(--font-monospace);
+	font-weight: var(--font-bold);
+	font-size: 0.6rem;
+	line-height: 1;
+	padding: 1px var(--size-2-2);
+	border-radius: var(--radius-s);
+	background-color: var(--background-modifier-hover);
+}
+
+/* Two lines of label, broken anywhere if a word is too long, so siblings that share a first word ("Split vertically", "Split horizontally") still read apart. */
+.neokeys-dial-item-label {
+	display: -webkit-box;
+	-webkit-box-orient: vertical;
+	-webkit-line-clamp: 2;
+	overflow: hidden;
+	overflow-wrap: anywhere;
+	hyphens: auto;
+	text-align: center;
+	font-size: 0.6rem;
+	letter-spacing: -0.01em;
+	line-height: 1.15;
+	color: var(--text-muted);
+}
+
+/* Compact items (the minimum thumb size) shrink the chip and the label a step so both still fit, and give the label every pixel of width. */
+.neokeys-dial-compact .neokeys-dial-item {
+	padding: 0;
+	gap: 0;
+}
+
+.neokeys-dial-compact .neokeys-dial-item-key {
+	font-size: 0.5rem;
+	padding: 0 var(--size-2-1);
+}
+
+.neokeys-dial-compact .neokeys-dial-item-label {
+	font-size: 0.55rem;
+	line-height: 1.1;
+}
+
+.neokeys-dial-item-group {
+	border-color: var(--text-accent);
+}
+
+.neokeys-dial-item-group .neokeys-dial-item-key {
+	color: var(--text-accent);
+}
+
+.neokeys-dial-item-file .neokeys-dial-item-key {
+	color: var(--text-success);
+}
+
+.neokeys-dial-item-more .neokeys-dial-item-key {
+	color: var(--text-muted);
+}
+
+.neokeys-dial-item-invalid {
+	border-color: var(--text-error);
+}
+
+.neokeys-dial-item-invalid .neokeys-dial-item-key,
+.neokeys-dial-item-invalid .neokeys-dial-item-label {
+	color: var(--text-error);
+}
+
+/* The scale rides inside the same transform as the position: a separate `scale` property would apply first and scale the translation too. */
+.neokeys-dial-item-armed {
+	background-color: var(--interactive-accent);
+	border-color: var(--interactive-accent);
+	box-shadow: var(--shadow-l);
+	transform: translate(calc(var(--neokeys-dial-x) - 50%), calc(var(--neokeys-dial-y) - 50%)) scale(1.15);
+	z-index: 1;
+}
+
+.neokeys-dial-item-armed .neokeys-dial-item-key,
+.neokeys-dial-item-armed .neokeys-dial-item-label {
+	color: var(--text-on-accent);
+}
+
+.neokeys-dial-item-armed .neokeys-dial-item-key {
+	background-color: var(--interactive-accent-hover);
+}
+
+/* Motion is opt-in via .neokeys-animate, set from the same setting and reduced-motion check as the popup. */
+.neokeys-dial.neokeys-animate .neokeys-dial-backdrop {
+	transition: opacity var(--neokeys-anim-duration, 150ms) ease-out;
+}
+
+.neokeys-dial.neokeys-animate .neokeys-dial-anchor {
+	transition: opacity 120ms ease-out;
+}
+
+.neokeys-dial.neokeys-animate .neokeys-dial-item {
+	animation: neokeys-dial-pop var(--neokeys-anim-duration, 150ms) ease-out both;
+	transition:
+		transform 80ms ease-out,
+		background-color 80ms ease-out;
+}
+
+@keyframes neokeys-dial-pop {
+	from {
+		opacity: 0;
+		transform: translate(calc(var(--neokeys-dial-x) - 50%), calc(var(--neokeys-dial-y) - 50%)) scale(0.6);
+	}
+}

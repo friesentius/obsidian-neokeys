@@ -189,10 +189,45 @@ in), so a sequence you already know by muscle memory never flashes it. There is 
 abandon-timeout: a half-typed sequence waits indefinitely until it resolves, dead-ends, is
 backspaced away, or you press Esc.
 
+## Mobile
+
+On phones and tablets, Neokeys replaces typing with a **dial**: a leader button pinned to a bottom
+corner of the screen. Press it and the current menu's items fan out on evenly spaced concentric
+rings around it, innermost ring first, each ring holding more than the one inside it, so on a
+typical phone even the default keymap's twelve-item Window group stays on one screen. Every item
+shows its label on up to two lines with its key as a small chip above. Drag from the button onto
+an item and let go to act on it: a group opens its own items, a command runs, a file opens.
+Passing over an item on the way only highlights it, so nothing happens until you release. A direct
+tap on an item does the same thing, and a tap on the button once the dial is open goes back up one
+level (or closes it at the root), the way <kbd>Backspace</kbd> does in the keyboard popup. The
+note dims behind the open dial, and a tap on that dimmed area closes it. A pill just below
+Obsidian's header shows the path you have descended through and the full label of the item under
+your thumb, with Back and Close buttons at either end.
+
+![Mobile dial open on the Window group, dark theme](docs/screenshots/mobile/dial-window-dark.png)
+
+![Mobile dial mid-drag with an item highlighted, light theme](docs/screenshots/mobile/dial-armed-light.png)
+
+The dial keeps clear of the on-screen keyboard, Obsidian's editing toolbar and its navigation bar,
+and touching it never takes focus away from the note, so a selection stays selected and the
+keyboard stays up. Items that
+reference a command Obsidian does not currently have (several of the default keymap's window
+commands are desktop-only, for instance) show in red and report the same notice the keyboard popup
+does. If a level has more items than the rings on your screen can hold at thumb size (44px or
+larger), the dial first tightens its spacing, then moves the pill up over the header to win back
+that strip (a small phone with its keyboard up), and only then pages the level, with a "More" item
+that turns to the next page.
+
+Settings → Neokeys has a **Mobile dial** group with a **Show the dial on mobile** toggle (on by
+default) and a **Dial corner** choice, bottom right or bottom left. With the dial off, the Leader
+command on mobile opens the keyboard-driven popup instead, which is only useful with a hardware
+keyboard. Desktop is unaffected either way.
+
 ## Compatibility
 
-Desktop only for now (`isDesktopOnly: true`); mobile support is a possible future stretch goal,
-since there is no public API signal for "a hardware keyboard is attached."
+Desktop and mobile. On desktop the leader opens the keyboard-driven which-key popup; on mobile the
+pinned dial above is the way in, and the Leader command (from the command palette, or a combo
+leader on a hardware keyboard) opens that same dial.
 
 ## Development
 
@@ -202,7 +237,7 @@ since there is no public API signal for "a hardware keyboard is attached."
 - `npm test` - Jest unit tests (key parsing, keymap parsing/validation and serialization, tree
   edit operations, tree resolution/sorting, delay logic, combo-leader validation, command-ID
   validation, breadcrumb building, hotkey-conflict detection, animation settings, heading-level
-  increase/decrease)
+  increase/decrease, the mobile dial's ring layout and its drag/arm/release state machine)
 - `npm run lint` - ESLint with `eslint-plugin-obsidianmd`'s recommended config, plus
   `@eslint/css`'s `no-important` on `styles.css`, mirroring the community directory's source and
   CSS scans (see `eslint.config.mjs` for why the plugin version is pinned)

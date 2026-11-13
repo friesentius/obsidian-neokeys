@@ -9,7 +9,7 @@ import { serializeKeymap } from "./keymapSerialize";
 import { keyFromEvent, keyToString } from "./keys";
 import { getCommandHotkeys, hasCommand, listOtherCommandHotkeys } from "./obsidianCommands";
 import { DEFAULT_KEYMAP_YAML } from "./sampleKeymap";
-import type { GroupNode, NeokeysSettings } from "./types";
+import { DIAL_CORNERS, type DialCorner, type GroupNode, type NeokeysSettings } from "./types";
 import { TreeEditorView } from "./ui/treeEditorView";
 import type NeokeysPlugin from "./main";
 
@@ -19,6 +19,8 @@ export const DEFAULT_SETTINGS: NeokeysSettings = {
 	comboLeader: "",
 	animationsEnabled: true,
 	animationDurationMs: DEFAULT_ANIMATION_DURATION_MS,
+	mobileDialEnabled: true,
+	mobileDialCorner: "bottom-right",
 };
 
 const LEADER_NAME = "Assign the leader hotkey";
@@ -35,6 +37,11 @@ const ANIMATIONS_DESC =
 	"Slide the which-key popup in from the bottom edge, and crossfade between menus when navigating. Always off when your OS's reduced-motion accessibility preference is on, regardless of this toggle.";
 const ANIMATION_DURATION_NAME = "Animation duration";
 const ANIMATION_DURATION_DESC = "Milliseconds for the slide-in and crossfade animations (0‑1000).";
+const MOBILE_DIAL_NAME = "Show the dial on mobile";
+const MOBILE_DIAL_DESC =
+	"On phones and tablets, pin a leader button to a bottom corner of the screen. Press it to fan the current menu's items out on rings around it, drag onto one and let go to run it (a group opens its own items), or tap items directly. Desktop keeps the keyboard-driven popup.";
+const MOBILE_DIAL_CORNER_NAME = "Dial corner";
+const MOBILE_DIAL_CORNER_DESC = "Which bottom corner the dial's button is pinned to.";
 const KEYMAP_DESC =
 	'Edit the keymap as a tree, or use "Edit as YAML/JSON" for the raw, Spacekeys-compatible source (each group has items; each item is a group, a command ("command: <id>" or the short form "<id> <description>"), or a file ("file: <path>")). Both views edit the same stored keymap - switching away from the YAML view saves it first, and an invalid edit there is never silently discarded.';
 const YAML_NOTE =
@@ -47,6 +54,11 @@ const HOTKEY_CONFLICTS_DESC =
 	"Whether the leader hotkey or the combo leader above collides with another command's Obsidian hotkey.";
 
 const MODIFIER_KEY_NAMES = new Set(["Control", "Shift", "Alt", "AltGraph", "Meta", "OS", "CapsLock"]);
+
+/** A stored or chosen corner value, falling back to the default for anything unrecognised (data.json is hand-editable). */
+export function parseDialCorner(value: unknown): DialCorner {
+	return DIAL_CORNERS.find((corner) => corner === value) ?? DEFAULT_SETTINGS.mobileDialCorner;
+}
 
 /**
  * Settings tab. Obsidian 1.13+ renders it from getSettingDefinitions(), which
@@ -125,6 +137,24 @@ export class NeokeysSettingTab extends PluginSettingTab {
 			},
 			{
 				type: "group",
+				heading: "Mobile dial",
+				items: [
+					{
+						name: MOBILE_DIAL_NAME,
+						desc: MOBILE_DIAL_DESC,
+						aliases: ["mobile", "phone", "tablet", "touch", "fan", "dial"],
+						render: (setting) => this.renderMobileDialEnabled(setting),
+					},
+					{
+						name: MOBILE_DIAL_CORNER_NAME,
+						desc: MOBILE_DIAL_CORNER_DESC,
+						aliases: ["corner", "left", "right", "position"],
+						render: (setting) => this.renderMobileDialCorner(setting),
+					},
+				],
+			},
+			{
+				type: "group",
 				heading: "Keymap",
 				items: [
 					{
@@ -159,6 +189,10 @@ export class NeokeysSettingTab extends PluginSettingTab {
 		this.renderShowDelay(new Setting(containerEl));
 		this.renderAnimationsEnabled(new Setting(containerEl));
 		this.renderAnimationDuration(new Setting(containerEl));
+
+		new Setting(containerEl).setName("Mobile dial").setHeading();
+		this.renderMobileDialEnabled(new Setting(containerEl));
+		this.renderMobileDialCorner(new Setting(containerEl));
 
 		new Setting(containerEl).setName("Keymap").setHeading();
 		this.renderKeymapEditor(new Setting(containerEl));
@@ -313,6 +347,36 @@ export class NeokeysSettingTab extends PluginSettingTab {
 					.onChange(async (value) => {
 						this.plugin.settings.animationDurationMs = parseAnimationDurationInput(value);
 						await this.plugin.saveSettings();
+					}),
+			);
+	}
+
+	private renderMobileDialEnabled(setting: Setting): void {
+		setting
+			.setName(MOBILE_DIAL_NAME)
+			.setDesc(MOBILE_DIAL_DESC)
+			.addToggle((toggle) =>
+				toggle.setValue(this.plugin.settings.mobileDialEnabled).onChange(async (value) => {
+					this.plugin.settings.mobileDialEnabled = value;
+					await this.plugin.saveSettings();
+					this.plugin.applyMobileDial();
+				}),
+			);
+	}
+
+	private renderMobileDialCorner(setting: Setting): void {
+		setting
+			.setName(MOBILE_DIAL_CORNER_NAME)
+			.setDesc(MOBILE_DIAL_CORNER_DESC)
+			.addDropdown((dropdown) =>
+				dropdown
+					.addOption("bottom-right", "Bottom right")
+					.addOption("bottom-left", "Bottom left")
+					.setValue(this.plugin.settings.mobileDialCorner)
+					.onChange(async (value) => {
+						this.plugin.settings.mobileDialCorner = parseDialCorner(value);
+						await this.plugin.saveSettings();
+						this.plugin.applyMobileDial();
 					}),
 			);
 	}
