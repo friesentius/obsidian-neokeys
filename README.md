@@ -202,8 +202,9 @@ A direct tap on an item does the same thing, and a tap on the button once the di
 back up one level (or closes it at the root), the way <kbd>Backspace</kbd> does in the keyboard
 popup. The note dims behind the open dial; a tap on that dimmed area, including the blank space
 between the rings, closes it without running anything. A pill just below Obsidian's header shows
-the path you have descended through and the full label of the item under your thumb (the start
-of the path gives way to an ellipsis on a narrow phone, never the label), with Back and Close
+the path you have descended through and the full label of the item under your thumb (on a narrow
+phone the start of the path gives way to an ellipsis, then the page number and the ellipsis
+itself, so the label is the last thing ever shortened), with Back and Close
 buttons at either end and the page number when a level is paged.
 
 ![Mobile dial open on the Window group, dark theme](docs/screenshots/mobile/dial-window-dark.png)

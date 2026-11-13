@@ -471,11 +471,10 @@ export class MobileDial {
 			if (i > 0) seps.push(this.crumbsEl.createSpan({ cls: "neokeys-dial-crumb-sep", text: "›" }));
 			trail.push(this.crumbsEl.createSpan({ cls: "neokeys-dial-crumb neokeys-dial-crumb-trail", text: label }));
 		});
-		if (view.pages > 1) {
-			this.crumbsEl.createSpan({ cls: "neokeys-dial-crumb-page", text: `${view.page + 1}/${view.pages}` });
-		}
+		const pageEl = view.pages > 1 ? this.crumbsEl.createSpan({ cls: "neokeys-dial-crumb-page", text: `${view.page + 1}/${view.pages}` }) : null;
+		let armedSepEl: HTMLElement | null = null;
 		if (view.armedLabel !== null) {
-			this.crumbsEl.createSpan({ cls: "neokeys-dial-crumb-sep", text: "›" });
+			armedSepEl = this.crumbsEl.createSpan({ cls: "neokeys-dial-crumb-sep", text: "›" });
 			const armedEl = this.crumbsEl.createSpan({ cls: "neokeys-dial-crumb neokeys-dial-crumb-armed", text: view.armedLabel });
 			if (view.armedInvalid) {
 				armedEl.addClass("neokeys-dial-crumb-invalid");
@@ -483,23 +482,31 @@ export class MobileDial {
 				this.crumbsEl.createSpan({ cls: "neokeys-dial-crumb neokeys-dial-crumb-note neokeys-dial-crumb-invalid", text: "(unknown command)" });
 			}
 		}
-		this.fitCrumbs(collapsedEl, trail, seps, view.armedLabel !== null);
+		this.fitCrumbs(collapsedEl, trail, seps, pageEl, armedSepEl);
 	}
 
 	/**
 	 * Collapse the trail from the left while any crumb is cut short, so the pill always prefers
 	 * the end of the path: "Neokeys › Text › Heading › Increase heading level" becomes
 	 * "… › Heading › Increase heading level" on a narrow phone, then "… › Increase heading level".
-	 * With nothing armed the current level's own crumb always stays; the stylesheet ellipsizes
-	 * whatever still does not fit after that.
+	 * The label under the thumb outranks everything else: if it is still cut, the page indicator
+	 * goes, then the ellipsis itself, so the label stands alone before the stylesheet ever
+	 * shortens it. With nothing armed the current level's own crumb always stays, ellipsized by
+	 * the stylesheet when even that does not fit.
 	 */
-	private fitCrumbs(collapsedEl: HTMLElement, trail: HTMLElement[], seps: HTMLElement[], armed: boolean): void {
+	private fitCrumbs(collapsedEl: HTMLElement, trail: HTMLElement[], seps: HTMLElement[], pageEl: HTMLElement | null, armedSepEl: HTMLElement | null): void {
 		const cut = (): boolean => Array.from(this.crumbsEl.querySelectorAll(".neokeys-dial-crumb")).some((el) => el.scrollWidth > el.clientWidth + 1);
-		const keep = armed ? 0 : 1;
+		const keep = armedSepEl ? 0 : 1;
 		for (let hidden = 0; hidden < trail.length - keep && cut(); hidden++) {
 			trail[hidden].addClass("neokeys-hidden");
 			if (hidden > 0) seps[hidden - 1].addClass("neokeys-hidden");
 			collapsedEl.removeClass("neokeys-hidden");
+		}
+		if (!armedSepEl) return;
+		if (pageEl && cut()) pageEl.addClass("neokeys-hidden");
+		if (cut()) {
+			collapsedEl.addClass("neokeys-hidden");
+			armedSepEl.addClass("neokeys-hidden");
 		}
 	}
 
