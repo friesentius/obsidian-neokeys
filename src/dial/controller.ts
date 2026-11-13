@@ -157,7 +157,7 @@ export class DialController {
 		if (!this.opened) return;
 		const count = sortEntries(this.currentGroup).length;
 		const layout = chooseLayout(count, this.measure);
-		if (layout.mode !== this.mode) this.measure(layout.mode);
+		this.measure(layout.mode);
 		this.mode = layout.mode;
 		this.geometry = layout.geometry;
 		this.params = layout.params;

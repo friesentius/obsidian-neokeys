@@ -436,6 +436,22 @@ describe("DialController paging", () => {
 		expect(controller.view().pages).toBe(2);
 	});
 
+	it("re-applies the kept mode last, so the pill is not left raised when raising would not hold more", () => {
+		const raised: DialGeometry = { ...TINY, bounds: { ...TINY.bounds, top: 55 } };
+		const root = parseKeymapSource(SOURCE);
+		const { host } = makeHost();
+		const measured: string[] = [];
+		const controller = new DialController(host, (mode) => {
+			measured.push(mode);
+			return mode === "normal" ? TINY : raised;
+		});
+		controller.open(root);
+		expect(measured).toContain("raised");
+		expect(controller.view().mode).toBe("normal");
+		expect(measured[measured.length - 1]).toBe("normal");
+		expect(measured[measured.length - 1]).toBe(controller.view().mode);
+	});
+
 	it("lets the rings reach up behind the pill when nothing fits under it even raised, so a short screen still gets a ring", () => {
 		// A 320x568 phone with a tall keyboard up: 91px of fan under the raised pill, not enough for
 		// even the compact first ring (74 + 22), but 145px to the pill's top edge.
