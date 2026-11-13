@@ -673,8 +673,13 @@ body.theme-light .neokeys-dial {
 	line-height: var(--neokeys-dial-line-height);
 }
 
-/* Only a word longer than the widest box at the smallest size may break (the chip is in the cap by then, so the first word may too); the clamp ellipsizes what is left. */
+/*
+ * Only a word longer than the widest box at the smallest size may break (the chip is in the cap
+ * by then, so the first word may too): at a hyphenation point where the platform has a dictionary
+ * for the interface language, anywhere otherwise; the clamp ellipsizes what is left.
+ */
 .neokeys-dial-label-break .neokeys-dial-item-label {
+	hyphens: auto;
 	overflow-wrap: anywhere;
 }
 

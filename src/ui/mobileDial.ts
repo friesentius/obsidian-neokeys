@@ -66,28 +66,36 @@ const MIN_LAST_LINE_SHARE = 0.2;
 type ChipPlace = "inline" | "cap";
 
 /**
- * Fit one label into its circle: the largest size, on the fewest lines, whose box fits with no
- * word cut mid-way. The box for n lines is the chord that keeps the box's corners LABEL_INSET
- * inside the circle (below the chip, in the cap layout). Measured on the live element, so the
- * font and the platform's wrapping decide, not an estimate. The strict pass refuses a two-line
- * split that strands a lone tiny word on the second line (a smaller size on one line wins over
- * "Heading" / "6"; "Close" / "tab" and a short last word under a three-line stack are fine); the
- * loose pass, unless skipped, takes anything that fits. Returns whether a pass fit. If none did
- * and the loose pass ran (a word longer than the widest box at the smallest size) the label may
- * break anywhere and the line clamp ellipsizes what is left, so no text ever touches the edge.
+ * The fitter's passes: strict refuses a two-line split that strands a lone tiny word on the
+ * second line (a smaller size on one line wins over "Heading" / "6"; "Close" / "tab" and a short
+ * last word under a three-line stack are fine); loose takes anything that fits with whole words;
+ * break lets a word longer than the widest box split (hyphenated where the platform has a
+ * dictionary for the interface language, anywhere otherwise).
+ */
+type FitPass = "strict" | "loose" | "break";
+
+/**
+ * Fit one label into its circle: the largest size, on the fewest lines, whose box fits, in the
+ * earliest pass that manages it. The box for n lines is the chord that keeps the box's corners
+ * LABEL_INSET inside the circle (below the chip, in the cap layout). Measured on the live
+ * element, so the font and the platform's wrapping decide, not an estimate. Returns whether a
+ * pass fit; with strictOnly, only the strict pass runs. If even the break pass fails the label
+ * stays at the smallest size and the line clamp ellipsizes what is left, so no text ever touches
+ * the edge.
  */
 function fitLabel(el: HTMLElement, labelEl: HTMLElement, size: number, compact: boolean, place: ChipPlace, strictOnly: boolean): boolean {
 	const sizes = compact ? COMPACT_LABEL_SIZES : LABEL_SIZES;
 	const maxLines = compact ? COMPACT_LABEL_LINES : LABEL_LINES;
 	const center = size / 2 - 1;
 	const radius = center - LABEL_INSET;
+	const passes: FitPass[] = strictOnly ? ["strict"] : ["strict", "loose", "break"];
 	el.toggleClass("neokeys-dial-key-cap", place === "cap");
-	el.removeClass("neokeys-dial-label-break");
 	el.setCssProps({ "--neokeys-dial-label-lines": `${maxLines}` });
 	// Layout offsets, not client rects, so the pop-in scale does not skew the chip's extent.
 	const keyEl = place === "cap" ? el.querySelector<HTMLElement>(".neokeys-dial-item-key") : null;
 	const top = keyEl ? keyEl.offsetTop + keyEl.offsetHeight : 0;
-	for (const strict of strictOnly ? [true] : [true, false]) {
+	for (const pass of passes) {
+		el.toggleClass("neokeys-dial-label-break", pass === "break");
 		for (const font of sizes) {
 			const lineHeight = Math.round(font * LABEL_LINE_HEIGHT * 10) / 10;
 			for (let lines = 1; lines <= maxLines; lines++) {
@@ -102,11 +110,10 @@ function fitLabel(el: HTMLElement, labelEl: HTMLElement, size: number, compact: 
 				const count = Math.round(labelEl.scrollHeight / lineHeight);
 				const overflowX = labelEl.scrollWidth > labelEl.clientWidth + 1;
 				if (count > lines || overflowX) continue;
-				if (!strict || count !== 2 || lastLineShare(labelEl) >= MIN_LAST_LINE_SHARE) return true;
+				if (pass !== "strict" || count !== 2 || lastLineShare(labelEl) >= MIN_LAST_LINE_SHARE) return true;
 			}
 		}
 	}
-	if (!strictOnly) el.addClass("neokeys-dial-label-break");
 	return false;
 }
 
