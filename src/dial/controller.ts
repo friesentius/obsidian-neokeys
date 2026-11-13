@@ -1,5 +1,6 @@
-import { keyGlyph } from "../keys";
-import { breadcrumbTrail, entryLabel, sortEntries } from "../tree";
+import { keyFromEvent, keyGlyph, type KeyboardEventLike } from "../keys";
+import { commandUnavailableMessage } from "../messages";
+import { breadcrumbTrail, entryLabel, findEntry, sortEntries } from "../tree";
 import type { GroupEntry, GroupNode } from "../types";
 import {
 	chooseLayout,
@@ -64,30 +65,40 @@ export interface DialView {
 	pages: number;
 }
 
-/** Which part of the view a change touched, so the renderer can skip rebuilding what did not move. */
-export type DialChange = "structure" | "armed";
+/**
+ * Which part of the view a change touched, so the renderer can skip rebuilding what did not
+ * change: `structure` means the set of items is different (open, close, descend, page turn),
+ * `layout` that the same items moved or resized (a relayout), `armed` that only the highlight
+ * and the breadcrumb's tail changed.
+ */
+export type DialChange = "structure" | "layout" | "armed";
 
 type DialTarget = { kind: "entry"; entry: GroupEntry } | { kind: "more" };
 
 /**
- * How the current press started, which decides what a release on nothing means: the press that
- * opened the dial leaves it open (a tap on the anchor opens it); a later tap on the anchor goes
- * back up one level, or closes at the root, the way Backspace does in the which-key popup; a
- * press anywhere else that ends on nothing closes (a tap outside cancels).
+ * What a release on nothing means for the current press: the press that opened the dial leaves
+ * it open (a tap on the anchor opens it), as does a press whose layout moved under the finger; a
+ * later tap on the anchor goes back up one level, or closes at the root, the way Backspace does
+ * in the which-key popup; a press anywhere else that ends on nothing closes (a tap outside
+ * cancels).
  */
-type PressOrigin = "anchor-opened" | "anchor" | "backdrop";
+type ReleaseOnNothing = "stay" | "back" | "close";
 
 /**
  * The dial's state machine: which level of the keymap is showing, which page of it, what the
  * pointer is currently over, and what a release does. Nothing acts until the pointer is released:
  * dragging across an item only arms it, releasing on it commits (a group opens, a command runs, a
- * file opens, "More" turns the page). A pointer that is cancelled never acts.
+ * file opens, "More" turns the page). A pointer that is cancelled never acts. A hardware keyboard
+ * drives the same state the way it drives the popup: a key picks the entry it is bound to,
+ * Backspace goes back, Escape closes.
  */
 export class DialController {
 	private path: GroupNode[] = [];
 	private page = 0;
 	private opened = false;
-	private pressOrigin: PressOrigin | null = null;
+	private pressing: ReleaseOnNothing | null = null;
+	/** Where the pointer last was during the current press, so a relayout can re-arm what is under it. */
+	private lastPoint: DialPoint | null = null;
 	private armed: number | null = null;
 	private geometry: DialGeometry | null = null;
 	private params: DialRingParams | null = null;
@@ -118,23 +129,19 @@ export class DialController {
 	}
 
 	get isPressing(): boolean {
-		return this.pressOrigin !== null;
+		return this.pressing !== null;
 	}
 
 	/** Open at the root of `root`, replacing whatever was showing. */
 	open(root: GroupNode): void {
-		this.path = [root];
-		this.page = 0;
-		this.opened = true;
-		this.armed = null;
-		this.pressOrigin = null;
-		this.relayout();
+		this.openAt(root, null);
 	}
 
 	close(): void {
 		if (!this.opened) return;
 		this.opened = false;
-		this.pressOrigin = null;
+		this.pressing = null;
+		this.lastPoint = null;
 		this.armed = null;
 		this.emit("structure");
 	}
@@ -152,7 +159,12 @@ export class DialController {
 		this.relayout();
 	}
 
-	/** Re-measure and re-place the current level, e.g. after the keyboard or the window changed size. */
+	/**
+	 * Re-measure and re-place the current level, e.g. after the keyboard or the window changed
+	 * size. A press in progress keeps going, but what it arms is looked up again under the
+	 * pointer, since the item that was there may have moved away, and a release on nothing then
+	 * leaves the dial open rather than closing it under the user's finger.
+	 */
 	relayout(): void {
 		if (!this.opened) return;
 		const count = sortEntries(this.currentGroup).length;
@@ -162,51 +174,62 @@ export class DialController {
 		this.geometry = layout.geometry;
 		this.params = layout.params;
 		this.rings = layout.rings;
+		const before = this.targets;
 		this.rebuildSlots();
-		this.emit("structure");
+		if (this.pressing !== null) {
+			this.pressing = "stay";
+			this.armed = this.lastPoint ? this.hit(this.lastPoint) : null;
+		}
+		this.emit(sameTargets(before, this.targets) ? "layout" : "structure");
 	}
 
-	/** Pointer down on the anchor: opens a closed dial; on an open one, starts a drag that may arm items. */
-	pressAnchor(root: GroupNode): void {
-		if (this.pressOrigin !== null) return;
+	/**
+	 * Pointer down on the anchor: opens a closed dial (which needs the keymap's root); on an open
+	 * one, starts a drag that may arm items.
+	 */
+	pressAnchor(root?: GroupNode): void {
+		if (this.pressing !== null) return;
 		if (!this.opened) {
-			this.open(root);
-			this.pressOrigin = "anchor-opened";
+			if (root) this.openAt(root, "stay");
 			return;
 		}
-		this.pressOrigin = "anchor";
+		this.pressing = "back";
+		this.lastPoint = null;
 		this.armed = null;
 		this.emit("armed");
 	}
 
 	/** Pointer down anywhere else while open: arms whatever is under it (a direct tap on an item). */
 	pressAt(point: DialPoint): void {
-		if (!this.opened || this.pressOrigin !== null) return;
-		this.pressOrigin = "backdrop";
+		if (!this.opened || this.pressing !== null) return;
+		this.pressing = "close";
+		this.lastPoint = point;
 		this.setArmed(this.hit(point));
 	}
 
 	moveTo(point: DialPoint): void {
-		if (this.pressOrigin === null) return;
+		if (this.pressing === null) return;
+		this.lastPoint = point;
 		this.setArmed(this.hit(point));
 	}
 
 	/** Pointer up: commit the armed item, or settle what a release on nothing means for this press. */
 	release(): void {
-		if (this.pressOrigin === null) return;
-		const origin = this.pressOrigin;
+		if (this.pressing === null) return;
+		const onNothing = this.pressing;
 		const armed = this.armed;
-		this.pressOrigin = null;
+		this.pressing = null;
+		this.lastPoint = null;
 		this.armed = null;
 		if (armed !== null && armed < this.targets.length) {
 			this.commit(this.targets[armed]);
 			return;
 		}
-		if (origin === "anchor-opened") {
+		if (onNothing === "stay") {
 			this.emit("armed");
 			return;
 		}
-		if (origin === "anchor") {
+		if (onNothing === "back") {
 			this.back();
 			return;
 		}
@@ -215,10 +238,33 @@ export class DialController {
 
 	/** The pointer was taken away (pointercancel, lost capture): forget the press without acting. */
 	cancelPress(): void {
-		if (this.pressOrigin === null) return;
-		this.pressOrigin = null;
+		if (this.pressing === null) return;
+		this.pressing = null;
+		this.lastPoint = null;
 		this.armed = null;
 		this.emit("armed");
+	}
+
+	/**
+	 * A key typed while the dial is open, with the popup's semantics: Escape closes, Backspace goes
+	 * back (closing at the root), any key bound in the current level picks that entry exactly as
+	 * a release on it would, and anything else does nothing. Every key is consumed by the caller
+	 * either way, so nothing typed at an open dial lands in the note. A press in progress is
+	 * dropped first, so the key and the finger cannot both act.
+	 */
+	typeKey(evt: KeyboardEventLike): void {
+		if (!this.opened) return;
+		if (this.pressing !== null) this.cancelPress();
+		if (evt.key === "Escape") {
+			this.close();
+			return;
+		}
+		if (evt.key === "Backspace") {
+			this.back();
+			return;
+		}
+		const entry = findEntry(this.currentGroup, keyFromEvent(evt));
+		if (entry) this.commit({ kind: "entry", entry });
 	}
 
 	view(): DialView {
@@ -226,7 +272,7 @@ export class DialController {
 		const armedTarget = this.armed !== null ? this.targets[this.armed] : undefined;
 		return {
 			open: this.opened,
-			pressing: this.pressOrigin !== null,
+			pressing: this.pressing !== null,
 			title: root?.title ?? "Neokeys",
 			crumbs: this.opened ? breadcrumbTrail(this.path, (id) => this.host.resolveCommandName(id)) : [],
 			armedLabel: armedTarget ? this.targetLabel(armedTarget) : null,
@@ -241,6 +287,16 @@ export class DialController {
 
 	private get currentGroup(): GroupNode {
 		return this.path[this.path.length - 1];
+	}
+
+	private openAt(root: GroupNode, pressing: ReleaseOnNothing | null): void {
+		this.path = [root];
+		this.page = 0;
+		this.opened = true;
+		this.armed = null;
+		this.pressing = pressing;
+		this.lastPoint = null;
+		this.relayout();
 	}
 
 	private emit(change: DialChange): void {
@@ -295,7 +351,7 @@ export class DialController {
 		}
 
 		if (node.kind === "command" && !this.host.isCommandKnown(node.command)) {
-			this.host.notify(`Neokeys: command "${node.command}" is not available`);
+			this.host.notify(commandUnavailableMessage(node.command));
 			this.emit("armed");
 			return;
 		}
@@ -333,4 +389,14 @@ export class DialController {
 			size: this.params?.itemSize ?? 0,
 		};
 	}
+}
+
+/** The same entries in the same order (by identity), so the renderer may keep its item nodes. */
+function sameTargets(a: DialTarget[], b: DialTarget[]): boolean {
+	if (a.length !== b.length) return false;
+	return a.every((target, i) => {
+		const other = b[i];
+		if (target.kind !== other.kind) return false;
+		return target.kind !== "entry" || other.kind !== "entry" || target.entry === other.entry;
+	});
 }

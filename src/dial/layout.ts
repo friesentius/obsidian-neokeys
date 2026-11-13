@@ -81,11 +81,16 @@ export const DIAL_SWEEP_DEG = 90;
 /** Thumb-sized targets: Obsidian's own --touch-size-m. */
 export const MIN_ITEM_SIZE = 44;
 
-/** Comfortable spacing, used whenever the screen has room for it. */
+/**
+ * Comfortable spacing, used whenever the screen has room for it. 60px holds a key chip and three
+ * short lines of label; with a 6px gap the first ring at 88px still takes three items, so a
+ * 390px phone with its keyboard up keeps 3 + 4 + 6 = 13 targets, one more than the default
+ * keymap's Window group.
+ */
 export const DEFAULT_RING_PARAMS: DialRingParams = {
-	itemSize: 56,
+	itemSize: 60,
 	gap: 6,
-	firstRadius: 82,
+	firstRadius: 88,
 };
 
 /** Tighter spacing at the minimum thumb size, tried when the default layout cannot hold a level. */
@@ -98,8 +103,11 @@ export const COMPACT_RING_PARAMS: DialRingParams = {
 /** A pointer this close to the anchor centre arms nothing, so a resting thumb never selects. */
 export const DEFAULT_DEAD_ZONE = 36;
 
-/** Angular reach past either end of the sweep, so the end slots are not hard to hit. */
+/** Angular reach past a slot's own share of the ring, so a slot is not hard to hit without blank space beside it arming it. */
 const HIT_ANGLE_SLACK_DEG = 8;
+
+/** Radial reach inside the innermost ring's inner edge; closer to the anchor than that arms nothing. */
+const HIT_INNER_SLACK = 4;
 
 function degToRad(deg: number): number {
 	return (deg * Math.PI) / 180;
@@ -202,13 +210,15 @@ export function paging(count: number, capacity: number): DialPaging {
 
 /**
  * Which slot a pointer at `point` arms, or null when it arms nothing. The pointer picks a ring by
- * radial distance (bands meet halfway between neighbouring rings, and the outermost band reaches
- * `outerReach` past the outermost ring so a slight overshoot still counts), then the slot on that
- * ring nearest in angle, as long as the pointer is within the sweep plus a little slack, so the
- * end slots of a partly used ring also own the empty arc beside them. Only rings that actually
- * hold a slot take part, so a half-empty dial stays as forgiving as a full one; beyond the reach,
- * outside the sweep, or inside the dead zone around the anchor, nothing is armed, which is what
- * lets a tap elsewhere on the screen cancel.
+ * radial distance (bands meet halfway between neighbouring rings, the outermost band reaches
+ * `outerReach` past the outermost ring so a slight overshoot still counts, and the innermost
+ * band starts just inside that ring's inner edge), then the slot on that ring nearest in angle,
+ * as long as the pointer is within half a slot pitch plus a little slack of that slot. Between
+ * two neighbours the band is still split at the midpoint, so a drag is as forgiving as before,
+ * but blank space past the end of a short arc, or far from a lone item, arms nothing. Only rings
+ * that actually hold a slot take part, so a half-empty dial stays as forgiving as a full one;
+ * beyond the reach, outside the sweep, or inside the dead zone around the anchor, nothing is
+ * armed, which is what lets a tap elsewhere on the screen cancel.
  */
 export function hitTest(
 	point: DialPoint,
@@ -229,6 +239,8 @@ export function hitTest(
 
 	const outermost = usedRings[usedRings.length - 1];
 	if (distance > rings[outermost].radius + outerReach) return null;
+	const innermost = usedRings[0];
+	if (distance < rings[innermost].radius - outerReach / 2 - HIT_INNER_SLACK) return null;
 
 	let ring = outermost;
 	for (let i = 0; i < usedRings.length - 1; i++) {
@@ -241,12 +253,14 @@ export function hitTest(
 
 	const angle = radToDeg(Math.atan2(v, u));
 	if (angle < -HIT_ANGLE_SLACK_DEG || angle > DIAL_SWEEP_DEG + HIT_ANGLE_SLACK_DEG) return null;
+	const capacity = rings[ring].capacity;
+	const pitch = capacity > 1 ? DIAL_SWEEP_DEG / (capacity - 1) : DIAL_SWEEP_DEG;
 	let best: number | null = null;
-	let bestDelta = Infinity;
+	let bestDelta = pitch / 2 + HIT_ANGLE_SLACK_DEG;
 	slots.forEach((slot, index) => {
 		if (slot.ring !== ring) return;
 		const delta = Math.abs(angle - slot.angleDeg);
-		if (delta < bestDelta) {
+		if (delta <= bestDelta) {
 			bestDelta = delta;
 			best = index;
 		}

@@ -8,20 +8,12 @@ import { KeymapParseError, parseKeymapSource } from "./keymap";
 import { serializeKeymap } from "./keymapSerialize";
 import { keyFromEvent, keyToString } from "./keys";
 import { getCommandHotkeys, hasCommand, listOtherCommandHotkeys } from "./obsidianCommands";
-import { DEFAULT_KEYMAP_YAML } from "./sampleKeymap";
-import { DIAL_CORNERS, type DialCorner, type GroupNode, type NeokeysSettings } from "./types";
+import { parseDialCorner } from "./defaultSettings";
+import type { GroupNode } from "./types";
 import { TreeEditorView } from "./ui/treeEditorView";
 import type NeokeysPlugin from "./main";
 
-export const DEFAULT_SETTINGS: NeokeysSettings = {
-	keymapSource: DEFAULT_KEYMAP_YAML,
-	showDelayMs: 200,
-	comboLeader: "",
-	animationsEnabled: true,
-	animationDurationMs: DEFAULT_ANIMATION_DURATION_MS,
-	mobileDialEnabled: true,
-	mobileDialCorner: "bottom-right",
-};
+export { DEFAULT_SETTINGS, parseDialCorner } from "./defaultSettings";
 
 const LEADER_NAME = "Assign the leader hotkey";
 const LEADER_DESC =
@@ -39,7 +31,8 @@ const ANIMATION_DURATION_NAME = "Animation duration";
 const ANIMATION_DURATION_DESC = "Milliseconds for the slide-in and crossfade animations (0‑1000).";
 const MOBILE_DIAL_NAME = "Show the dial on mobile";
 const MOBILE_DIAL_DESC =
-	"On phones and tablets, pin a leader button to a bottom corner of the screen. Press it to fan the current menu's items out on rings around it, drag onto one and let go to run it (a group opens its own items), or tap items directly. Desktop keeps the keyboard-driven popup.";
+	"On phones and tablets, pin a leader button to a bottom corner of the screen. Press it to fan the current menu's items out on rings around it, drag onto one and let go to run it (a group opens its own items), or tap items directly.";
+const MOBILE_DIAL_DESKTOP_NOTE = "Desktop keeps the keyboard-driven popup.";
 const MOBILE_DIAL_CORNER_NAME = "Dial corner";
 const MOBILE_DIAL_CORNER_DESC = "Which bottom corner the dial's button is pinned to.";
 const KEYMAP_DESC =
@@ -54,11 +47,6 @@ const HOTKEY_CONFLICTS_DESC =
 	"Whether the leader hotkey or the combo leader above collides with another command's Obsidian hotkey.";
 
 const MODIFIER_KEY_NAMES = new Set(["Control", "Shift", "Alt", "AltGraph", "Meta", "OS", "CapsLock"]);
-
-/** A stored or chosen corner value, falling back to the default for anything unrecognised (data.json is hand-editable). */
-export function parseDialCorner(value: unknown): DialCorner {
-	return DIAL_CORNERS.find((corner) => corner === value) ?? DEFAULT_SETTINGS.mobileDialCorner;
-}
 
 /**
  * Settings tab. Obsidian 1.13+ renders it from getSettingDefinitions(), which
@@ -141,7 +129,7 @@ export class NeokeysSettingTab extends PluginSettingTab {
 				items: [
 					{
 						name: MOBILE_DIAL_NAME,
-						desc: MOBILE_DIAL_DESC,
+						desc: `${MOBILE_DIAL_DESC} ${MOBILE_DIAL_DESKTOP_NOTE}`,
 						aliases: ["mobile", "phone", "tablet", "touch", "fan", "dial"],
 						render: (setting) => this.renderMobileDialEnabled(setting),
 					},
@@ -354,7 +342,13 @@ export class NeokeysSettingTab extends PluginSettingTab {
 	private renderMobileDialEnabled(setting: Setting): void {
 		setting
 			.setName(MOBILE_DIAL_NAME)
-			.setDesc(MOBILE_DIAL_DESC)
+			.setDesc(
+				createFragment((fragment) => {
+					fragment.appendText(MOBILE_DIAL_DESC);
+					fragment.createEl("br");
+					fragment.appendText(MOBILE_DIAL_DESKTOP_NOTE);
+				}),
+			)
 			.addToggle((toggle) =>
 				toggle.setValue(this.plugin.settings.mobileDialEnabled).onChange(async (value) => {
 					this.plugin.settings.mobileDialEnabled = value;

@@ -58,15 +58,20 @@ const KNOWN = new Set([
 const PHONE: DialGeometry = {
 	corner: "bottom-right",
 	anchor: { x: 350, y: 804 },
-	bounds: { left: 4, top: 60, right: 386, bottom: 832 },
+	bounds: { left: 4, top: 60, right: 386, bottom: 840 },
 };
 
 /** A box so short that only one ring of three fits, to force paging. */
 const TINY: DialGeometry = {
 	corner: "bottom-right",
 	anchor: { x: 350, y: 180 },
-	bounds: { left: 4, top: 60, right: 386, bottom: 208 },
+	bounds: { left: 4, top: 60, right: 386, bottom: 216 },
 };
+
+/** A key event as the DOM would deliver it, for the hardware-keyboard path. */
+function key(k: string, mods: Partial<{ ctrlKey: boolean; shiftKey: boolean; altKey: boolean; metaKey: boolean }> = {}) {
+	return { key: k, ctrlKey: false, shiftKey: false, altKey: false, metaKey: false, ...mods };
+}
 
 function makeHost() {
 	const calls = { executed: [] as string[], opened: [] as string[], notices: [] as string[], vibrations: 0 };
@@ -182,6 +187,48 @@ describe("DialController opening and closing", () => {
 		expect(controller.view().armedLabel).toBeNull();
 		controller.release();
 		expect(controller.isOpen).toBe(false);
+	});
+
+	it("a tap on blank space inside the fan closes it without running anything", () => {
+		const { controller, root, calls } = setup();
+		controller.open(root);
+		// 185px from the anchor at 3 degrees: within the fan's reach, but 120px from the lone outer item.
+		const rad = (3 * Math.PI) / 180;
+		controller.pressAt({ x: PHONE.anchor.x - 185 * Math.cos(rad), y: PHONE.anchor.y - 185 * Math.sin(rad) });
+		expect(controller.view().armedLabel).toBeNull();
+		controller.release();
+		expect(controller.isOpen).toBe(false);
+		expect(calls.executed).toEqual([]);
+		expect(calls.notices).toEqual([]);
+		// Just outside the anchor's rim, short of the first ring: the same.
+		controller.open(root);
+		controller.pressAt({ x: PHONE.anchor.x - 30, y: PHONE.anchor.y - 30 });
+		expect(controller.view().armedLabel).toBeNull();
+		controller.release();
+		expect(controller.isOpen).toBe(false);
+		expect(controller.view().crumbs).toEqual([]);
+	});
+
+	it("an anchor press needs a root only to open; an open dial takes one without", () => {
+		const { controller, root } = setup();
+		controller.pressAnchor();
+		expect(controller.isOpen).toBe(false);
+		expect(controller.isPressing).toBe(false);
+		controller.open(root);
+		controller.pressAnchor();
+		expect(controller.isPressing).toBe(true);
+		controller.release();
+		expect(controller.isOpen).toBe(false);
+	});
+
+	it("reports pressing from the very first change of the press that opens the dial", () => {
+		const root = parseKeymapSource(SOURCE);
+		const { host } = makeHost();
+		const controller = new DialController(host, () => PHONE);
+		const seen: boolean[] = [];
+		controller.onChange(() => seen.push(controller.view().pressing));
+		controller.pressAnchor(root);
+		expect(seen).toEqual([true]);
 	});
 
 	it("close() and back() at the root close it; back() deeper goes up one level", () => {
@@ -478,6 +525,133 @@ describe("DialController paging", () => {
 	});
 });
 
+describe("DialController keyboard", () => {
+	it("a bound key picks its entry exactly as a release on it would", () => {
+		const { controller, root, calls } = setup();
+		controller.open(root);
+		controller.typeKey(key("w"));
+		expect(controller.view().crumbs).toEqual(["Window"]);
+		expect(calls.executed).toEqual([]);
+		controller.typeKey(key("c"));
+		expect(calls.executed).toEqual(["workspace:new-tab"]);
+		expect(controller.isOpen).toBe(false);
+	});
+
+	it("shift on a letter selects the uppercase binding", () => {
+		const { controller, root, calls } = setup();
+		controller.open(root);
+		controller.typeKey(key("w"));
+		controller.typeKey(key("W", { shiftKey: true }));
+		expect(calls.executed).toEqual(["workspace:close-window"]);
+	});
+
+	it("Backspace goes back and closes at the root; Escape closes from anywhere", () => {
+		const { controller, root } = setup();
+		controller.open(root);
+		controller.typeKey(key("w"));
+		controller.typeKey(key("Backspace"));
+		expect(controller.isOpen).toBe(true);
+		expect(controller.view().crumbs).toEqual([]);
+		controller.typeKey(key("Backspace"));
+		expect(controller.isOpen).toBe(false);
+		controller.open(root);
+		controller.typeKey(key("w"));
+		controller.typeKey(key("Escape"));
+		expect(controller.isOpen).toBe(false);
+	});
+
+	it("an unbound key does nothing and leaves the dial where it was", () => {
+		const { controller, root, calls } = setup();
+		controller.open(root);
+		controller.typeKey(key("q"));
+		controller.typeKey(key("w", { ctrlKey: true }));
+		expect(controller.isOpen).toBe(true);
+		expect(controller.view().crumbs).toEqual([]);
+		expect(calls.executed).toEqual([]);
+	});
+
+	it("a key for an unknown command shows the notice and keeps the dial open", () => {
+		const { controller, root, calls } = setup();
+		controller.open(root);
+		controller.typeKey(key("b"));
+		expect(calls.notices).toEqual(['Neokeys: command "plugin:bogus" is not available']);
+		expect(calls.executed).toEqual([]);
+		expect(controller.isOpen).toBe(true);
+	});
+
+	it("keys do nothing while the dial is closed", () => {
+		const { controller, calls } = setup();
+		controller.typeKey(key("z"));
+		expect(controller.isOpen).toBe(false);
+		expect(calls.executed).toEqual([]);
+	});
+
+	it("a key during a held press drops the press, so the finger cannot act as well", () => {
+		const { controller, root, calls } = setup();
+		controller.pressAnchor(root);
+		controller.moveTo(itemAt(controller, "Zoom"));
+		expect(controller.view().armedLabel).toBe("Zoom");
+		controller.typeKey(key("f"));
+		expect(controller.view().crumbs).toEqual(["File"]);
+		expect(controller.isPressing).toBe(false);
+		controller.release();
+		expect(calls.executed).toEqual([]);
+		expect(controller.view().crumbs).toEqual(["File"]);
+	});
+});
+
+describe("DialController relayout during a press", () => {
+	/** Open TINY paged, turn to page 2 and hold "Zoom" (ring 0, slot 0); returns the held point. */
+	function holdZoomOnPageTwo(controller: DialController, root: ReturnType<typeof parseKeymapSource>) {
+		controller.open(root);
+		controller.pressAt(itemAt(controller, "More"));
+		controller.release();
+		const zoom = itemAt(controller, "Zoom");
+		controller.pressAt(zoom);
+		expect(controller.view().armedLabel).toBe("Zoom");
+		return zoom;
+	}
+
+	it("re-arms what is under the finger; a release on nothing then leaves the dial open", () => {
+		let geometry = TINY;
+		const root = parseKeymapSource(SOURCE);
+		const { host, calls } = makeHost();
+		const controller = new DialController(host, () => geometry);
+		holdZoomOnPageTwo(controller, root);
+		// The keyboard went away: the anchor dropped 220px and the whole level now fits on one page.
+		geometry = { ...TINY, anchor: { x: 350, y: 400 }, bounds: { ...TINY.bounds, bottom: 436 } };
+		controller.relayout();
+		expect(controller.view().pages).toBe(1);
+		expect(controller.view().armedLabel).toBeNull();
+		expect(controller.isPressing).toBe(true);
+		controller.release();
+		expect(calls.executed).toEqual([]);
+		expect(calls.opened).toEqual([]);
+		expect(controller.isOpen).toBe(true);
+		expect(controller.view().crumbs).toEqual([]);
+	});
+
+	it("arms the item that moved under the finger, never the stale index", () => {
+		let geometry = TINY;
+		const root = parseKeymapSource(SOURCE);
+		const { host, calls } = makeHost();
+		const controller = new DialController(host, () => geometry);
+		const held = holdZoomOnPageTwo(controller, root);
+		// The anchor drops by one ring: the held point now lies on the lone outer item of the single page.
+		geometry = { ...TINY, anchor: { x: 350, y: 268 }, bounds: { ...TINY.bounds, bottom: 304 } };
+		controller.relayout();
+		const view = controller.view();
+		expect(view.pages).toBe(1);
+		const armed = view.items.find((i) => i.armed);
+		expect(armed?.label).toBe("Bogus");
+		expect(Math.hypot((armed?.x ?? 0) - held.x, (armed?.y ?? 0) - held.y)).toBeLessThanOrEqual(armed!.size / 2);
+		controller.release();
+		expect(calls.executed).toEqual([]);
+		expect(calls.notices).toEqual(['Neokeys: command "plugin:bogus" is not available']);
+		expect(controller.isOpen).toBe(true);
+	});
+});
+
 describe("DialController relayout", () => {
 	it("re-measures and re-places the current level on relayout", () => {
 		let geometry = PHONE;
@@ -491,6 +665,27 @@ describe("DialController relayout", () => {
 		const after = controller.view().items[0];
 		expect(after.y).toBeCloseTo(before.y - 304, 6);
 		expect(after.x).toBeCloseTo(before.x, 6);
+	});
+
+	it("reports a relayout of the same items as 'layout' and a different set of items as 'structure'", () => {
+		let geometry = PHONE;
+		const root = parseKeymapSource(SOURCE);
+		const { host } = makeHost();
+		const changes: string[] = [];
+		const controller = new DialController(host, () => geometry);
+		controller.onChange((change) => changes.push(change));
+		controller.open(root);
+		expect(changes).toEqual(["structure"]);
+		geometry = { ...PHONE, anchor: { x: 350, y: 500 }, bounds: { ...PHONE.bounds, bottom: 536 } };
+		controller.relayout();
+		expect(changes.at(-1)).toBe("layout");
+		controller.pressAt(itemAt(controller, "Window"));
+		controller.release();
+		expect(changes.at(-1)).toBe("structure");
+		controller.relayout();
+		expect(changes.at(-1)).toBe("layout");
+		controller.back();
+		expect(changes.at(-1)).toBe("structure");
 	});
 
 	it("notifies listeners of structure changes on open, descend and page turn, and of armed changes on moves", () => {

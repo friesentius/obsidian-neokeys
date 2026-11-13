@@ -1,4 +1,4 @@
-import { App, Notice, setIcon } from "obsidian";
+import { App, Notice, Scope, setIcon } from "obsidian";
 import { DialController, type DialChange, type DialHost, type DialItemView, type DialView } from "../dial/controller";
 import type { DialGeometry, DialLayoutMode } from "../dial/layout";
 import { getCommandName, hasCommand } from "../obsidianCommands";
@@ -20,8 +20,18 @@ export interface MobileDialOptions {
 	animation(): MobileDialAnimation;
 }
 
-/** Items keep this far from the screen's side edges and from the breadcrumb pill. */
+/** Items keep this far from the screen's side edges, from the breadcrumb pill, and from whatever is below the anchor. */
 const EDGE_MARGIN = 4;
+
+/** How far the anchor sits from the screen's edges and from the chrome below it (the stylesheet's --neokeys-dial-edge). */
+const ANCHOR_EDGE = 12;
+
+/**
+ * Where the view header is when none can be measured (no note open): Obsidian's own variables,
+ * which it defines on phones; tablets leave the offset undefined, hence the measuring.
+ */
+const HEADER_TOP_FALLBACK = "var(--view-header-top-offset, var(--safe-area-inset-top, 0px))";
+const HEADER_BOTTOM_FALLBACK = `calc(${HEADER_TOP_FALLBACK} + var(--view-header-height, 44px))`;
 
 /** A haptic tick where the platform offers one; never relied on (iOS WebKit has no vibrate()). */
 function vibrate(): void {
@@ -34,12 +44,17 @@ function vibrate(): void {
 	}
 }
 
+/** A label as the item shows it: a slash gets a break opportunity after it, so "bullet/checkbox" wraps there rather than mid-word. */
+function itemLabelText(label: string): string {
+	return label.replace(/\//g, "/​");
+}
+
 /**
  * The mobile dial's DOM: a fixed, full-screen layer holding the pinned anchor button, the fan of
  * items, the breadcrumb pill with its Back and Close buttons, and a backdrop that only exists
  * while the dial is open (so an idle dial claims nothing beyond the anchor itself, and Obsidian's
  * edge swipes keep working). All geometry and gesture logic lives in DialController; this class
- * measures, forwards pointer events, and renders the controller's view.
+ * measures, forwards pointer and key events, and renders the controller's view.
  */
 export class MobileDial {
 	private readonly layerEl: HTMLElement;
@@ -52,13 +67,17 @@ export class MobileDial {
 	private itemEls: HTMLElement[] = [];
 	/** The one pointer the dial is tracking; any other pointer is ignored until it is released. */
 	private activePointerId: number | null = null;
+	/** The keyboard scope that owns every key while the dial is open; null while it is closed. */
+	private scope: Scope | null = null;
+	/** A pending re-measure, so a burst of observer callbacks produces one relayout per frame. */
+	private frame: number | null = null;
 	private resizeObserver: ResizeObserver | null = null;
 	private mutationObserver: MutationObserver | null = null;
 	private classObserver: MutationObserver | null = null;
 	private readonly teardown: (() => void)[] = [];
 
 	constructor(
-		app: App,
+		private readonly app: App,
 		/** Parses the current keymap, or reports why it cannot and returns null. */
 		private readonly getRoot: () => GroupNode | null,
 		private readonly options: MobileDialOptions,
@@ -86,14 +105,15 @@ export class MobileDial {
 			attr: { type: "button", "aria-label": "Back", tabindex: "-1" },
 		});
 		setIcon(backEl, "arrow-left");
-		this.crumbsEl = this.pillEl.createDiv({ cls: "neokeys-dial-crumbs" });
+		// The breadcrumb is what a screen reader hears change: the level, the page and the armed item.
+		this.crumbsEl = this.pillEl.createDiv({ cls: "neokeys-dial-crumbs", attr: { "aria-live": "polite", "aria-atomic": "true" } });
 		const closeEl = this.pillEl.createEl("button", {
 			cls: "neokeys-dial-pill-button",
 			attr: { type: "button", "aria-label": "Close", tabindex: "-1" },
 		});
 		setIcon(closeEl, "x");
 
-		this.fanEl = this.layerEl.createDiv({ cls: "neokeys-dial-fan" });
+		this.fanEl = this.layerEl.createDiv({ cls: "neokeys-dial-fan", attr: { role: "group", "aria-label": "Neokeys dial items" } });
 		this.anchorEl = this.layerEl.createEl("button", {
 			cls: "neokeys-dial-anchor",
 			attr: { type: "button", "aria-label": "Neokeys leader", tabindex: "-1" },
@@ -122,6 +142,22 @@ export class MobileDial {
 		}
 		this.listen(backEl, "pointerup", () => this.controller.back());
 		this.listen(closeEl, "pointerup", () => this.controller.close());
+
+		// Assistive technology and keyboard activation arrive as clicks with no pointer behind them
+		// (detail 0). A click that follows a real press (a mouse on a tablet) is ignored, since the
+		// pointer path already acted on it; touches never produce one because touchend is swallowed.
+		this.listen(backEl, "click", (evt) => {
+			if (evt.detail === 0) this.controller.back();
+		});
+		this.listen(closeEl, "click", (evt) => {
+			if (evt.detail === 0) this.controller.close();
+		});
+		this.listen(this.anchorEl, "click", (evt) => {
+			if (evt.detail === 0) this.activateAnchor();
+		});
+		// Items take no pointer events themselves (the backdrop does, so a drag is hit-tested by
+		// geometry), so a click reaching one is an assistive-technology activation.
+		this.listen(this.fanEl, "click", (evt) => this.onItemClick(evt));
 	}
 
 	/** Attach to the document and start following the keyboard, toolbar and window. */
@@ -161,13 +197,16 @@ export class MobileDial {
 			this.classObserver.observe(workspace, { attributes: true, attributeFilter: ["class"] });
 		}
 
-		this.updateChrome();
-		this.updateDrawerState();
+		this.syncSurroundings();
 	}
 
 	destroy(): void {
-		this.controller.onChange(() => undefined);
+		this.cancelFrame();
+		// Close first so the last render pops the key scope; then stop listening and pop it again
+		// as a belt, since a leaked catch-all scope would swallow every key in the app.
 		this.controller.close();
+		this.controller.onChange(() => undefined);
+		this.popScope();
 		this.resizeObserver?.disconnect();
 		this.mutationObserver?.disconnect();
 		this.classObserver?.disconnect();
@@ -175,8 +214,14 @@ export class MobileDial {
 		this.layerEl.remove();
 	}
 
-	/** Open at the root of the current keymap (the Leader command's mobile path). */
+	/**
+	 * Open at the root of the current keymap (the Leader command's mobile path). While a sidebar
+	 * drawer hides the dial there is nothing to open onto, so this does nothing then.
+	 */
 	open(): void {
+		this.cancelFrame();
+		this.syncSurroundings();
+		if (this.layerEl.hasClass("neokeys-dial-hidden")) return;
 		const root = this.getRoot();
 		if (!root) return;
 		this.applyAnimation();
@@ -199,9 +244,17 @@ export class MobileDial {
 
 	private onPointerDown(evt: PointerEvent, captureEl: HTMLElement, origin: "anchor" | "backdrop"): void {
 		if (!evt.isPrimary || this.activePointerId !== null) return;
+		// A mouse's secondary buttons (a tablet with a mouse or trackpad) open nothing.
+		if (evt.pointerType === "mouse" && evt.button !== 0) return;
 		evt.preventDefault();
-		const root = this.getRoot();
-		if (!root) return;
+		// The keymap is parsed only when a press opens the dial; an open dial already holds it.
+		let root: GroupNode | undefined;
+		if (origin === "anchor" && !this.controller.isOpen) {
+			const parsed = this.getRoot();
+			if (!parsed) return;
+			root = parsed;
+			this.applyAnimation();
+		}
 		this.activePointerId = evt.pointerId;
 		try {
 			captureEl.setPointerCapture(evt.pointerId);
@@ -209,7 +262,6 @@ export class MobileDial {
 			// A pointer that is already gone cannot be captured; the press still proceeds and ends normally.
 		}
 		if (origin === "anchor") {
-			if (!this.controller.isOpen) this.applyAnimation();
 			this.controller.pressAnchor(root);
 		} else {
 			this.controller.pressAt({ x: evt.clientX, y: evt.clientY });
@@ -235,7 +287,45 @@ export class MobileDial {
 		this.controller.cancelPress();
 	}
 
+	/** Keyboard or assistive-technology activation of the anchor: what a tap on it does. */
+	private activateAnchor(): void {
+		if (this.controller.isPressing) return;
+		if (this.controller.isOpen) {
+			this.controller.back();
+			return;
+		}
+		this.open();
+	}
+
+	/** Assistive-technology activation of an item: select it the way a tap on its centre would. */
+	private onItemClick(evt: MouseEvent): void {
+		if (this.controller.isPressing || !this.controller.isOpen) return;
+		const target = evt.target;
+		if (!target || !(target instanceof Element)) return;
+		const itemEl = target.closest(".neokeys-dial-item");
+		const index = this.itemEls.findIndex((el) => el === itemEl);
+		const item = this.controller.view().items[index];
+		if (!item) return;
+		this.controller.pressAt({ x: item.x, y: item.y });
+		this.controller.release();
+	}
+
 	private onSurroundingsChanged(): void {
+		if (this.frame !== null) return;
+		this.frame = window.requestAnimationFrame(() => {
+			this.frame = null;
+			this.syncSurroundings();
+		});
+	}
+
+	private cancelFrame(): void {
+		if (this.frame === null) return;
+		window.cancelAnimationFrame(this.frame);
+		this.frame = null;
+	}
+
+	/** Measure Obsidian's chrome and drawers right now, and re-place an open dial accordingly. */
+	private syncSurroundings(): void {
 		this.updateChrome();
 		this.updateDrawerState();
 		if (this.controller.isOpen) this.controller.relayout();
@@ -275,6 +365,27 @@ export class MobileDial {
 		this.layerEl.setCssProps({ "--neokeys-dial-chrome": `${Math.round(chrome)}px` });
 	}
 
+	/**
+	 * Where the active note's view header is, so the pill sits just below it (or exactly over it
+	 * when raised). Measured rather than taken from Obsidian's variables because a tablet shows a
+	 * tab strip above the header and defines no header offset at all; the variables are only the
+	 * fallback when no header is on screen.
+	 */
+	private updateHeaderOffsets(): void {
+		const visible = (el: Element): boolean => {
+			const rect = el.getBoundingClientRect();
+			return rect.width > 0 && rect.height > 0 && rect.bottom > 0;
+		};
+		const body = activeDocument.body;
+		const active = body.querySelector(".mod-root .workspace-leaf.mod-active .view-header");
+		const header = active && visible(active) ? active : Array.from(body.querySelectorAll(".mod-root .view-header")).find(visible);
+		const rect = header?.getBoundingClientRect();
+		this.layerEl.setCssProps({
+			"--neokeys-dial-header-top": rect ? `${Math.round(rect.top)}px` : HEADER_TOP_FALLBACK,
+			"--neokeys-dial-header-bottom": rect ? `${Math.round(rect.bottom)}px` : HEADER_BOTTOM_FALLBACK,
+		});
+	}
+
 	private applyAnimation(): void {
 		const animation = this.options.animation();
 		this.layerEl.toggleClass("neokeys-animate", animation.enabled);
@@ -285,9 +396,12 @@ export class MobileDial {
 	 * The anchor and the screen as they are right now, with the pill placed for `mode` first so
 	 * its extent can be measured: the pill is always laid out (hidden, not removed). Normal keeps
 	 * the whole pill clear; raised moves it up over the view header and keeps it clear there;
-	 * overlap keeps only its top edge clear and lets the rings reach up behind it.
+	 * overlap keeps only its top edge clear and lets the rings reach up behind it. Items may
+	 * reach a little below the anchor (they are bigger than it) but stay a margin above the
+	 * toolbar, keyboard or safe area the anchor itself keeps clear of.
 	 */
 	private measure(mode: DialLayoutMode): DialGeometry {
+		this.updateHeaderOffsets();
 		this.layerEl.toggleClass("neokeys-dial-raised", mode !== "normal");
 		const anchor = this.anchorEl.getBoundingClientRect();
 		const pill = this.pillEl.getBoundingClientRect();
@@ -298,38 +412,94 @@ export class MobileDial {
 				left: EDGE_MARGIN,
 				top: (mode === "overlap" ? pill.top : pill.bottom) + EDGE_MARGIN,
 				right: activeWindow.innerWidth - EDGE_MARGIN,
-				bottom: anchor.bottom,
+				bottom: anchor.bottom + (ANCHOR_EDGE - EDGE_MARGIN),
 			},
 		};
+	}
+
+	/** Every key goes to the dial while it is open, exactly as it does to the which-key popup. */
+	private syncScope(open: boolean): void {
+		if (open && this.scope === null) {
+			const scope = new Scope(this.app.scope);
+			scope.register(null, null, (evt) => {
+				if (!evt.isComposing) this.controller.typeKey(evt);
+				return false;
+			});
+			this.app.keymap.pushScope(scope);
+			this.scope = scope;
+		} else if (!open) {
+			this.popScope();
+		}
+	}
+
+	private popScope(): void {
+		if (this.scope === null) return;
+		this.app.keymap.popScope(this.scope);
+		this.scope = null;
 	}
 
 	private render(change: DialChange): void {
 		const view = this.controller.view();
 		this.layerEl.toggleClass("neokeys-dial-open", view.open);
-		this.layerEl.toggleClass("neokeys-dial-pressing", view.pressing);
 		this.layerEl.toggleClass("neokeys-dial-compact", view.compact);
+		if (view.open) {
+			this.layerEl.setAttribute("role", "dialog");
+			this.layerEl.setAttribute("aria-label", "Neokeys dial");
+		} else {
+			this.layerEl.removeAttribute("role");
+			this.layerEl.removeAttribute("aria-label");
+		}
+		this.syncScope(view.open);
 		this.renderCrumbs(view);
-		if (change === "structure") {
+		if (change === "structure" || this.itemEls.length !== view.items.length) {
 			this.renderItems(view.items);
 		} else {
-			view.items.forEach((item, index) => this.itemEls[index]?.toggleClass("neokeys-dial-item-armed", item.armed));
+			// The same items: move them (a relayout) or restyle them (the armed one changed) in
+			// place, so nothing is rebuilt and the pop-in does not replay.
+			view.items.forEach((item, index) => this.placeItem(this.itemEls[index], item, change === "layout"));
 		}
 	}
 
 	private renderCrumbs(view: DialView): void {
 		this.crumbsEl.empty();
 		if (!view.open) return;
-		this.crumbsEl.createSpan({ cls: "neokeys-dial-crumb", text: view.title });
-		for (const label of view.crumbs) {
-			this.crumbsEl.createSpan({ cls: "neokeys-dial-crumb-sep", text: "›" });
-			this.crumbsEl.createSpan({ cls: "neokeys-dial-crumb", text: label });
+		// A leading ellipsis stands in for whatever part of the trail had to be collapsed to fit.
+		const collapsedEl = this.crumbsEl.createSpan({ cls: "neokeys-dial-crumb neokeys-dial-crumb-collapsed neokeys-hidden", text: "…" });
+		const trail: HTMLElement[] = [];
+		const seps: HTMLElement[] = [];
+		[view.title, ...view.crumbs].forEach((label, i) => {
+			if (i > 0) seps.push(this.crumbsEl.createSpan({ cls: "neokeys-dial-crumb-sep", text: "›" }));
+			trail.push(this.crumbsEl.createSpan({ cls: "neokeys-dial-crumb neokeys-dial-crumb-trail", text: label }));
+		});
+		if (view.pages > 1) {
+			this.crumbsEl.createSpan({ cls: "neokeys-dial-crumb-page", text: `${view.page + 1}/${view.pages}` });
 		}
 		if (view.armedLabel !== null) {
 			this.crumbsEl.createSpan({ cls: "neokeys-dial-crumb-sep", text: "›" });
-			this.crumbsEl.createSpan({
-				cls: `neokeys-dial-crumb neokeys-dial-crumb-armed${view.armedInvalid ? " neokeys-dial-crumb-invalid" : ""}`,
-				text: view.armedInvalid ? `${view.armedLabel} (unknown command)` : view.armedLabel,
-			});
+			const armedEl = this.crumbsEl.createSpan({ cls: "neokeys-dial-crumb neokeys-dial-crumb-armed", text: view.armedLabel });
+			if (view.armedInvalid) {
+				armedEl.addClass("neokeys-dial-crumb-invalid");
+				// The reason is a separate crumb, so it gives way before the label itself does.
+				this.crumbsEl.createSpan({ cls: "neokeys-dial-crumb neokeys-dial-crumb-note neokeys-dial-crumb-invalid", text: "(unknown command)" });
+			}
+		}
+		this.fitCrumbs(collapsedEl, trail, seps, view.armedLabel !== null);
+	}
+
+	/**
+	 * Collapse the trail from the left while any crumb is cut short, so the pill always prefers
+	 * the end of the path: "Neokeys › Text › Heading › Increase heading level" becomes
+	 * "… › Heading › Increase heading level" on a narrow phone, then "… › Increase heading level".
+	 * With nothing armed the current level's own crumb always stays; the stylesheet ellipsizes
+	 * whatever still does not fit after that.
+	 */
+	private fitCrumbs(collapsedEl: HTMLElement, trail: HTMLElement[], seps: HTMLElement[], armed: boolean): void {
+		const cut = (): boolean => Array.from(this.crumbsEl.querySelectorAll(".neokeys-dial-crumb")).some((el) => el.scrollWidth > el.clientWidth + 1);
+		const keep = armed ? 0 : 1;
+		for (let hidden = 0; hidden < trail.length - keep && cut(); hidden++) {
+			trail[hidden].addClass("neokeys-hidden");
+			if (hidden > 0) seps[hidden - 1].addClass("neokeys-hidden");
+			collapsedEl.removeClass("neokeys-hidden");
 		}
 	}
 
@@ -338,16 +508,30 @@ export class MobileDial {
 		this.itemEls = items.map((item) => {
 			const el = this.fanEl.createDiv({
 				cls: `neokeys-dial-item neokeys-dial-item-${item.kind}${item.invalid ? " neokeys-dial-item-invalid" : ""}`,
+				attr: { role: "button", "aria-label": itemAccessibleName(item) },
 			});
+			el.createSpan({ cls: "neokeys-dial-item-key", text: item.key, attr: { "aria-hidden": "true" } });
+			el.createSpan({ cls: "neokeys-dial-item-label", text: itemLabelText(item.label), attr: { "aria-hidden": "true" } });
+			this.placeItem(el, item, true);
+			return el;
+		});
+	}
+
+	private placeItem(el: HTMLElement, item: DialItemView, moved: boolean): void {
+		if (moved) {
 			el.setCssProps({
 				"--neokeys-dial-x": `${item.x}px`,
 				"--neokeys-dial-y": `${item.y}px`,
 				"--neokeys-dial-size": `${item.size}px`,
 			});
-			el.toggleClass("neokeys-dial-item-armed", item.armed);
-			el.createSpan({ cls: "neokeys-dial-item-key", text: item.key });
-			el.createSpan({ cls: "neokeys-dial-item-label", text: item.label });
-			return el;
-		});
+		}
+		el.toggleClass("neokeys-dial-item-armed", item.armed);
+		el.setAttribute("aria-pressed", item.armed ? "true" : "false");
 	}
+}
+
+function itemAccessibleName(item: DialItemView): string {
+	if (item.kind === "more") return "More items, next page";
+	const kind = item.kind === "group" ? ", group" : item.kind === "file" ? ", file" : item.invalid ? ", unknown command" : "";
+	return `${item.label}${kind}, key ${item.key}`;
 }

@@ -6,7 +6,8 @@ import { applyHeadingLevelToEditor } from "./headingLevel";
 import { KeymapParseError, parseKeymapSource } from "./keymap";
 import { keyFromEvent, keysEqual } from "./keys";
 import { executeCommandById } from "./obsidianCommands";
-import { DEFAULT_SETTINGS, NeokeysSettingTab, parseDialCorner } from "./settings";
+import { DEFAULT_SETTINGS, resolveSettings } from "./defaultSettings";
+import { NeokeysSettingTab } from "./settings";
 import type { GroupNode, NeokeysSettings } from "./types";
 import { MobileDial } from "./ui/mobileDial";
 import { WhichKeyModal, type WhichKeyCallbacks } from "./ui/whichKeyModal";
@@ -50,10 +51,7 @@ export default class NeokeysPlugin extends Plugin {
 	}
 
 	async loadSettings(): Promise<void> {
-		const loaded = (await this.loadData()) as Partial<NeokeysSettings> | null;
-		this.settings = Object.assign({}, DEFAULT_SETTINGS, loaded ?? {});
-		this.settings.mobileDialEnabled = Boolean(this.settings.mobileDialEnabled);
-		this.settings.mobileDialCorner = parseDialCorner(this.settings.mobileDialCorner);
+		this.settings = resolveSettings(await this.loadData());
 	}
 
 	async saveSettings(): Promise<void> {

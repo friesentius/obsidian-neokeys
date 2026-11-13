@@ -494,13 +494,15 @@
 }
 
 /*
- * The breadcrumb pill sits just below Obsidian's view header so it never covers the header's
- * buttons; when a level needs the room (a small phone with its keyboard up), the plugin raises it
- * over the header instead (.neokeys-dial-raised).
+ * The breadcrumb pill sits just below the active note's view header so it never covers the
+ * header's buttons (the plugin measures the header into --neokeys-dial-header-top/bottom, since
+ * tablets put a tab strip above it and define no header offset variable); when a level needs the
+ * room (a small phone with its keyboard up), the plugin raises it over the header instead
+ * (.neokeys-dial-raised). Neither ever goes above the safe area.
  */
 .neokeys-dial-pill {
 	position: absolute;
-	top: calc(var(--view-header-top-offset, var(--safe-area-inset-top, 0px)) + var(--view-header-height, 44px) + var(--size-4-2));
+	top: calc(max(var(--neokeys-dial-header-bottom, var(--safe-area-inset-top, 0px)), var(--safe-area-inset-top, 0px)) + var(--size-4-2));
 	left: 50%;
 	transform: translateX(-50%);
 	max-width: calc(100% - 2 * var(--neokeys-dial-edge));
@@ -526,7 +528,7 @@ body.theme-light .neokeys-dial {
 }
 
 .neokeys-dial-raised .neokeys-dial-pill {
-	top: calc(var(--safe-area-inset-top, 0px) + var(--size-4-2));
+	top: max(var(--neokeys-dial-header-top, var(--safe-area-inset-top, 0px)), var(--safe-area-inset-top, 0px));
 }
 
 .neokeys-dial-pill-button {
@@ -552,24 +554,64 @@ body.theme-light .neokeys-dial {
 	color: var(--text-normal);
 }
 
+/* Obsidian pads every tablet button that is not a clickable-icon (0,2,1 specificity); these round icon buttons stay unpadded and their icons never shrink. */
+.neokeys-dial button.neokeys-dial-anchor,
+.neokeys-dial button.neokeys-dial-pill-button {
+	padding: 0;
+}
+
+.neokeys-dial-anchor svg,
+.neokeys-dial-pill-button svg {
+	flex-shrink: 0;
+}
+
+/* When the trail does not fit, the earlier crumbs give way (each down to an ellipsis) before the armed label, which only shrinks when it is too wide on its own. */
 .neokeys-dial-crumbs {
+	display: flex;
+	align-items: baseline;
 	min-width: 0;
 	overflow: hidden;
 	white-space: nowrap;
-	text-overflow: ellipsis;
 	font-size: var(--font-ui-small);
 	color: var(--text-normal);
 	padding: 0 var(--size-2-1);
 }
 
+.neokeys-dial-crumb {
+	flex: 0 1 auto;
+	min-width: 1.25em;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.neokeys-dial-crumb-trail {
+	flex-shrink: 1000;
+}
+
 .neokeys-dial-crumb-sep {
+	flex-shrink: 0;
 	color: var(--text-faint);
 	margin: 0 var(--size-2-1);
 }
 
+.neokeys-dial-crumb-page {
+	flex-shrink: 0;
+	margin-left: var(--size-2-1);
+	font-size: var(--font-ui-smaller);
+	color: var(--text-faint);
+}
+
 .neokeys-dial-crumb-armed {
+	min-width: 2.5em;
 	color: var(--text-accent);
 	font-weight: var(--font-semibold);
+}
+
+.neokeys-dial-crumb-note {
+	flex-shrink: 1000;
+	min-width: 0;
+	margin-left: var(--size-2-1);
+	font-size: var(--font-ui-smaller);
 }
 
 .neokeys-dial-crumb-invalid {
@@ -584,6 +626,7 @@ body.theme-light .neokeys-dial {
 
 /* Positions come from the layout module as custom properties, so the stylesheet owns every static style. */
 .neokeys-dial-item {
+	--neokeys-dial-label-size: 0.625rem;
 	position: absolute;
 	left: 0;
 	top: 0;
@@ -599,53 +642,59 @@ body.theme-light .neokeys-dial {
 	flex-direction: column;
 	align-items: center;
 	justify-content: center;
-	gap: 1px;
-	padding: 0 var(--size-2-1);
+	padding: 0 var(--size-2-2);
 	overflow: hidden;
 	pointer-events: none;
 }
 
-/* The key is a small chip above the label: on a touch screen the label is what identifies an item, the key is a reminder for a hardware keyboard. */
+/*
+ * The key is a small chip tucked into the circle's top cap, above the label block, so the label
+ * keeps the circle's widest chords: on a touch screen the label is what identifies an item, the
+ * key is a reminder for a hardware keyboard.
+ */
 .neokeys-dial-item-key {
-	flex-shrink: 0;
+	position: absolute;
+	top: 3px;
+	left: 50%;
+	transform: translateX(-50%);
 	font-family: var(--font-monospace);
 	font-weight: var(--font-bold);
-	font-size: 0.6rem;
+	font-size: 0.5rem;
 	line-height: 1;
-	padding: 1px var(--size-2-2);
+	padding: 1px var(--size-2-1);
 	border-radius: var(--radius-s);
 	background-color: var(--background-modifier-hover);
 }
 
-/* Two lines of label, broken anywhere if a word is too long, so siblings that share a first word ("Split vertically", "Split horizontally") still read apart. */
+/* Up to three lines of label, centred on the circle; a word too long for a line breaks anywhere, hyphenated where the platform can, so no sibling pair is left reading the same. */
 .neokeys-dial-item-label {
 	display: -webkit-box;
 	-webkit-box-orient: vertical;
-	-webkit-line-clamp: 2;
+	-webkit-line-clamp: 3;
 	overflow: hidden;
 	overflow-wrap: anywhere;
 	hyphens: auto;
 	text-align: center;
-	font-size: 0.6rem;
+	font-size: var(--neokeys-dial-label-size);
 	letter-spacing: -0.01em;
-	line-height: 1.15;
+	line-height: 1.1;
 	color: var(--text-muted);
 }
 
-/* Compact items (the minimum thumb size) shrink the chip and the label a step so both still fit, and give the label every pixel of width. */
+/* Compact items (the minimum thumb size) have no cap to spare: the chip rejoins the column and the label keeps two lines. */
 .neokeys-dial-compact .neokeys-dial-item {
-	padding: 0;
-	gap: 0;
+	--neokeys-dial-label-size: 0.55rem;
+	padding: 0 var(--size-2-1);
 }
 
 .neokeys-dial-compact .neokeys-dial-item-key {
-	font-size: 0.5rem;
+	position: static;
+	transform: none;
 	padding: 0 var(--size-2-1);
 }
 
 .neokeys-dial-compact .neokeys-dial-item-label {
-	font-size: 0.55rem;
-	line-height: 1.1;
+	-webkit-line-clamp: 2;
 }
 
 .neokeys-dial-item-group {

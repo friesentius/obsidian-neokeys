@@ -195,14 +195,16 @@ On phones and tablets, Neokeys replaces typing with a **dial**: a leader button 
 corner of the screen. Press it and the current menu's items fan out on evenly spaced concentric
 rings around it, innermost ring first, each ring holding more than the one inside it, so on a
 typical phone even the default keymap's twelve-item Window group stays on one screen. Every item
-shows its label on up to two lines with its key as a small chip above. Drag from the button onto
-an item and let go to act on it: a group opens its own items, a command runs, a file opens.
-Passing over an item on the way only highlights it, so nothing happens until you release. A direct
-tap on an item does the same thing, and a tap on the button once the dial is open goes back up one
-level (or closes it at the root), the way <kbd>Backspace</kbd> does in the keyboard popup. The
-note dims behind the open dial, and a tap on that dimmed area closes it. A pill just below
-Obsidian's header shows the path you have descended through and the full label of the item under
-your thumb, with Back and Close buttons at either end.
+shows its label on up to three lines, with its key as a small chip at the top. Drag from the
+button onto an item and let go to act on it: a group opens its own items, a command runs, a file
+opens. Passing over an item on the way only highlights it, so nothing happens until you release.
+A direct tap on an item does the same thing, and a tap on the button once the dial is open goes
+back up one level (or closes it at the root), the way <kbd>Backspace</kbd> does in the keyboard
+popup. The note dims behind the open dial; a tap on that dimmed area, including the blank space
+between the rings, closes it without running anything. A pill just below Obsidian's header shows
+the path you have descended through and the full label of the item under your thumb (the start
+of the path gives way to an ellipsis on a narrow phone, never the label), with Back and Close
+buttons at either end and the page number when a level is paged.
 
 ![Mobile dial open on the Window group, dark theme](docs/screenshots/mobile/dial-window-dark.png)
 
@@ -210,13 +212,18 @@ your thumb, with Back and Close buttons at either end.
 
 The dial keeps clear of the on-screen keyboard, Obsidian's editing toolbar and its navigation bar,
 and touching it never takes focus away from the note, so a selection stays selected and the
-keyboard stays up. Items that
-reference a command Obsidian does not currently have (several of the default keymap's window
-commands are desktop-only, for instance) show in red and report the same notice the keyboard popup
-does. If a level has more items than the rings on your screen can hold at thumb size (44px or
-larger), the dial first tightens its spacing, then moves the pill up over the header to win back
-that strip (a small phone with its keyboard up), and only then pages the level, with a "More" item
-that turns to the next page.
+keyboard stays up. If the keyboard or a bar comes or goes while the dial is open, the rings move
+with it in place. Items that reference a command Obsidian does not currently have (several of the
+default keymap's window commands are desktop-only, for instance) show in red and report the same
+notice the keyboard popup does. If a level has more items than the rings on your screen can hold
+at thumb size (44px or larger), the dial first tightens its spacing, then moves the pill up over
+the header to win back that strip (a small phone with its keyboard up), and only then pages the
+level, with a "More" item that turns to the next page.
+
+With a hardware keyboard (an iPad with a keyboard, say) the open dial answers keys exactly like
+the popup: a key bound in the current menu picks that item, <kbd>Backspace</kbd> goes back,
+<kbd>Esc</kbd> closes, and nothing you type while it is open reaches the note. Each item is also
+exposed to screen readers as a button named after its label and key.
 
 Settings → Neokeys has a **Mobile dial** group with a **Show the dial on mobile** toggle (on by
 default) and a **Dial corner** choice, bottom right or bottom left. With the dial off, the Leader
@@ -227,7 +234,7 @@ keyboard. Desktop is unaffected either way.
 
 Desktop and mobile. On desktop the leader opens the keyboard-driven which-key popup; on mobile the
 pinned dial above is the way in, and the Leader command (from the command palette, or a combo
-leader on a hardware keyboard) opens that same dial.
+leader or hotkey on a hardware keyboard) opens that same dial, which the keyboard can then drive.
 
 ## Development
 

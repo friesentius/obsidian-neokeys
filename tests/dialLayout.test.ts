@@ -27,11 +27,15 @@ const PILL_HEIGHT = 54;
 /** Obsidian's editing toolbar slot above the keyboard, as the DOM layer measures it. */
 const TOOLBAR = 52;
 
+/** Items keep this far from the screen's edges, the pill, and the chrome below the anchor (the DOM layer's EDGE_MARGIN). */
+const MARGIN = 4;
+
 /**
  * The geometry the DOM layer would measure on a phone of `width` x `height` with a status bar
  * or notch inset of `topInset` px, the anchor pinned `EDGE` px off the two edges of `corner`,
  * `bottomChrome` px of keyboard and toolbar under it, and the breadcrumb pill in its normal
- * place below the view header.
+ * place below the view header. Items may reach below the anchor's own bottom edge, but only
+ * as far as `MARGIN` above whatever the anchor keeps `EDGE` clear of.
  */
 function phone(width: number, height: number, corner: DialCorner = "bottom-right", bottomChrome = 0, topInset = 0): DialGeometry {
 	const anchorY = height - bottomChrome - EDGE - ANCHOR_RADIUS;
@@ -39,7 +43,7 @@ function phone(width: number, height: number, corner: DialCorner = "bottom-right
 	return {
 		corner,
 		anchor: { x: anchorX, y: anchorY },
-		bounds: { left: 4, top: topInset + HEADER + PILL_HEIGHT + 4, right: width - 4, bottom: anchorY + ANCHOR_RADIUS },
+		bounds: { left: MARGIN, top: topInset + HEADER + PILL_HEIGHT + MARGIN, right: width - MARGIN, bottom: anchorY + ANCHOR_RADIUS + (EDGE - MARGIN) },
 	};
 }
 
@@ -77,17 +81,17 @@ function expectNoOverlap(geometry: DialGeometry, params: DialRingParams, count: 
 
 describe("ringCapacity", () => {
 	it("holds one item on a ring too small for two", () => {
-		expect(ringCapacity(20, 56, 6)).toBe(1);
+		expect(ringCapacity(20, 60, 6)).toBe(1);
 	});
 
 	it("grows with the radius", () => {
-		const sizes = [82, 144, 206, 268].map((r) => ringCapacity(r, 56, 6));
+		const sizes = [88, 154, 220, 286].map((r) => ringCapacity(r, 60, 6));
 		expect(sizes).toEqual([3, 4, 6, 7]);
 	});
 
 	it("never places two items closer than size plus gap", () => {
-		for (const radius of [60, 82, 100, 144, 206, 300]) {
-			const n = ringCapacity(radius, 56, 6);
+		for (const radius of [60, 88, 100, 154, 220, 300]) {
+			const n = ringCapacity(radius, 60, 6);
 			if (n < 2) continue;
 			const chord = 2 * radius * Math.sin(((DIAL_SWEEP_DEG / (n - 1)) * Math.PI) / 360);
 			expect(chord).toBeGreaterThanOrEqual(62 - 1e-6);
@@ -116,10 +120,10 @@ describe("computeRings", () => {
 	});
 
 	it("is limited by whichever of width and height is tighter", () => {
-		// Plenty of width but almost no height above the anchor: the first ring needs 82 + 28 px.
-		const squat: DialGeometry = { corner: "bottom-right", anchor: { x: 700, y: 100 }, bounds: { left: 0, top: 0, right: 740, bottom: 140 } };
+		// Plenty of width but almost no height above the anchor: the first ring needs 88 + 30 px.
+		const squat: DialGeometry = { corner: "bottom-right", anchor: { x: 700, y: 110 }, bounds: { left: 0, top: 0, right: 740, bottom: 150 } };
 		expect(computeRings(squat, DEFAULT_RING_PARAMS)).toEqual([]);
-		const tallerSquat = { ...squat, anchor: { x: 700, y: 112 }, bounds: { ...squat.bounds, bottom: 152 } };
+		const tallerSquat = { ...squat, anchor: { x: 700, y: 120 }, bounds: { ...squat.bounds, bottom: 160 } };
 		expect(computeRings(tallerSquat, DEFAULT_RING_PARAMS)).toHaveLength(1);
 	});
 });
@@ -304,12 +308,37 @@ describe("hitTest", () => {
 		expect(hitTest({ x: 100, y: 100 }, geometry, rings, [])).toBeNull();
 	});
 
-	it("lets the end slots of a partly used ring own the empty arc beside them", () => {
-		const five = placeSlots(rings, 12); // ring 2 holds five of six, from 9 to 81 degrees
+	it("lets the end slots of a partly used ring own a little of the arc beside them, not all of it", () => {
+		const five = placeSlots(rings, 12); // ring 2 holds five of six, from 9 to 81 degrees, 18 apart
 		const radius = rings[2].radius;
 		const atAngle = (deg: number) => ({ x: geometry.anchor.x - radius * Math.cos((deg * Math.PI) / 180), y: geometry.anchor.y - radius * Math.sin((deg * Math.PI) / 180) });
 		expect(hitTest(atAngle(0), geometry, rings, five)).toBe(7);
 		expect(hitTest(atAngle(90), geometry, rings, five)).toBe(11);
 		expect(hitTest(atAngle(-12), geometry, rings, five)).toBeNull();
+	});
+
+	it("arms nothing more than half a slot pitch past a lone item, so a tap on blank space inside the fan cancels", () => {
+		const few = placeSlots(rings, 4); // three on ring 0; one lone item mid-sweep on ring 1, whose full ring holds four 30 degrees apart
+		const onRing1 = (deg: number) => ({ x: geometry.anchor.x - rings[1].radius * Math.cos((deg * Math.PI) / 180), y: geometry.anchor.y - rings[1].radius * Math.sin((deg * Math.PI) / 180) });
+		expect(hitTest(onRing1(45), geometry, rings, few)).toBe(3);
+		expect(hitTest(onRing1(30), geometry, rings, few)).toBe(3);
+		expect(hitTest(onRing1(60), geometry, rings, few)).toBe(3);
+		expect(hitTest(onRing1(5), geometry, rings, few)).toBeNull();
+		expect(hitTest(onRing1(85), geometry, rings, few)).toBeNull();
+		// The reviewer's repro: 185px from the anchor at 3 degrees, 120px from the lone item.
+		const rad = (3 * Math.PI) / 180;
+		expect(hitTest({ x: geometry.anchor.x - 185 * Math.cos(rad), y: geometry.anchor.y - 185 * Math.sin(rad) }, geometry, rings, few)).toBeNull();
+		// Between two neighbours the band still splits at the midpoint, so a drag is as forgiving as before.
+		const onRing0 = (deg: number) => ({ x: geometry.anchor.x - rings[0].radius * Math.cos((deg * Math.PI) / 180), y: geometry.anchor.y - rings[0].radius * Math.sin((deg * Math.PI) / 180) });
+		expect(hitTest(onRing0(20), geometry, rings, few)).toBe(0);
+		expect(hitTest(onRing0(25), geometry, rings, few)).toBe(1);
+	});
+
+	it("arms nothing between the anchor rim and the innermost ring's inner edge", () => {
+		const rad = (45 * Math.PI) / 180;
+		const atDistance = (d: number) => ({ x: geometry.anchor.x - d * Math.cos(rad), y: geometry.anchor.y - d * Math.sin(rad) });
+		expect(hitTest(atDistance(40), geometry, rings, slots)).toBeNull();
+		expect(hitTest(atDistance(50), geometry, rings, slots)).toBeNull();
+		expect(hitTest(atDistance(56), geometry, rings, slots)).toBe(1);
 	});
 });
