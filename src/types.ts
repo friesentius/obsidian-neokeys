@@ -49,4 +49,6 @@ export interface NeokeysSettings {
 	/** Mobile only: show the pinned dial (anchor button plus fan of items) instead of relying on a keyboard. */
 	mobileDialEnabled: boolean;
 	mobileDialCorner: DialCorner;
+	/** Diameter of the dial's items in px, MIN_DIAL_ITEM_SIZE to MAX_DIAL_ITEM_SIZE (see dial/layout.ts). */
+	mobileDialItemSize: number;
 }

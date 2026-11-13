@@ -8,7 +8,8 @@ import { KeymapParseError, parseKeymapSource } from "./keymap";
 import { serializeKeymap } from "./keymapSerialize";
 import { keyFromEvent, keyToString } from "./keys";
 import { getCommandHotkeys, hasCommand, listOtherCommandHotkeys } from "./obsidianCommands";
-import { parseDialCorner } from "./defaultSettings";
+import { parseDialCorner, parseDialItemSize } from "./defaultSettings";
+import { DEFAULT_DIAL_ITEM_SIZE, MAX_DIAL_ITEM_SIZE, MIN_DIAL_ITEM_SIZE } from "./dial/layout";
 import type { GroupNode } from "./types";
 import { TreeEditorView } from "./ui/treeEditorView";
 import type NeokeysPlugin from "./main";
@@ -33,6 +34,8 @@ const MOBILE_DIAL_DESC =
 const MOBILE_DIAL_DESKTOP_NOTE = "Desktop keeps the keyboard-driven popup.";
 const MOBILE_DIAL_CORNER_NAME = "Dial corner";
 const MOBILE_DIAL_CORNER_DESC = "Which bottom corner the dial's button is pinned to.";
+const MOBILE_DIAL_ITEM_SIZE_NAME = "Dial item size";
+const MOBILE_DIAL_ITEM_SIZE_DESC = `Diameter of the dial's circles in pixels, ${MIN_DIAL_ITEM_SIZE} to ${MAX_DIAL_ITEM_SIZE} (${DEFAULT_DIAL_ITEM_SIZE} by default). Smaller circles fit more on one screen; whatever the size, a level that would not fit otherwise falls back to tighter 48px circles.`;
 const KEYMAP_DESC =
 	'Edit the keymap as a tree, or use "Edit as YAML/JSON" for the raw, Spacekeys-compatible source (each group has items; each item is a group, a command ("command: <id>" or the short form "<id> <description>"), or a file ("file: <path>")). Both views edit the same stored keymap - switching away from the YAML view saves it first, and an invalid edit there is never silently discarded.';
 const YAML_NOTE =
@@ -137,6 +140,12 @@ export class NeokeysSettingTab extends PluginSettingTab {
 						aliases: ["corner", "left", "right", "position"],
 						render: (setting) => this.renderMobileDialCorner(setting),
 					},
+					{
+						name: MOBILE_DIAL_ITEM_SIZE_NAME,
+						desc: MOBILE_DIAL_ITEM_SIZE_DESC,
+						aliases: ["size", "circle", "diameter", "bigger", "smaller"],
+						render: (setting) => this.renderMobileDialItemSize(setting),
+					},
 				],
 			},
 			{
@@ -179,6 +188,7 @@ export class NeokeysSettingTab extends PluginSettingTab {
 		new Setting(containerEl).setName("Mobile dial").setHeading();
 		this.renderMobileDialEnabled(new Setting(containerEl));
 		this.renderMobileDialCorner(new Setting(containerEl));
+		this.renderMobileDialItemSize(new Setting(containerEl));
 
 		new Setting(containerEl).setName("Keymap").setHeading();
 		this.renderKeymapEditor(new Setting(containerEl));
@@ -367,6 +377,22 @@ export class NeokeysSettingTab extends PluginSettingTab {
 					.setValue(this.plugin.settings.mobileDialCorner)
 					.onChange(async (value) => {
 						this.plugin.settings.mobileDialCorner = parseDialCorner(value);
+						await this.plugin.saveSettings();
+						this.plugin.applyMobileDial();
+					}),
+			);
+	}
+
+	private renderMobileDialItemSize(setting: Setting): void {
+		setting
+			.setName(MOBILE_DIAL_ITEM_SIZE_NAME)
+			.setDesc(MOBILE_DIAL_ITEM_SIZE_DESC)
+			.addSlider((slider) =>
+				slider
+					.setLimits(MIN_DIAL_ITEM_SIZE, MAX_DIAL_ITEM_SIZE, 2)
+					.setValue(this.plugin.settings.mobileDialItemSize)
+					.onChange(async (value) => {
+						this.plugin.settings.mobileDialItemSize = parseDialItemSize(value);
 						await this.plugin.saveSettings();
 						this.plugin.applyMobileDial();
 					}),

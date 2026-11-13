@@ -81,23 +81,39 @@ export const DIAL_SWEEP_DEG = 90;
 /** Thumb-sized targets: Obsidian's own --touch-size-m. */
 export const MIN_ITEM_SIZE = 44;
 
-/**
- * Comfortable spacing, used whenever the screen has room for it. 60px holds a key chip and three
- * short lines of label; with a 6px gap the first ring at 88px still takes three items, so a
- * 390px phone with its keyboard up keeps 3 + 4 + 6 = 13 targets, one more than the default
- * keymap's Window group.
- */
-export const DEFAULT_RING_PARAMS: DialRingParams = {
-	itemSize: 60,
-	gap: 6,
-	firstRadius: 88,
-};
+/** Edge-to-edge gap between neighbours on a ring and between rings, at the chosen item size. */
+export const RING_GAP = 5;
 
-/** Tighter spacing at the minimum thumb size, tried when the default layout cannot hold a level. */
+/**
+ * The item diameters the settings offer. 72px is the largest that stays inside the bounds the
+ * DOM layer measures: an item at the horizontal end of a ring reaches half its size below the
+ * anchor's centre, one at the top of the sweep half its size past it sideways, and the 56px
+ * anchor sits 12px from the screen's edge with items allowed 4px closer, so 28 + 12 - 4 = 36px
+ * of reach either way.
+ */
+export const MIN_DIAL_ITEM_SIZE = 56;
+export const MAX_DIAL_ITEM_SIZE = 72;
+export const DEFAULT_DIAL_ITEM_SIZE = 66;
+
+/**
+ * Comfortable spacing for items of `itemSize`, used whenever the screen has room for it: the
+ * innermost ring is the smallest that holds three items, so at the default size a 390px phone
+ * with its keyboard up keeps 3 + 4 + 6 = 13 targets, one more than the default keymap's Window
+ * group.
+ */
+export function ringParamsFor(itemSize: number): DialRingParams {
+	let firstRadius = Math.ceil((itemSize + RING_GAP) / (2 * Math.sin(degToRad(DIAL_SWEEP_DEG / 4))));
+	while (ringCapacity(firstRadius, itemSize, RING_GAP) < 3) firstRadius++;
+	return { itemSize, gap: RING_GAP, firstRadius };
+}
+
+export const DEFAULT_RING_PARAMS: DialRingParams = ringParamsFor(DEFAULT_DIAL_ITEM_SIZE);
+
+/** Tighter spacing at a small thumb size, tried when the chosen spacing cannot hold a level. */
 export const COMPACT_RING_PARAMS: DialRingParams = {
-	itemSize: MIN_ITEM_SIZE,
-	gap: 6,
-	firstRadius: 74,
+	itemSize: 48,
+	gap: 4,
+	firstRadius: 68,
 };
 
 /** A pointer this close to the anchor centre arms nothing, so a resting thumb never selects. */
@@ -196,6 +212,36 @@ export function slotPosition(slot: DialSlot, geometry: DialGeometry, rings: Dial
 	};
 }
 
+export interface DialArc {
+	radius: number;
+	from: DialPoint;
+	to: DialPoint;
+	/** The arc runs clockwise on screen from `from` to `to` for a bottom-right anchor (left ray toward straight up), counter-clockwise mirrored. */
+	clockwise: boolean;
+}
+
+/**
+ * One guide arc per ring that holds two or more slots, through their centres from the first slot
+ * to the last, so the renderer can draw the ring the items sit on: hidden behind the items
+ * themselves, it shows only between them. A lone item gets no arc.
+ */
+export function ringArcs(geometry: DialGeometry, rings: DialRing[], slots: DialSlot[]): DialArc[] {
+	const arcs: DialArc[] = [];
+	rings.forEach((ring, index) => {
+		const own = slots.filter((slot) => slot.ring === index);
+		if (own.length < 2) return;
+		const first = own.reduce((a, b) => (b.angleDeg < a.angleDeg ? b : a));
+		const last = own.reduce((a, b) => (b.angleDeg > a.angleDeg ? b : a));
+		arcs.push({
+			radius: ring.radius,
+			from: slotPosition(first, geometry, rings),
+			to: slotPosition(last, geometry, rings),
+			clockwise: geometry.corner === "bottom-right",
+		});
+	});
+	return arcs;
+}
+
 /**
  * How a level of `count` items splits across pages of a dial that holds `capacity` at once. A level
  * that fits is a single page; otherwise each page gives up one slot to a "More" item that turns
@@ -278,15 +324,16 @@ export function hitTest(
 }
 
 /**
- * The ring parameters to use for a level of `count` items: the comfortable default unless it
- * would need paging and the compact spacing would not, in which case compact wins; when both
- * need paging, whichever holds more per page (the default on a tie).
+ * The ring parameters to use for a level of `count` items: the chosen spacing (`defaults`, from
+ * the item size setting) unless it would need paging and the compact spacing would not, in which
+ * case compact wins; when both need paging, whichever holds more per page (the chosen one on a
+ * tie).
  */
-export function chooseRingParams(geometry: DialGeometry, count: number): DialRingParams {
-	const defaultCapacity = totalCapacity(computeRings(geometry, DEFAULT_RING_PARAMS));
-	if (defaultCapacity >= count) return DEFAULT_RING_PARAMS;
+export function chooseRingParams(geometry: DialGeometry, count: number, defaults: DialRingParams = DEFAULT_RING_PARAMS): DialRingParams {
+	const defaultCapacity = totalCapacity(computeRings(geometry, defaults));
+	if (defaultCapacity >= count) return defaults;
 	const compactCapacity = totalCapacity(computeRings(geometry, COMPACT_RING_PARAMS));
-	return compactCapacity > defaultCapacity ? COMPACT_RING_PARAMS : DEFAULT_RING_PARAMS;
+	return compactCapacity > defaultCapacity ? COMPACT_RING_PARAMS : defaults;
 }
 
 /**
@@ -294,10 +341,10 @@ export function chooseRingParams(geometry: DialGeometry, count: number): DialRin
  * Normal placement wins whenever it holds the whole level; otherwise the raised pill is tried and
  * kept if it holds more; and if even that leaves no ring at all, the rings may overlap the pill.
  */
-export function chooseLayout(count: number, measure: (mode: DialLayoutMode) => DialGeometry): DialLayout {
+export function chooseLayout(count: number, measure: (mode: DialLayoutMode) => DialGeometry, defaults: DialRingParams = DEFAULT_RING_PARAMS): DialLayout {
 	const layoutFor = (mode: DialLayoutMode): DialLayout => {
 		const geometry = measure(mode);
-		const params = chooseRingParams(geometry, count);
+		const params = chooseRingParams(geometry, count, defaults);
 		return { mode, geometry, params, rings: computeRings(geometry, params) };
 	};
 	let best = layoutFor("normal");

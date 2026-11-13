@@ -6,10 +6,14 @@ import {
 	DEFAULT_RING_PARAMS,
 	DIAL_SWEEP_DEG,
 	hitTest,
+	MAX_DIAL_ITEM_SIZE,
+	MIN_DIAL_ITEM_SIZE,
 	MIN_ITEM_SIZE,
 	paging,
 	placeSlots,
+	ringArcs,
 	ringCapacity,
+	ringParamsFor,
 	slotAngle,
 	slotPosition,
 	totalCapacity,
@@ -120,10 +124,11 @@ describe("computeRings", () => {
 	});
 
 	it("is limited by whichever of width and height is tighter", () => {
-		// Plenty of width but almost no height above the anchor: the first ring needs 88 + 30 px.
-		const squat: DialGeometry = { corner: "bottom-right", anchor: { x: 700, y: 110 }, bounds: { left: 0, top: 0, right: 740, bottom: 150 } };
+		// Plenty of width but almost no height above the anchor: the first ring needs its radius plus half an item.
+		const need = DEFAULT_RING_PARAMS.firstRadius + DEFAULT_RING_PARAMS.itemSize / 2;
+		const squat: DialGeometry = { corner: "bottom-right", anchor: { x: 700, y: need - 4 }, bounds: { left: 0, top: 0, right: 740, bottom: need + 36 } };
 		expect(computeRings(squat, DEFAULT_RING_PARAMS)).toEqual([]);
-		const tallerSquat = { ...squat, anchor: { x: 700, y: 120 }, bounds: { ...squat.bounds, bottom: 160 } };
+		const tallerSquat = { ...squat, anchor: { x: 700, y: need + 4 }, bounds: { ...squat.bounds, bottom: need + 44 } };
 		expect(computeRings(tallerSquat, DEFAULT_RING_PARAMS)).toHaveLength(1);
 	});
 });
@@ -172,7 +177,7 @@ describe("item placement on real phone sizes", () => {
 	];
 
 	it.each(cases)("%s: every item stays on screen and apart, for 1 to 15 items", (_name, geometry) => {
-		for (const params of [DEFAULT_RING_PARAMS, COMPACT_RING_PARAMS]) {
+		for (const params of [DEFAULT_RING_PARAMS, COMPACT_RING_PARAMS, ringParamsFor(MIN_DIAL_ITEM_SIZE), ringParamsFor(MAX_DIAL_ITEM_SIZE)]) {
 			for (let count = 1; count <= 15; count++) {
 				expectInsideBounds(geometry, params, count);
 				expectNoOverlap(geometry, params, count);
@@ -201,9 +206,63 @@ describe("item placement on real phone sizes", () => {
 	});
 });
 
+describe("ringParamsFor", () => {
+	it("gives every offered item size a first ring that holds exactly three items", () => {
+		for (let size = MIN_DIAL_ITEM_SIZE; size <= MAX_DIAL_ITEM_SIZE; size++) {
+			const params = ringParamsFor(size);
+			expect(params.itemSize).toBe(size);
+			expect(ringCapacity(params.firstRadius, size, params.gap)).toBe(3);
+			expect(ringCapacity(params.firstRadius - 1, size, params.gap)).toBe(2);
+		}
+	});
+
+	it("is what the default spacing is built from", () => {
+		expect(DEFAULT_RING_PARAMS).toEqual(ringParamsFor(66));
+		expect(DEFAULT_RING_PARAMS.firstRadius).toBe(93);
+	});
+
+	it("keeps the whole default keymap's Window group on one page at the largest size on a 390px phone, keyboard up", () => {
+		const geometry = phone(390, 844, "bottom-right", 300 + TOOLBAR, 47);
+		const layout = chooseLayout(12, (mode) => (mode === "normal" ? geometry : raised(geometry)), ringParamsFor(MAX_DIAL_ITEM_SIZE));
+		expect(totalCapacity(layout.rings)).toBeGreaterThanOrEqual(12);
+	});
+});
+
+describe("ringArcs", () => {
+	const geometry = phone(390, 844);
+
+	it("draws one arc per ring with two or more slots, from its first slot to its last, clockwise for the right corner", () => {
+		const rings = computeRings(geometry, DEFAULT_RING_PARAMS);
+		const slots = placeSlots(rings, 4);
+		const arcs = ringArcs(geometry, rings, slots);
+		expect(arcs).toHaveLength(1);
+		expect(arcs[0].radius).toBe(rings[0].radius);
+		expect(arcs[0].from).toEqual(slotPosition(slots[0], geometry, rings));
+		expect(arcs[0].to).toEqual(slotPosition(slots[2], geometry, rings));
+		expect(arcs[0].clockwise).toBe(true);
+		expect(arcs[0].from.x).toBeLessThan(arcs[0].to.x);
+		expect(arcs[0].from.y).toBeGreaterThan(arcs[0].to.y);
+	});
+
+	it("runs counter-clockwise, mirrored, for the left corner and skips rings with one slot or none", () => {
+		const left = phone(390, 844, "bottom-left");
+		const rings = computeRings(left, DEFAULT_RING_PARAMS);
+		const arcs = ringArcs(left, rings, placeSlots(rings, 8));
+		expect(arcs.map((arc) => arc.clockwise)).toEqual([false, false]);
+		expect(ringArcs(left, rings, placeSlots(rings, 1))).toEqual([]);
+		expect(ringArcs(left, rings, [])).toEqual([]);
+	});
+});
+
 describe("chooseRingParams", () => {
 	it("keeps the comfortable spacing when it holds the level", () => {
 		expect(chooseRingParams(phone(390, 844), 12)).toBe(DEFAULT_RING_PARAMS);
+	});
+
+	it("uses the spacing it is given, from the item size setting, in place of the default", () => {
+		const large = ringParamsFor(MAX_DIAL_ITEM_SIZE);
+		expect(chooseRingParams(phone(390, 844), 12, large)).toBe(large);
+		expect(chooseLayout(12, () => phone(390, 844), large).params).toBe(large);
 	});
 
 	it("switches to compact spacing when only that avoids paging", () => {
@@ -336,19 +395,21 @@ describe("hitTest", () => {
 
 	it("arms an end item anywhere inside its own circle, even outside the sweep", () => {
 		const fromAnchor = (u: number, v: number) => ({ x: geometry.anchor.x - u, y: geometry.anchor.y - v });
-		expect(hitTest(fromAnchor(88, -20), geometry, rings, slots)).toBe(0);
-		expect(hitTest(fromAnchor(-20, 88), geometry, rings, slots)).toBe(2);
+		// 20px below the sweep's horizontal ray, still inside the 66px end item centred on that ray.
+		expect(hitTest(fromAnchor(rings[0].radius, -20), geometry, rings, slots)).toBe(0);
+		expect(hitTest(fromAnchor(-20, rings[0].radius), geometry, rings, slots)).toBe(2);
 		const compactRings = computeRings(geometry, COMPACT_RING_PARAMS);
 		const compactSlots = placeSlots(compactRings, totalCapacity(compactRings));
-		expect(compactRings[0].radius).toBe(74);
-		expect(hitTest(fromAnchor(74, -15), geometry, compactRings, compactSlots, undefined, COMPACT_RING_PARAMS.itemSize)).toBe(0);
+		expect(compactRings[0].radius).toBe(68);
+		expect(hitTest(fromAnchor(68, -15), geometry, compactRings, compactSlots, undefined, COMPACT_RING_PARAMS.itemSize)).toBe(0);
 	});
 
 	it("arms nothing between the anchor rim and the innermost ring's inner edge", () => {
 		const rad = (45 * Math.PI) / 180;
 		const atDistance = (d: number) => ({ x: geometry.anchor.x - d * Math.cos(rad), y: geometry.anchor.y - d * Math.sin(rad) });
+		// The innermost ring's inner edge is at 93 - 33 = 60px; 4px of slack inside it still arms.
 		expect(hitTest(atDistance(40), geometry, rings, slots)).toBeNull();
-		expect(hitTest(atDistance(50), geometry, rings, slots)).toBeNull();
-		expect(hitTest(atDistance(56), geometry, rings, slots)).toBe(1);
+		expect(hitTest(atDistance(55), geometry, rings, slots)).toBeNull();
+		expect(hitTest(atDistance(57), geometry, rings, slots)).toBe(1);
 	});
 });

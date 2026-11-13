@@ -33,8 +33,14 @@ items:
           h: editor:focus-left Focus left
       w: workspace:new-window New window
       W: workspace:close-window Close window
+      o: workspace:open-in-new-window Open in new window
   z: app:zoom Zoom
-  b: plugin:bogus Bogus
+  b: app:open-help Help
+  q: plugin:bogus Bogus
+  d:
+    title: Desktop only
+    items:
+      s: workspace:toggle-stacked-tabs Stack tabs
 `;
 
 const KNOWN = new Set([
@@ -52,6 +58,7 @@ const KNOWN = new Set([
 	"workspace:new-window",
 	"workspace:close-window",
 	"app:zoom",
+	"app:open-help",
 ]);
 
 /** A 390x844 phone, anchor bottom-right, nothing under it, the pill taking the top 56px. */
@@ -125,10 +132,9 @@ describe("DialController opening and closing", () => {
 		expect(view.title).toBe("Neokeys");
 		expect(view.crumbs).toEqual([]);
 		// Groups first, then commands, in stored order (the which-key popup's sort).
-		expect(view.items.map((i) => i.label)).toEqual(["File", "Window", "Zoom", "Bogus"]);
+		expect(view.items.map((i) => i.label)).toEqual(["File", "Window", "Zoom", "Help"]);
 		expect(view.items.map((i) => i.kind)).toEqual(["group", "group", "command", "command"]);
 		expect(view.items.map((i) => i.key)).toEqual(["f", "w", "z", "b"]);
-		expect(view.items[3].invalid).toBe(true);
 		expect(view.items.every((i) => i.size === DEFAULT_RING_PARAMS.itemSize)).toBe(true);
 		expect(view.pages).toBe(1);
 	});
@@ -378,16 +384,40 @@ describe("DialController committing", () => {
 		expect(controller.isOpen).toBe(false);
 	});
 
-	it("an unknown command shows the same notice as the popup and keeps the dial open", () => {
-		const { controller, root, calls } = setup();
+	it("hides commands this device does not know, and a group left with nothing, without taking a slot", () => {
+		const { controller, root } = setup();
 		controller.open(root);
-		expect(controller.view().items.find((i) => i.label === "Bogus")?.invalid).toBe(true);
-		controller.pressAt(itemAt(controller, "Bogus"));
-		expect(controller.view().armedInvalid).toBe(true);
+		expect(controller.view().items.map((i) => i.label)).toEqual(["File", "Window", "Zoom", "Help"]);
+		controller.pressAt(itemAt(controller, "Window"));
 		controller.release();
-		expect(calls.notices).toEqual(['Neokeys: command "plugin:bogus" is not available']);
-		expect(calls.executed).toEqual([]);
-		expect(controller.isOpen).toBe(true);
+		const labels = controller.view().items.map((i) => i.label);
+		expect(labels).toHaveLength(12);
+		expect(labels).not.toContain("Open in new window");
+	});
+
+	it("refuses to open a keymap with nothing available on this device, with a notice", () => {
+		const root = parseKeymapSource("title: Desktop\nitems:\n  z: app:zoom Zoom\n  w:\n    title: Window\n    items:\n      n: workspace:new-window New window\n");
+		const { host, calls } = makeHost();
+		host.isCommandKnown = () => false;
+		const controller = new DialController(host, () => PHONE);
+		controller.open(root);
+		expect(controller.isOpen).toBe(false);
+		expect(calls.notices).toEqual(["Neokeys: nothing in the keymap is available on this device"]);
+	});
+
+	it("exposes one guide arc per ring with two or more items, from the first item to the last", () => {
+		const { controller, root } = setup();
+		controller.open(root);
+		const view = controller.view();
+		// Four root items: three on the first ring, one alone on the second (no arc for a lone item).
+		expect(view.arcs).toHaveLength(1);
+		const [arc] = view.arcs;
+		expect(arc.from).toEqual({ x: view.items[0].x, y: view.items[0].y });
+		expect(arc.to).toEqual({ x: view.items[2].x, y: view.items[2].y });
+		expect(arc.radius).toBe(DEFAULT_RING_PARAMS.firstRadius);
+		expect(arc.clockwise).toBe(true);
+		controller.close();
+		expect(controller.view().arcs).toEqual([]);
 	});
 
 	it("closes before the command runs, so the command sees the dial gone", () => {
@@ -433,7 +463,7 @@ describe("DialController paging", () => {
 		controller.release();
 		view = controller.view();
 		expect(view.page).toBe(1);
-		expect(view.items.map((i) => i.label)).toEqual(["Zoom", "Bogus", "More"]);
+		expect(view.items.map((i) => i.label)).toEqual(["Zoom", "Help", "More"]);
 		expect(controller.isOpen).toBe(true);
 
 		controller.pressAt(itemAt(controller, "More"));
@@ -570,12 +600,14 @@ describe("DialController keyboard", () => {
 		expect(calls.executed).toEqual([]);
 	});
 
-	it("a key for an unknown command shows the notice and keeps the dial open", () => {
+	it("a key bound to a hidden command or group does nothing and keeps the dial open", () => {
 		const { controller, root, calls } = setup();
 		controller.open(root);
-		controller.typeKey(key("b"));
-		expect(calls.notices).toEqual(['Neokeys: command "plugin:bogus" is not available']);
+		controller.typeKey(key("q"));
+		controller.typeKey(key("d"));
+		expect(calls.notices).toEqual([]);
 		expect(calls.executed).toEqual([]);
+		expect(controller.view().crumbs).toEqual([]);
 		expect(controller.isOpen).toBe(true);
 	});
 
@@ -637,17 +669,18 @@ describe("DialController relayout during a press", () => {
 		const { host, calls } = makeHost();
 		const controller = new DialController(host, () => geometry);
 		const held = holdZoomOnPageTwo(controller, root);
-		// The anchor drops by one ring: the held point now lies on the lone outer item of the single page.
-		geometry = { ...TINY, anchor: { x: 350, y: 268 }, bounds: { ...TINY.bounds, bottom: 304 } };
+		// Room opens up and the anchor moves: the whole level fits one page, and the held point (where
+		// Zoom was, 68px along the horizontal ray) now lies on Window, 93px along the 45-degree ray.
+		geometry = { corner: "bottom-right", anchor: { x: 348, y: 246 }, bounds: { left: 4, top: 40, right: 386, bottom: 282 } };
 		controller.relayout();
 		const view = controller.view();
 		expect(view.pages).toBe(1);
 		const armed = view.items.find((i) => i.armed);
-		expect(armed?.label).toBe("Bogus");
+		expect(armed?.label).toBe("Window");
 		expect(Math.hypot((armed?.x ?? 0) - held.x, (armed?.y ?? 0) - held.y)).toBeLessThanOrEqual(armed!.size / 2);
 		controller.release();
 		expect(calls.executed).toEqual([]);
-		expect(calls.notices).toEqual(['Neokeys: command "plugin:bogus" is not available']);
+		expect(controller.view().crumbs).toEqual(["Window"]);
 		expect(controller.isOpen).toBe(true);
 	});
 });

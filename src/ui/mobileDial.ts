@@ -1,6 +1,6 @@
 import { App, Notice, Scope, setIcon } from "obsidian";
 import { DialController, type DialChange, type DialHost, type DialItemView, type DialView } from "../dial/controller";
-import type { DialGeometry, DialLayoutMode } from "../dial/layout";
+import { ringParamsFor, type DialArc, type DialGeometry, type DialLayoutMode } from "../dial/layout";
 import { getCommandName, hasCommand } from "../obsidianCommands";
 import type { DialCorner, GroupNode } from "../types";
 
@@ -16,6 +16,8 @@ export interface MobileDialAnimation {
 
 export interface MobileDialOptions {
 	corner: DialCorner;
+	/** Diameter of the dial's items in px, from the settings (MIN_DIAL_ITEM_SIZE to MAX_DIAL_ITEM_SIZE). */
+	itemSize: number;
 	/** Read on every open, so a settings change (or the OS's reduced-motion preference) applies next time. */
 	animation(): MobileDialAnimation;
 }
@@ -49,6 +51,81 @@ function itemLabelText(label: string): string {
 	return label.replace(/\//g, "/​");
 }
 
+/** Label sizes to try, largest first, until the label fits its item; compact items start smaller. */
+const LABEL_SIZES = [12, 11, 10, 9];
+const COMPACT_LABEL_SIZES = [10, 9, 8];
+const LABEL_LINES = 3;
+const COMPACT_LABEL_LINES = 2;
+const LABEL_LINE_HEIGHT = 1.1;
+/** Distance kept between the label box's corners and the inside of the circle. */
+const LABEL_INSET = 1;
+/** A second line narrower than this share of the widest line is a lone tiny word (a digit), to be avoided when a smaller size fits on one line. */
+const MIN_LAST_LINE_SHARE = 0.2;
+
+/**
+ * Fit one label into its circle: the largest size, on the fewest lines, whose box fits with no
+ * word cut mid-way. The box for n lines is the chord that keeps the box's corners LABEL_INSET
+ * inside the circle. Measured on the live element, so the font and the platform's wrapping
+ * decide, not an estimate. A first pass refuses a two-line split that strands a lone tiny word
+ * on the second line (a smaller size on one line wins over "Heading" / "6"; "Close" / "tab" and
+ * a short last word under a three-line stack are fine); a second pass takes anything that fits.
+ * If nothing fits (a word longer than the widest box at the smallest size) the label may break
+ * anywhere and the line clamp ellipsizes what is left, so no text ever touches the edge.
+ */
+function fitLabel(el: HTMLElement, labelEl: HTMLElement, size: number, compact: boolean): void {
+	const sizes = compact ? COMPACT_LABEL_SIZES : LABEL_SIZES;
+	const maxLines = compact ? COMPACT_LABEL_LINES : LABEL_LINES;
+	const radius = size / 2 - 1 - LABEL_INSET;
+	el.removeClass("neokeys-dial-label-break");
+	el.setCssProps({ "--neokeys-dial-label-lines": `${maxLines}` });
+	for (const strict of [true, false]) {
+		for (const font of sizes) {
+			const lineHeight = Math.round(font * LABEL_LINE_HEIGHT * 10) / 10;
+			for (let lines = 1; lines <= maxLines; lines++) {
+				const half = (lines * lineHeight) / 2;
+				if (half >= radius) continue;
+				const box = Math.floor(2 * Math.sqrt(radius * radius - half * half));
+				el.setCssProps({
+					"--neokeys-dial-label-size": `${font}px`,
+					"--neokeys-dial-label-width": `${box}px`,
+					"--neokeys-dial-line-height": `${lineHeight}px`,
+				});
+				const count = Math.round(labelEl.scrollHeight / lineHeight);
+				const overflowX = labelEl.scrollWidth > labelEl.clientWidth + 1;
+				if (count > lines || overflowX) continue;
+				if (!strict || count !== 2 || lastLineShare(labelEl) >= MIN_LAST_LINE_SHARE) return;
+			}
+		}
+	}
+	el.addClass("neokeys-dial-label-break");
+}
+
+/**
+ * The width of the label's last line as a share of its widest line, from the text's own line
+ * boxes (the inline key chip counts as part of the first line). Line boxes are compared with each
+ * other, not with the element's layout width, so the pop-in scale transform cancels out.
+ */
+function lastLineShare(labelEl: HTMLElement): number {
+	const range = labelEl.ownerDocument.createRange();
+	range.selectNodeContents(labelEl);
+	const rects = Array.from(range.getClientRects());
+	if (rects.length === 0) return 1;
+	const lines = new Map<number, { left: number; right: number }>();
+	for (const rect of rects) {
+		const top = Math.round(rect.top);
+		const line = lines.get(top);
+		if (line) {
+			line.left = Math.min(line.left, rect.left);
+			line.right = Math.max(line.right, rect.right);
+		} else {
+			lines.set(top, { left: rect.left, right: rect.right });
+		}
+	}
+	const widths = [...lines.entries()].sort((a, b) => a[0] - b[0]).map(([, line]) => line.right - line.left);
+	const widest = Math.max(...widths);
+	return widest > 0 ? widths[widths.length - 1] / widest : 1;
+}
+
 /**
  * The mobile dial's DOM: a fixed, full-screen layer holding the pinned anchor button, the fan of
  * items, the breadcrumb pill with its Back and Close buttons, and a backdrop that only exists
@@ -60,6 +137,7 @@ export class MobileDial {
 	private readonly layerEl: HTMLElement;
 	private readonly backdropEl: HTMLElement;
 	private readonly pillEl: HTMLElement;
+	private readonly arcsEl: SVGElement;
 	private readonly crumbsEl: HTMLElement;
 	private readonly fanEl: HTMLElement;
 	private readonly anchorEl: HTMLElement;
@@ -93,7 +171,7 @@ export class MobileDial {
 			},
 			vibrate,
 		};
-		this.controller = new DialController(host, (mode) => this.measure(mode));
+		this.controller = new DialController(host, (mode) => this.measure(mode), ringParamsFor(options.itemSize));
 		this.controller.onChange((change) => this.render(change));
 
 		this.layerEl = createDiv({ cls: "neokeys-dial" });
@@ -113,6 +191,8 @@ export class MobileDial {
 		});
 		setIcon(closeEl, "x");
 
+		// The ring arcs sit under the fan in the stacking order, so they show only between items.
+		this.arcsEl = this.layerEl.createSvg("svg", { cls: "neokeys-dial-arcs", attr: { "aria-hidden": "true" } });
 		this.fanEl = this.layerEl.createDiv({ cls: "neokeys-dial-fan", attr: { role: "group", "aria-label": "Neokeys dial items" } });
 		this.anchorEl = this.layerEl.createEl("button", {
 			cls: "neokeys-dial-anchor",
@@ -458,6 +538,21 @@ export class MobileDial {
 			// place, so nothing is rebuilt and the pop-in does not replay.
 			view.items.forEach((item, index) => this.placeItem(this.itemEls[index], item, change === "layout"));
 		}
+		if (change !== "armed") {
+			this.renderArcs(view.arcs);
+			this.itemEls.forEach((el, index) => {
+				const label = el.querySelector<HTMLElement>(".neokeys-dial-item-label");
+				if (label) fitLabel(el, label, view.items[index].size, view.compact);
+			});
+		}
+	}
+
+	private renderArcs(arcs: DialArc[]): void {
+		this.arcsEl.empty();
+		for (const arc of arcs) {
+			const d = `M ${arc.from.x} ${arc.from.y} A ${arc.radius} ${arc.radius} 0 0 ${arc.clockwise ? 1 : 0} ${arc.to.x} ${arc.to.y}`;
+			this.arcsEl.createSvg("path", { attr: { d } });
+		}
 	}
 
 	private renderCrumbs(view: DialView): void {
@@ -475,12 +570,7 @@ export class MobileDial {
 		let armedSepEl: HTMLElement | null = null;
 		if (view.armedLabel !== null) {
 			armedSepEl = this.crumbsEl.createSpan({ cls: "neokeys-dial-crumb-sep", text: "›" });
-			const armedEl = this.crumbsEl.createSpan({ cls: "neokeys-dial-crumb neokeys-dial-crumb-armed", text: view.armedLabel });
-			if (view.armedInvalid) {
-				armedEl.addClass("neokeys-dial-crumb-invalid");
-				// The reason is a separate crumb, so it gives way before the label itself does.
-				this.crumbsEl.createSpan({ cls: "neokeys-dial-crumb neokeys-dial-crumb-note neokeys-dial-crumb-invalid", text: "(unknown command)" });
-			}
+			this.crumbsEl.createSpan({ cls: "neokeys-dial-crumb neokeys-dial-crumb-armed", text: view.armedLabel });
 		}
 		this.fitCrumbs(collapsedEl, trail, seps, pageEl, armedSepEl);
 	}
@@ -489,11 +579,10 @@ export class MobileDial {
 	 * Collapse the trail from the left while any crumb is cut short, so the pill always prefers
 	 * the end of the path: "Neokeys › Text › Heading › Increase heading level" becomes
 	 * "… › Heading › Increase heading level" on a narrow phone, then "… › Increase heading level".
-	 * The label under the thumb outranks everything else: if anything is still cut, the
-	 * unknown-command note goes (it only ever takes the room the label leaves, so it is the first
-	 * thing cut), then the page indicator, then the ellipsis itself, so the label stands alone
-	 * before the stylesheet ever shortens it. With nothing armed the current level's own crumb
-	 * always stays, ellipsized by the stylesheet when even that does not fit.
+	 * The label under the thumb outranks everything else: if it is still cut, the page indicator
+	 * goes, then the ellipsis itself, so the label stands alone before the stylesheet ever
+	 * shortens it. With nothing armed the current level's own crumb always stays, ellipsized by
+	 * the stylesheet when even that does not fit.
 	 */
 	private fitCrumbs(collapsedEl: HTMLElement, trail: HTMLElement[], seps: HTMLElement[], pageEl: HTMLElement | null, armedSepEl: HTMLElement | null): void {
 		const cut = (): boolean => Array.from(this.crumbsEl.querySelectorAll(".neokeys-dial-crumb")).some((el) => el.scrollWidth > el.clientWidth + 1);
@@ -504,8 +593,6 @@ export class MobileDial {
 			collapsedEl.removeClass("neokeys-hidden");
 		}
 		if (!armedSepEl) return;
-		const noteEl = this.crumbsEl.querySelector(".neokeys-dial-crumb-note");
-		if (noteEl && cut()) noteEl.addClass("neokeys-hidden");
 		if (pageEl && cut()) pageEl.addClass("neokeys-hidden");
 		if (cut()) {
 			collapsedEl.addClass("neokeys-hidden");
@@ -517,11 +604,17 @@ export class MobileDial {
 		this.fanEl.empty();
 		this.itemEls = items.map((item) => {
 			const el = this.fanEl.createDiv({
-				cls: `neokeys-dial-item neokeys-dial-item-${item.kind}${item.invalid ? " neokeys-dial-item-invalid" : ""}`,
+				cls: `neokeys-dial-item neokeys-dial-item-${item.kind}`,
 				attr: { role: "button", "aria-label": itemAccessibleName(item) },
 			});
-			el.createSpan({ cls: "neokeys-dial-item-key", text: item.key, attr: { "aria-hidden": "true" } });
-			el.createSpan({ cls: "neokeys-dial-item-label", text: itemLabelText(item.label), attr: { "aria-hidden": "true" } });
+			// The key chip leads the label and never parts from its first word: a chip alone on a line reads as nothing.
+			const label = el.createSpan({ cls: "neokeys-dial-item-label", attr: { "aria-hidden": "true" } });
+			const text = itemLabelText(item.label);
+			const space = text.indexOf(" ");
+			const head = label.createSpan({ cls: "neokeys-dial-item-head" });
+			head.createSpan({ cls: "neokeys-dial-item-key", text: item.key });
+			head.appendText(space === -1 ? text : text.slice(0, space));
+			if (space !== -1) label.appendText(text.slice(space));
 			this.placeItem(el, item, true);
 			return el;
 		});
@@ -542,6 +635,6 @@ export class MobileDial {
 
 function itemAccessibleName(item: DialItemView): string {
 	if (item.kind === "more") return "More items, next page";
-	const kind = item.kind === "group" ? ", group" : item.kind === "file" ? ", file" : item.invalid ? ", unknown command" : "";
+	const kind = item.kind === "group" ? ", group" : item.kind === "file" ? ", file" : "";
 	return `${item.label}${kind}, key ${item.key}`;
 }

@@ -1,16 +1,19 @@
 import { keyFromEvent, keyGlyph, type KeyboardEventLike } from "../keys";
-import { commandUnavailableMessage } from "../messages";
+import { commandUnavailableMessage, dialEmptyMessage } from "../messages";
 import { breadcrumbTrail, entryLabel, findEntry, sortEntries } from "../tree";
 import type { GroupEntry, GroupNode } from "../types";
 import {
 	chooseLayout,
 	COMPACT_RING_PARAMS,
 	DEFAULT_DEAD_ZONE,
+	DEFAULT_RING_PARAMS,
 	hitTest,
 	paging,
 	placeSlots,
+	ringArcs,
 	slotPosition,
 	totalCapacity,
+	type DialArc,
 	type DialGeometry,
 	type DialLayoutMode,
 	type DialPoint,
@@ -37,8 +40,6 @@ export interface DialItemView {
 	/** The key glyph shown on the item: the entry's key, or an ellipsis for "More". */
 	key: string;
 	label: string;
-	/** A command entry whose id Obsidian does not currently know; shown the way the which-key popup shows it. */
-	invalid: boolean;
 	armed: boolean;
 	x: number;
 	y: number;
@@ -55,8 +56,9 @@ export interface DialView {
 	crumbs: string[];
 	/** The label of the item under the pointer, shown at the end of the breadcrumb while pressing. */
 	armedLabel: string | null;
-	armedInvalid: boolean;
 	items: DialItemView[];
+	/** A guide arc through the items of each ring that holds more than one. */
+	arcs: DialArc[];
 	/** Items are at the minimum thumb size with tighter spacing, so the renderer can simplify them. */
 	compact: boolean;
 	/** Where the breadcrumb pill sits for this layout. */
@@ -117,6 +119,8 @@ export class DialController {
 		 * mode measured last is the one in effect.
 		 */
 		private readonly measure: (mode: DialLayoutMode) => DialGeometry,
+		/** The comfortable spacing, from the item size setting; compact spacing is the fallback. */
+		private readonly ringParams: DialRingParams = DEFAULT_RING_PARAMS,
 		private readonly deadZone: number = DEFAULT_DEAD_ZONE,
 	) {}
 
@@ -167,8 +171,8 @@ export class DialController {
 	 */
 	relayout(): void {
 		if (!this.opened) return;
-		const count = sortEntries(this.currentGroup).length;
-		const layout = chooseLayout(count, this.measure);
+		const count = this.visibleEntries(this.currentGroup).length;
+		const layout = chooseLayout(count, this.measure, this.ringParams);
 		this.measure(layout.mode);
 		this.mode = layout.mode;
 		this.geometry = layout.geometry;
@@ -264,7 +268,7 @@ export class DialController {
 			return;
 		}
 		const entry = findEntry(this.currentGroup, keyFromEvent(evt));
-		if (entry) this.commit({ kind: "entry", entry });
+		if (entry && this.isVisible(entry)) this.commit({ kind: "entry", entry });
 	}
 
 	view(): DialView {
@@ -276,8 +280,8 @@ export class DialController {
 			title: root?.title ?? "Neokeys",
 			crumbs: this.opened ? breadcrumbTrail(this.path, (id) => this.host.resolveCommandName(id)) : [],
 			armedLabel: armedTarget ? this.targetLabel(armedTarget) : null,
-			armedInvalid: armedTarget ? this.targetInvalid(armedTarget) : false,
 			items: this.opened ? this.targets.map((target, index) => this.itemView(target, index)) : [],
+			arcs: this.opened && this.geometry ? ringArcs(this.geometry, this.rings, this.slots) : [],
 			compact: this.params === COMPACT_RING_PARAMS,
 			mode: this.mode,
 			page: this.page,
@@ -290,6 +294,10 @@ export class DialController {
 	}
 
 	private openAt(root: GroupNode, pressing: ReleaseOnNothing | null): void {
+		if (this.visibleEntries(root).length === 0) {
+			this.host.notify(dialEmptyMessage());
+			return;
+		}
 		this.path = [root];
 		this.page = 0;
 		this.opened = true;
@@ -315,9 +323,26 @@ export class DialController {
 		this.emit("armed");
 	}
 
+	/**
+	 * The entries the dial shows, in the popup's order: files, commands Obsidian knows on this
+	 * device, and groups with at least one such entry below them. The keyboard popup lists an
+	 * unknown command in red; on a touch screen it would only take a slot from the ones that
+	 * work (several of the default keymap's window commands do not exist on phones).
+	 */
+	private visibleEntries(group: GroupNode): GroupEntry[] {
+		return sortEntries(group).filter((entry) => this.isVisible(entry));
+	}
+
+	private isVisible(entry: GroupEntry): boolean {
+		const { node } = entry;
+		if (node.kind === "command") return this.host.isCommandKnown(node.command);
+		if (node.kind === "group") return node.entries.some((child) => this.isVisible(child));
+		return true;
+	}
+
 	/** Place the current page of the current level onto the rings. */
 	private rebuildSlots(): void {
-		const entries = sortEntries(this.currentGroup);
+		const entries = this.visibleEntries(this.currentGroup);
 		const split = paging(entries.length, totalCapacity(this.rings));
 		this.pages = split.pages;
 		if (this.page >= this.pages) this.page = 0;
@@ -369,12 +394,6 @@ export class DialController {
 		return entryLabel(target.entry, (id) => this.host.resolveCommandName(id));
 	}
 
-	private targetInvalid(target: DialTarget): boolean {
-		if (target.kind !== "entry") return false;
-		const { node } = target.entry;
-		return node.kind === "command" && !this.host.isCommandKnown(node.command);
-	}
-
 	private itemView(target: DialTarget, index: number): DialItemView {
 		const slot = this.slots[index];
 		const position = this.geometry ? slotPosition(slot, this.geometry, this.rings) : { x: 0, y: 0 };
@@ -382,7 +401,6 @@ export class DialController {
 			kind: target.kind === "more" ? "more" : target.entry.node.kind,
 			key: target.kind === "more" ? "…" : keyGlyph(target.entry.key),
 			label: this.targetLabel(target),
-			invalid: this.targetInvalid(target),
 			armed: index === this.armed,
 			x: position.x,
 			y: position.y,

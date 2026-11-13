@@ -607,96 +607,97 @@ body.theme-light .neokeys-dial {
 	font-weight: var(--font-semibold);
 }
 
-/* Basis 0: the note only takes what is left after the label, so it never shrinks the label even by a fraction (which would ellipsize it). */
-.neokeys-dial-crumb-note {
-	flex: 1 1 0;
-	min-width: 0;
-	max-width: max-content;
-	margin-left: var(--size-2-1);
-	font-size: var(--font-ui-smaller);
-}
-
-.neokeys-dial-crumb-invalid {
-	color: var(--text-error);
-}
-
 .neokeys-dial-fan {
 	position: absolute;
 	inset: 0;
 	pointer-events: none;
 }
 
-/* Positions come from the layout module as custom properties, so the stylesheet owns every static style. */
+/* A hairline through each ring's items, under them in the stacking order so it shows only between them: the theme's border colour unless --neokeys-dial-arc-color says otherwise. */
+.neokeys-dial-arcs {
+	position: absolute;
+	inset: 0;
+	width: 100%;
+	height: 100%;
+	overflow: visible;
+	pointer-events: none;
+}
+
+.neokeys-dial-arcs path {
+	fill: none;
+	stroke: var(--neokeys-dial-arc-color, var(--background-modifier-border));
+	stroke-width: 1px;
+}
+
+/*
+ * Items: round by default, their surface, border and radius taken from the theme, each with a
+ * Neokeys variable on top so a theme or snippet can restyle just the dial
+ * (--neokeys-dial-item-radius, --neokeys-dial-item-background, --neokeys-dial-item-border,
+ * --neokeys-dial-item-color, and --neokeys-dial-arc-color above). Positions come from the layout
+ * module as custom properties and the label's size, width and line count from the fitter in
+ * mobileDial.ts, so the stylesheet owns every static style.
+ */
 .neokeys-dial-item {
-	--neokeys-dial-label-size: 0.625rem;
+	--neokeys-dial-label-size: 0.75rem;
+	--neokeys-dial-label-width: calc(var(--neokeys-dial-size) - 2 * var(--size-2-2));
+	--neokeys-dial-line-height: 1.1;
 	position: absolute;
 	left: 0;
 	top: 0;
 	width: var(--neokeys-dial-size);
 	height: var(--neokeys-dial-size);
 	transform: translate(calc(var(--neokeys-dial-x) - 50%), calc(var(--neokeys-dial-y) - 50%));
-	border-radius: 50%;
-	background-color: var(--background-primary);
-	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--neokeys-dial-item-radius, 50%);
+	background-color: var(--neokeys-dial-item-background, var(--background-primary));
+	border: 1px solid var(--neokeys-dial-item-border, var(--background-modifier-border));
 	box-shadow: var(--shadow-s);
-	color: var(--text-normal);
+	color: var(--neokeys-dial-item-color, var(--text-normal));
 	display: flex;
-	flex-direction: column;
 	align-items: center;
 	justify-content: center;
-	padding: 0 var(--size-2-2);
 	overflow: hidden;
 	pointer-events: none;
 }
 
-/*
- * The key is a small chip tucked into the circle's top cap, above the label block, so the label
- * keeps the circle's widest chords: on a touch screen the label is what identifies an item, the
- * key is a reminder for a hardware keyboard.
- */
-.neokeys-dial-item-key {
-	position: absolute;
-	top: 3px;
-	left: 50%;
-	transform: translateX(-50%);
-	font-family: var(--font-monospace);
-	font-weight: var(--font-bold);
-	font-size: 0.5rem;
-	line-height: 1;
-	padding: 1px var(--size-2-1);
-	border-radius: var(--radius-s);
-	background-color: var(--background-modifier-hover);
-}
-
-/* Up to three lines of label, centred on the circle; a word too long for a line breaks anywhere, hyphenated where the platform can, so no sibling pair is left reading the same. */
+/* Balanced lines, never a word broken mid-way; the fitter picks the size, width and line count that fit the circle. */
 .neokeys-dial-item-label {
 	display: -webkit-box;
 	-webkit-box-orient: vertical;
-	-webkit-line-clamp: 3;
+	-webkit-line-clamp: var(--neokeys-dial-label-lines, 3);
 	overflow: hidden;
-	overflow-wrap: anywhere;
-	hyphens: auto;
+	width: var(--neokeys-dial-label-width);
 	text-align: center;
+	text-wrap: balance;
+	overflow-wrap: normal;
 	font-size: var(--neokeys-dial-label-size);
-	letter-spacing: -0.01em;
-	line-height: 1.1;
+	line-height: var(--neokeys-dial-line-height);
+}
+
+/* Only a word longer than the widest box at the smallest size may break; the clamp ellipsizes what is left. */
+.neokeys-dial-label-break .neokeys-dial-item-label {
+	overflow-wrap: anywhere;
+}
+
+/*
+ * The key is a small chip inline before the label's first word, which it never parts from: on a
+ * touch screen the label is what identifies an item, the key is a reminder for a hardware keyboard.
+ */
+.neokeys-dial-item-head {
+	white-space: nowrap;
+}
+
+.neokeys-dial-item-key {
+	display: inline-block;
+	vertical-align: 0.1em;
+	margin-right: 3px;
+	font-family: var(--font-monospace);
+	font-weight: var(--font-bold);
+	font-size: 9px;
+	line-height: 1;
+	padding: 1px 3px;
+	border-radius: var(--radius-s);
+	background-color: var(--background-modifier-hover);
 	color: var(--text-muted);
-}
-
-/* Compact items (the minimum thumb size) have no cap to spare: the chip rejoins the column and the label keeps two lines. */
-.neokeys-dial-compact .neokeys-dial-item {
-	--neokeys-dial-label-size: 0.55rem;
-	padding: 0 var(--size-2-1);
-}
-
-.neokeys-dial-compact .neokeys-dial-item-key {
-	position: static;
-	transform: none;
-	padding: 0 var(--size-2-1);
-}
-
-.neokeys-dial-compact .neokeys-dial-item-label {
-	-webkit-line-clamp: 2;
 }
 
 .neokeys-dial-item-group {
@@ -713,15 +714,6 @@ body.theme-light .neokeys-dial {
 
 .neokeys-dial-item-more .neokeys-dial-item-key {
 	color: var(--text-muted);
-}
-
-.neokeys-dial-item-invalid {
-	border-color: var(--text-error);
-}
-
-.neokeys-dial-item-invalid .neokeys-dial-item-key,
-.neokeys-dial-item-invalid .neokeys-dial-item-label {
-	color: var(--text-error);
 }
 
 /* The scale rides inside the same transform as the position: a separate `scale` property would apply first and scale the translation too. */
