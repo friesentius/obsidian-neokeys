@@ -13,8 +13,6 @@ import type { GroupNode } from "./types";
 import { TreeEditorView } from "./ui/treeEditorView";
 import type NeokeysPlugin from "./main";
 
-export { DEFAULT_SETTINGS, parseDialCorner } from "./defaultSettings";
-
 const LEADER_NAME = "Assign the leader hotkey";
 const LEADER_DESC =
 	'Neokeys ships no default hotkey. Open Settings → Hotkeys and bind a key or combo (e.g. Ctrl+J) to the "Neokeys: Leader" command.';

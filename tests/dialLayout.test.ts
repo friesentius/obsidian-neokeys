@@ -334,6 +334,16 @@ describe("hitTest", () => {
 		expect(hitTest(onRing0(25), geometry, rings, few)).toBe(1);
 	});
 
+	it("arms an end item anywhere inside its own circle, even outside the sweep", () => {
+		const fromAnchor = (u: number, v: number) => ({ x: geometry.anchor.x - u, y: geometry.anchor.y - v });
+		expect(hitTest(fromAnchor(88, -20), geometry, rings, slots)).toBe(0);
+		expect(hitTest(fromAnchor(-20, 88), geometry, rings, slots)).toBe(2);
+		const compactRings = computeRings(geometry, COMPACT_RING_PARAMS);
+		const compactSlots = placeSlots(compactRings, totalCapacity(compactRings));
+		expect(compactRings[0].radius).toBe(74);
+		expect(hitTest(fromAnchor(74, -15), geometry, compactRings, compactSlots, undefined, COMPACT_RING_PARAMS.itemSize)).toBe(0);
+	});
+
 	it("arms nothing between the anchor rim and the innermost ring's inner edge", () => {
 		const rad = (45 * Math.PI) / 180;
 		const atDistance = (d: number) => ({ x: geometry.anchor.x - d * Math.cos(rad), y: geometry.anchor.y - d * Math.sin(rad) });

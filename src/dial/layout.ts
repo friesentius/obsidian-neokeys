@@ -213,7 +213,8 @@ export function paging(count: number, capacity: number): DialPaging {
  * radial distance (bands meet halfway between neighbouring rings, the outermost band reaches
  * `outerReach` past the outermost ring so a slight overshoot still counts, and the innermost
  * band starts just inside that ring's inner edge), then the slot on that ring nearest in angle,
- * as long as the pointer is within half a slot pitch plus a little slack of that slot. Between
+ * as long as the pointer is within half a slot pitch plus a little slack of that slot, or anywhere
+ * inside that slot's own item circle (`outerReach` is the item size). Between
  * two neighbours the band is still split at the midpoint, so a drag is as forgiving as before,
  * but blank space past the end of a short arc, or far from a lone item, arms nothing. Only rings
  * that actually hold a slot take part, so a half-empty dial stays as forgiving as a full one;
@@ -250,6 +251,14 @@ export function hitTest(
 			break;
 		}
 	}
+
+	const radius = rings[ring].radius;
+	const inside = slots.findIndex((slot) => {
+		if (slot.ring !== ring) return false;
+		const slotAngleRad = degToRad(slot.angleDeg);
+		return Math.hypot(u - radius * Math.cos(slotAngleRad), v - radius * Math.sin(slotAngleRad)) <= outerReach / 2;
+	});
+	if (inside !== -1) return inside;
 
 	const angle = radToDeg(Math.atan2(v, u));
 	if (angle < -HIT_ANGLE_SLACK_DEG || angle > DIAL_SWEEP_DEG + HIT_ANGLE_SLACK_DEG) return null;
