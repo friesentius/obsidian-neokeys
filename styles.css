@@ -607,9 +607,11 @@ body.theme-light .neokeys-dial {
 	font-weight: var(--font-semibold);
 }
 
+/* Basis 0: the note only takes what is left after the label, so it never shrinks the label even by a fraction (which would ellipsize it). */
 .neokeys-dial-crumb-note {
-	flex-shrink: 1000;
+	flex: 1 1 0;
 	min-width: 0;
+	max-width: max-content;
 	margin-left: var(--size-2-1);
 	font-size: var(--font-ui-smaller);
 }

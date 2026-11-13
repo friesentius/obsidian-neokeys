@@ -489,10 +489,11 @@ export class MobileDial {
 	 * Collapse the trail from the left while any crumb is cut short, so the pill always prefers
 	 * the end of the path: "Neokeys › Text › Heading › Increase heading level" becomes
 	 * "… › Heading › Increase heading level" on a narrow phone, then "… › Increase heading level".
-	 * The label under the thumb outranks everything else: if it is still cut, the page indicator
-	 * goes, then the ellipsis itself, so the label stands alone before the stylesheet ever
-	 * shortens it. With nothing armed the current level's own crumb always stays, ellipsized by
-	 * the stylesheet when even that does not fit.
+	 * The label under the thumb outranks everything else: if anything is still cut, the
+	 * unknown-command note goes (it only ever takes the room the label leaves, so it is the first
+	 * thing cut), then the page indicator, then the ellipsis itself, so the label stands alone
+	 * before the stylesheet ever shortens it. With nothing armed the current level's own crumb
+	 * always stays, ellipsized by the stylesheet when even that does not fit.
 	 */
 	private fitCrumbs(collapsedEl: HTMLElement, trail: HTMLElement[], seps: HTMLElement[], pageEl: HTMLElement | null, armedSepEl: HTMLElement | null): void {
 		const cut = (): boolean => Array.from(this.crumbsEl.querySelectorAll(".neokeys-dial-crumb")).some((el) => el.scrollWidth > el.clientWidth + 1);
@@ -503,6 +504,8 @@ export class MobileDial {
 			collapsedEl.removeClass("neokeys-hidden");
 		}
 		if (!armedSepEl) return;
+		const noteEl = this.crumbsEl.querySelector(".neokeys-dial-crumb-note");
+		if (noteEl && cut()) noteEl.addClass("neokeys-hidden");
 		if (pageEl && cut()) pageEl.addClass("neokeys-hidden");
 		if (cut()) {
 			collapsedEl.addClass("neokeys-hidden");
