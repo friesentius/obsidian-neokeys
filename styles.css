@@ -673,9 +673,13 @@ body.theme-light .neokeys-dial {
 	line-height: var(--neokeys-dial-line-height);
 }
 
-/* Only a word longer than the widest box at the smallest size may break; the clamp ellipsizes what is left. */
+/* Only a word longer than the widest box at the smallest size may break (the chip is in the cap by then, so the first word may too); the clamp ellipsizes what is left. */
 .neokeys-dial-label-break .neokeys-dial-item-label {
 	overflow-wrap: anywhere;
+}
+
+.neokeys-dial-label-break .neokeys-dial-item-head {
+	white-space: normal;
 }
 
 /*
@@ -689,15 +693,24 @@ body.theme-light .neokeys-dial {
 .neokeys-dial-item-key {
 	display: inline-block;
 	vertical-align: 0.1em;
-	margin-right: 3px;
+	margin-right: 2px;
 	font-family: var(--font-monospace);
 	font-weight: var(--font-bold);
 	font-size: 9px;
 	line-height: 1;
-	padding: 1px 3px;
+	padding: 1px 2px;
 	border-radius: var(--radius-s);
 	background-color: var(--background-modifier-hover);
 	color: var(--text-muted);
+}
+
+/* A level where some chip and first word do not fit side by side at any size (and every compact level) puts its chips up in the circles' caps, where the label keeps the widest chords. */
+.neokeys-dial-key-cap .neokeys-dial-item-key {
+	position: absolute;
+	top: 1px;
+	left: 50%;
+	transform: translateX(-50%);
+	margin: 0;
 }
 
 .neokeys-dial-item-group {

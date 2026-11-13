@@ -62,28 +62,37 @@ const LABEL_INSET = 1;
 /** A second line narrower than this share of the widest line is a lone tiny word (a digit), to be avoided when a smaller size fits on one line. */
 const MIN_LAST_LINE_SHARE = 0.2;
 
+/** Where an item's key chip sits: inline before the label's first word, or up in the circle's cap with the label below it. */
+type ChipPlace = "inline" | "cap";
+
 /**
  * Fit one label into its circle: the largest size, on the fewest lines, whose box fits with no
  * word cut mid-way. The box for n lines is the chord that keeps the box's corners LABEL_INSET
- * inside the circle. Measured on the live element, so the font and the platform's wrapping
- * decide, not an estimate. A first pass refuses a two-line split that strands a lone tiny word
- * on the second line (a smaller size on one line wins over "Heading" / "6"; "Close" / "tab" and
- * a short last word under a three-line stack are fine); a second pass takes anything that fits.
- * If nothing fits (a word longer than the widest box at the smallest size) the label may break
- * anywhere and the line clamp ellipsizes what is left, so no text ever touches the edge.
+ * inside the circle (below the chip, in the cap layout). Measured on the live element, so the
+ * font and the platform's wrapping decide, not an estimate. The strict pass refuses a two-line
+ * split that strands a lone tiny word on the second line (a smaller size on one line wins over
+ * "Heading" / "6"; "Close" / "tab" and a short last word under a three-line stack are fine); the
+ * loose pass, unless skipped, takes anything that fits. Returns whether a pass fit. If none did
+ * and the loose pass ran (a word longer than the widest box at the smallest size) the label may
+ * break anywhere and the line clamp ellipsizes what is left, so no text ever touches the edge.
  */
-function fitLabel(el: HTMLElement, labelEl: HTMLElement, size: number, compact: boolean): void {
+function fitLabel(el: HTMLElement, labelEl: HTMLElement, size: number, compact: boolean, place: ChipPlace, strictOnly: boolean): boolean {
 	const sizes = compact ? COMPACT_LABEL_SIZES : LABEL_SIZES;
 	const maxLines = compact ? COMPACT_LABEL_LINES : LABEL_LINES;
-	const radius = size / 2 - 1 - LABEL_INSET;
+	const center = size / 2 - 1;
+	const radius = center - LABEL_INSET;
+	el.toggleClass("neokeys-dial-key-cap", place === "cap");
 	el.removeClass("neokeys-dial-label-break");
 	el.setCssProps({ "--neokeys-dial-label-lines": `${maxLines}` });
-	for (const strict of [true, false]) {
+	// Layout offsets, not client rects, so the pop-in scale does not skew the chip's extent.
+	const keyEl = place === "cap" ? el.querySelector<HTMLElement>(".neokeys-dial-item-key") : null;
+	const top = keyEl ? keyEl.offsetTop + keyEl.offsetHeight : 0;
+	for (const strict of strictOnly ? [true] : [true, false]) {
 		for (const font of sizes) {
 			const lineHeight = Math.round(font * LABEL_LINE_HEIGHT * 10) / 10;
 			for (let lines = 1; lines <= maxLines; lines++) {
 				const half = (lines * lineHeight) / 2;
-				if (half >= radius) continue;
+				if (half >= radius || center - half < top) continue;
 				const box = Math.floor(2 * Math.sqrt(radius * radius - half * half));
 				el.setCssProps({
 					"--neokeys-dial-label-size": `${font}px`,
@@ -93,11 +102,12 @@ function fitLabel(el: HTMLElement, labelEl: HTMLElement, size: number, compact: 
 				const count = Math.round(labelEl.scrollHeight / lineHeight);
 				const overflowX = labelEl.scrollWidth > labelEl.clientWidth + 1;
 				if (count > lines || overflowX) continue;
-				if (!strict || count !== 2 || lastLineShare(labelEl) >= MIN_LAST_LINE_SHARE) return;
+				if (!strict || count !== 2 || lastLineShare(labelEl) >= MIN_LAST_LINE_SHARE) return true;
 			}
 		}
 	}
-	el.addClass("neokeys-dial-label-break");
+	if (!strictOnly) el.addClass("neokeys-dial-label-break");
+	return false;
 }
 
 /**
@@ -540,11 +550,25 @@ export class MobileDial {
 		}
 		if (change !== "armed") {
 			this.renderArcs(view.arcs);
-			this.itemEls.forEach((el, index) => {
-				const label = el.querySelector<HTMLElement>(".neokeys-dial-item-label");
-				if (label) fitLabel(el, label, view.items[index].size, view.compact);
-			});
+			this.fitLabels(view);
 		}
+	}
+
+	/**
+	 * Fit the level's labels. The key chip leads each label's first word; when any label on the
+	 * level cannot fit that way without a lone tiny word or a cut, the whole level moves its chips
+	 * up into the circles' caps, so a ring never mixes the two placements. Compact items always
+	 * use the cap, having no width to spare beside the first word.
+	 */
+	private fitLabels(view: DialView): void {
+		const labels = this.itemEls.map((el, index) => ({
+			el,
+			labelEl: el.querySelector<HTMLElement>(".neokeys-dial-item-label"),
+			size: view.items[index].size,
+		}));
+		const inline = !view.compact && labels.every(({ el, labelEl, size }) => labelEl === null || fitLabel(el, labelEl, size, false, "inline", true));
+		if (inline) return;
+		for (const { el, labelEl, size } of labels) if (labelEl) fitLabel(el, labelEl, size, view.compact, "cap", false);
 	}
 
 	private renderArcs(arcs: DialArc[]): void {
