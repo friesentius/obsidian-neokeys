@@ -339,7 +339,7 @@ export interface LensLayout {
 	crowded: boolean;
 	/** The diameter of a circle at rest on this ring: the item size, or the shrunk size a crowded level is spread at. */
 	base: number;
-	/** How much of the way to the peak the lens grew: 1 unless the ring had no room for all of it. */
+	/** How much of the way to the peak the lens grew: 1 at rest and on a crowded ring; below 1 only on a ring that fits its level but has no room for all of the lens. */
 	growth: number;
 	/** How much of each circle is there, 0 to 1 (see `DialSlot.presence`; `sizes` are already shrunk by it): 1 everywhere but on a level too big for its ring with the lens on it. */
 	presences: number[];
@@ -558,9 +558,8 @@ function leastFalloff(top: number): number {
  * that. As the finger sweeps along the ring they come back in at the end it is moving toward and
  * go out at the other, so every circle can be brought under the finger. The finger's own gap
  * shifts the packing the way it would shift the whole level, as far as the level fitting would
- * have, so the layout does not jump where the level stops fitting. When even that does not leave
- * room for the lens at the end of the sweep, the lens grows less; only a ring too small for
- * that is laid out at rest.
+ * have, so the layout does not jump where the level stops fitting. A crowded ring always grows
+ * the lens all the way to the peak (`growth` is 1).
  */
 function crowdedLayout(count: number, radius: number, peak: number, theta: number, edgeRoom: number, base: number, weights: readonly number[]): { angles: number[]; sizes: number[]; growth: number; presences: number[] } {
 	const restPitch = DIAL_SWEEP_DEG / (count - 1);
@@ -629,7 +628,7 @@ function crowdedLayout(count: number, radius: number, peak: number, theta: numbe
 	 * over from one to the other as the finger passes through the middle half of the gap, so
 	 * the shift does not jump at the half way mark.
 	 */
-	const full = sizesFor(leastFalloff(topFor(1)), 1);
+	const full = sizesFor(lowest, 1);
 	const least = Array.from({ length: count - 1 }, (_, gap) => angleOnRing(radius, clearance(full, weights, gap, gap + 1)));
 	const low = -endSlack(full[0], radius, edgeRoom);
 	const high = DIAL_SWEEP_DEG + endSlack(full[count - 1], radius, edgeRoom);
