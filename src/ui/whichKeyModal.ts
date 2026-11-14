@@ -1,6 +1,7 @@
 import { App, Modal, Notice } from "obsidian";
 import { ShowDelayGate } from "../delay";
 import { keyFromEvent, keyGlyph } from "../keys";
+import { commandUnavailableMessage } from "../messages";
 import { getCommandName, hasCommand } from "../obsidianCommands";
 import { breadcrumbTrail, entryLabel, findEntry, sortEntries } from "../tree";
 import type { GroupNode } from "../types";
@@ -176,7 +177,7 @@ export class WhichKeyModal extends Modal {
 		}
 
 		if (entry.node.kind === "command" && !hasCommand(this.app, entry.node.command)) {
-			new Notice(`Neokeys: command "${entry.node.command}" is not available`, 6000);
+			new Notice(commandUnavailableMessage(entry.node.command), 6000);
 			return false;
 		}
 

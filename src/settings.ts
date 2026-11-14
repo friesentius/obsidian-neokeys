@@ -8,18 +8,11 @@ import { KeymapParseError, parseKeymapSource } from "./keymap";
 import { serializeKeymap } from "./keymapSerialize";
 import { keyFromEvent, keyToString } from "./keys";
 import { getCommandHotkeys, hasCommand, listOtherCommandHotkeys } from "./obsidianCommands";
-import { DEFAULT_KEYMAP_YAML } from "./sampleKeymap";
-import type { GroupNode, NeokeysSettings } from "./types";
+import { parseDialCorner, parseDialDescription, parseDialItemSize } from "./defaultSettings";
+import { DEFAULT_DIAL_ITEM_SIZE, MAX_DIAL_ITEM_SIZE, MIN_DIAL_ITEM_SIZE } from "./dial/layout";
+import type { GroupNode } from "./types";
 import { TreeEditorView } from "./ui/treeEditorView";
 import type NeokeysPlugin from "./main";
-
-export const DEFAULT_SETTINGS: NeokeysSettings = {
-	keymapSource: DEFAULT_KEYMAP_YAML,
-	showDelayMs: 200,
-	comboLeader: "",
-	animationsEnabled: true,
-	animationDurationMs: DEFAULT_ANIMATION_DURATION_MS,
-};
 
 const LEADER_NAME = "Assign the leader hotkey";
 const LEADER_DESC =
@@ -35,6 +28,17 @@ const ANIMATIONS_DESC =
 	"Slide the which-key popup in from the bottom edge, and crossfade between menus when navigating. Always off when your OS's reduced-motion accessibility preference is on, regardless of this toggle.";
 const ANIMATION_DURATION_NAME = "Animation duration";
 const ANIMATION_DURATION_DESC = "Milliseconds for the slide-in and crossfade animations (0‑1000).";
+const MOBILE_DIAL_NAME = "Show the dial on mobile";
+const MOBILE_DIAL_DESC =
+	"On phones and tablets, pin a leader button to a bottom corner of the screen. Press it to fan the menu's keys out on a ring around it; dragging onto a group opens its keys on the next ring out, and letting go on a command runs it.";
+const MOBILE_DIAL_DESKTOP_NOTE = "Desktop keeps the keyboard-driven popup.";
+const MOBILE_DIAL_CORNER_NAME = "Dial corner";
+const MOBILE_DIAL_CORNER_DESC = "Which bottom corner the dial's button is pinned to.";
+const MOBILE_DIAL_ITEM_SIZE_NAME = "Dial item size";
+const MOBILE_DIAL_ITEM_SIZE_DESC = `Diameter of the dial's circles in pixels, ${MIN_DIAL_ITEM_SIZE} to ${MAX_DIAL_ITEM_SIZE} (${DEFAULT_DIAL_ITEM_SIZE} by default). Smaller circles put more keys on each ring and more rings on the screen.`;
+const MOBILE_DIAL_DESCRIPTION_NAME = "Dial description";
+const MOBILE_DIAL_DESCRIPTION_DESC =
+	"Where the dial describes the item under your thumb, beyond the line in the pill: nowhere else, on a card between the pill and the rings, or in a bubble beside your thumb.";
 const KEYMAP_DESC =
 	'Edit the keymap as a tree, or use "Edit as YAML/JSON" for the raw, Spacekeys-compatible source (each group has items; each item is a group, a command ("command: <id>" or the short form "<id> <description>"), or a file ("file: <path>")). Both views edit the same stored keymap - switching away from the YAML view saves it first, and an invalid edit there is never silently discarded.';
 const YAML_NOTE =
@@ -125,6 +129,36 @@ export class NeokeysSettingTab extends PluginSettingTab {
 			},
 			{
 				type: "group",
+				heading: "Mobile dial",
+				items: [
+					{
+						name: MOBILE_DIAL_NAME,
+						desc: `${MOBILE_DIAL_DESC} ${MOBILE_DIAL_DESKTOP_NOTE}`,
+						aliases: ["mobile", "phone", "tablet", "touch", "fan", "dial"],
+						render: (setting) => this.renderMobileDialEnabled(setting),
+					},
+					{
+						name: MOBILE_DIAL_CORNER_NAME,
+						desc: MOBILE_DIAL_CORNER_DESC,
+						aliases: ["corner", "left", "right", "position"],
+						render: (setting) => this.renderMobileDialCorner(setting),
+					},
+					{
+						name: MOBILE_DIAL_ITEM_SIZE_NAME,
+						desc: MOBILE_DIAL_ITEM_SIZE_DESC,
+						aliases: ["size", "circle", "diameter", "bigger", "smaller"],
+						render: (setting) => this.renderMobileDialItemSize(setting),
+					},
+					{
+						name: MOBILE_DIAL_DESCRIPTION_NAME,
+						desc: MOBILE_DIAL_DESCRIPTION_DESC,
+						aliases: ["description", "card", "bubble", "thumb", "label"],
+						render: (setting) => this.renderMobileDialDescription(setting),
+					},
+				],
+			},
+			{
+				type: "group",
 				heading: "Keymap",
 				items: [
 					{
@@ -159,6 +193,12 @@ export class NeokeysSettingTab extends PluginSettingTab {
 		this.renderShowDelay(new Setting(containerEl));
 		this.renderAnimationsEnabled(new Setting(containerEl));
 		this.renderAnimationDuration(new Setting(containerEl));
+
+		new Setting(containerEl).setName("Mobile dial").setHeading();
+		this.renderMobileDialEnabled(new Setting(containerEl));
+		this.renderMobileDialCorner(new Setting(containerEl));
+		this.renderMobileDialItemSize(new Setting(containerEl));
+		this.renderMobileDialDescription(new Setting(containerEl));
 
 		new Setting(containerEl).setName("Keymap").setHeading();
 		this.renderKeymapEditor(new Setting(containerEl));
@@ -313,6 +353,76 @@ export class NeokeysSettingTab extends PluginSettingTab {
 					.onChange(async (value) => {
 						this.plugin.settings.animationDurationMs = parseAnimationDurationInput(value);
 						await this.plugin.saveSettings();
+					}),
+			);
+	}
+
+	private renderMobileDialEnabled(setting: Setting): void {
+		setting
+			.setName(MOBILE_DIAL_NAME)
+			.setDesc(
+				createFragment((fragment) => {
+					fragment.appendText(MOBILE_DIAL_DESC);
+					fragment.createEl("br");
+					fragment.appendText(MOBILE_DIAL_DESKTOP_NOTE);
+				}),
+			)
+			.addToggle((toggle) =>
+				toggle.setValue(this.plugin.settings.mobileDialEnabled).onChange(async (value) => {
+					this.plugin.settings.mobileDialEnabled = value;
+					await this.plugin.saveSettings();
+					this.plugin.applyMobileDial();
+				}),
+			);
+	}
+
+	private renderMobileDialCorner(setting: Setting): void {
+		setting
+			.setName(MOBILE_DIAL_CORNER_NAME)
+			.setDesc(MOBILE_DIAL_CORNER_DESC)
+			.addDropdown((dropdown) =>
+				dropdown
+					.addOption("bottom-right", "Bottom right")
+					.addOption("bottom-left", "Bottom left")
+					.setValue(this.plugin.settings.mobileDialCorner)
+					.onChange(async (value) => {
+						this.plugin.settings.mobileDialCorner = parseDialCorner(value);
+						await this.plugin.saveSettings();
+						this.plugin.applyMobileDial();
+					}),
+			);
+	}
+
+	private renderMobileDialItemSize(setting: Setting): void {
+		setting
+			.setName(MOBILE_DIAL_ITEM_SIZE_NAME)
+			.setDesc(MOBILE_DIAL_ITEM_SIZE_DESC)
+			.addSlider((slider) =>
+				slider
+					.setLimits(MIN_DIAL_ITEM_SIZE, MAX_DIAL_ITEM_SIZE, 2)
+					.setValue(this.plugin.settings.mobileDialItemSize)
+					.onChange(async (value) => {
+						this.plugin.settings.mobileDialItemSize = parseDialItemSize(value);
+						await this.plugin.saveSettings();
+						this.plugin.applyMobileDial();
+					}),
+			);
+	}
+
+	private renderMobileDialDescription(setting: Setting): void {
+		setting
+			.setName(MOBILE_DIAL_DESCRIPTION_NAME)
+			.setDesc(MOBILE_DIAL_DESCRIPTION_DESC)
+			.addDropdown((dropdown) =>
+				dropdown
+					.addOption("none", "Pill only")
+					.addOption("card", "Centre card")
+					.addOption("thumb", "Beside the thumb")
+					.setValue(this.plugin.settings.mobileDialDescription)
+					.onChange(async (value) => {
+						this.plugin.settings.mobileDialDescription = parseDialDescription(value);
+						await this.plugin.saveSettings();
+						this.plugin.applyMobileDial();
 					}),
 			);
 	}

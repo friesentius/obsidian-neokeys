@@ -26,7 +26,7 @@ export default defineConfig([
 						"scripts/*.mjs",
 					],
 					// Default is 8; the tests/*.ts glob alone now exceeds that as the suite grows.
-					maximumDefaultProjectFileMatchCount_THIS_WILL_SLOW_DOWN_LINTING: 20,
+					maximumDefaultProjectFileMatchCount_THIS_WILL_SLOW_DOWN_LINTING: 32,
 				},
 			},
 		},
@@ -34,12 +34,18 @@ export default defineConfig([
 	},
 	{
 		// 0.5.0 (see the pin note above) predates the recommended config's
-		// scripts/** exemption from the Obsidian-runtime rules, so this rule
-		// still reports a plain console.log() here even though scripts/ never
-		// runs inside Obsidian. Restoring just that exemption locally.
+		// scripts/** exemption from the Obsidian-runtime rules, so it still
+		// reports a plain console.log() here, and (now that the manifest is no
+		// longer desktop-only) Node built-in imports and the `process` global,
+		// even though scripts/ only ever runs under Node in CI. Restoring just
+		// that exemption locally.
 		files: ["scripts/**/*.{js,mjs,cjs,ts}"],
+		languageOptions: {
+			globals: { process: "readonly" },
+		},
 		rules: {
 			"obsidianmd/rule-custom-message": "off",
+			"obsidianmd/no-nodejs-modules": "off",
 		},
 	},
 	{

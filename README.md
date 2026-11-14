@@ -189,10 +189,75 @@ in), so a sequence you already know by muscle memory never flashes it. There is 
 abandon-timeout: a half-typed sequence waits indefinitely until it resolves, dead-ends, is
 backspaced away, or you press Esc.
 
+## Mobile
+
+On phones and tablets, Neokeys replaces typing with a **dial**: a leader button pinned to a bottom
+corner of the screen. Press it and the root menu's keys fan out on a ring of small circles around
+it, each circle showing just its key, groups rimmed in the accent colour. Drag onto a group and its
+own keys open on the next ring out, so one drag walks the keymap: root, then Text, then Heading,
+then the digit you want. Let go on a command to run it, on a file to open it; let go on a group and
+its ring simply stays open for the next press. Passing over an item on the way only highlights it,
+so nothing happens until you release. A direct tap on an item does the same thing, and a tap on
+the button once the dial is open closes the deepest ring (or the dial, at the root), the way
+<kbd>Backspace</kbd> does in the keyboard popup. The note dims behind the open dial; a tap on that
+dimmed area closes it without running anything.
+
+A pill just below Obsidian's header names what you are on: the path of open groups, the item under
+your thumb at its end, and on a second line the group's description, so a ring of bare keys reads
+as what it does (a group without a description lists its keys and labels there instead). On a
+narrow phone the start of the path gives way to an ellipsis, then the page number, so the item
+under your thumb is the last thing ever shortened. Back and Close buttons sit at either end.
+
+![Mobile dial mid-drag through Text and Heading to Heading 2, dark theme](docs/screenshots/mobile/dial-heading-dark.png)
+
+![Mobile dial mid-drag with an item highlighted, light theme](docs/screenshots/mobile/dial-armed-light.png)
+
+Nothing moves while your finger is down. Each ring sits where its own level needs it, whatever
+opens outside it, and the pill picks its place once per opening: below the header when the
+keymap's widest path fits under it, raised over the header when that wins back room (a phone with
+its keyboard up), with the rings reaching up behind it only on a screen too short for anything
+else. When a group's
+ring has no room outside the current ones, the group stays highlighted, the pill says to let go,
+and the release redraws the dial from the deepest levels that fit; Back brings the outer rings
+back. A level with more items than its ring can hold pages, with a "More" item that turns to the
+next page. On a 390px phone the default keymap's deepest path (root, Text, Heading) opens whole on
+three rings with the keyboard up or down; smaller circles hold more per ring.
+
+![Mobile dial open on the Window group, dark theme](docs/screenshots/mobile/dial-window-dark.png)
+
+The dial keeps clear of the on-screen keyboard, Obsidian's editing toolbar and its navigation bar,
+and touching it never takes focus away from the note, so a selection stays selected and the
+keyboard stays up. If the keyboard or a bar comes or goes while the dial is open, the rings move
+with it in place. Items that reference a command Obsidian does not have on this device (several
+of the default keymap's window commands are desktop-only, for instance) are left out of the dial,
+along with any group that would be left empty, since there is nothing a phone could do with them;
+the keyboard popup still lists them in red, which is also where a mistyped command id shows up.
+
+With a hardware keyboard (an iPad with a keyboard, say) the open dial answers keys exactly like
+the popup: a key bound in the deepest open group picks that item, <kbd>Backspace</kbd> goes back,
+<kbd>Esc</kbd> closes, and nothing you type while it is open reaches the note. Each item is also
+exposed to screen readers as a button named after its label and key.
+
+Settings → Neokeys has a **Mobile dial** group with a **Show the dial on mobile** toggle (on by
+default), a **Dial corner** choice, bottom right or bottom left, a **Dial item size** slider (the
+circles' diameter, 40 to 56px, 44 by default; smaller circles put more keys on each ring and more
+rings on the screen) and a **Dial description** choice for where the item under your thumb is
+described beyond the pill's own line: nowhere else (the default), on a card between the pill and
+the rings, or in a bubble beside your thumb.
+
+![Mobile dial with the description card, dark theme](docs/screenshots/mobile/dial-card-dark.png)
+
+A theme or CSS snippet can restyle the items through `--neokeys-dial-item-radius`,
+`--neokeys-dial-item-background`, `--neokeys-dial-item-border`, `--neokeys-dial-item-color` and
+`--neokeys-dial-arc-color`. With the dial off, the Leader command on mobile opens the
+keyboard-driven popup instead, which is only useful with a hardware keyboard. Desktop is
+unaffected either way.
+
 ## Compatibility
 
-Desktop only for now (`isDesktopOnly: true`); mobile support is a possible future stretch goal,
-since there is no public API signal for "a hardware keyboard is attached."
+Desktop and mobile. On desktop the leader opens the keyboard-driven which-key popup; on mobile the
+pinned dial above is the way in, and the Leader command (from the command palette, or a combo
+leader or hotkey on a hardware keyboard) opens that same dial, which the keyboard can then drive.
 
 ## Development
 
@@ -202,7 +267,7 @@ since there is no public API signal for "a hardware keyboard is attached."
 - `npm test` - Jest unit tests (key parsing, keymap parsing/validation and serialization, tree
   edit operations, tree resolution/sorting, delay logic, combo-leader validation, command-ID
   validation, breadcrumb building, hotkey-conflict detection, animation settings, heading-level
-  increase/decrease)
+  increase/decrease, the mobile dial's ring layout and its drag/arm/release state machine)
 - `npm run lint` - ESLint with `eslint-plugin-obsidianmd`'s recommended config, plus
   `@eslint/css`'s `no-important` on `styles.css`, mirroring the community directory's source and
   CSS scans (see `eslint.config.mjs` for why the plugin version is pinned)
