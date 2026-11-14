@@ -10,7 +10,7 @@ import {
 import { BUBBLE_MARGIN, bubbleNeedsShortForm, cardFits, cardTop, placeBubble, preferShortBubble, type BubblePlacement, type CoveredCircle } from "../dial/description";
 import { shownIcon } from "../icons";
 import { ANCHOR_RADIUS, DIAL_LEGIBLE_SIZE, ringParamsFor, type DialArc, type DialGeometry, type DialLayoutMode } from "../dial/layout";
-import { diffRings } from "../dial/ringDiff";
+import { diffRings, swapRing } from "../dial/ringDiff";
 import { getCommandName, hasCommand } from "../obsidianCommands";
 import type { DialCorner, DialDescription, DialRadiusRule, DialRingAnimation, GroupEntry, GroupNode } from "../types";
 
@@ -537,9 +537,7 @@ export class MobileDial {
 			const from = ring.parent ?? { x: anchor.left + anchor.width / 2, y: anchor.top + anchor.height / 2 };
 			el.setCssProps({ "--neokeys-dial-from-x": `${from.x}px`, "--neokeys-dial-from-y": `${from.y}px` });
 			if (existing) {
-				// The new ring goes after the old one, so it stacks above it while the old one leaves.
-				this.retire(existing.el);
-				existing.el.after(el);
+				swapRing(existing.el, el, (leaving) => this.retire(leaving));
 			} else {
 				this.fanEl.appendChild(el);
 			}

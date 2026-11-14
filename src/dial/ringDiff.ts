@@ -24,3 +24,14 @@ export function diffRings<G, I>(before: readonly RingShape<G, I>[], after: reado
 		return same ? "keep" : "swap";
 	});
 }
+
+/**
+ * Put a swapped-in ring where the old one is, then let the old one leave. The new ring goes
+ * after the old one, so it stacks above it while the old one animates out; it is inserted
+ * first because `retire` may remove the old ring at once (ring animation off), and inserting
+ * after a node that is no longer in the document does nothing.
+ */
+export function swapRing<T extends { after(node: T): void }>(old: T, next: T, retire: (el: T) => void): void {
+	old.after(next);
+	retire(old);
+}

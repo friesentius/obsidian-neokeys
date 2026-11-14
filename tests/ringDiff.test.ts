@@ -1,4 +1,4 @@
-import { diffRings, type RingShape } from "../src/dial/ringDiff";
+import { diffRings, swapRing, type RingShape } from "../src/dial/ringDiff";
 
 const f = { name: "File" };
 const t = { name: "Text" };
@@ -53,5 +53,49 @@ describe("diffRings", () => {
 		const before = [ring(root, rootItems), ring(f, fileItems), ring(t, textItems)];
 		const after = [ring(root, rootItems), ring(w, windowItems)];
 		expect(diffRings(before, after)).toEqual(["keep", "swap"]);
+	});
+});
+
+/** A ring node with just the DOM's sibling rules: `after` on a node with no parent does nothing. */
+class FakeRing {
+	parent: FakeRing[] | null = null;
+	constructor(readonly name: string) {}
+	after(node: FakeRing): void {
+		if (!this.parent) return;
+		this.parent.splice(this.parent.indexOf(this) + 1, 0, node);
+		node.parent = this.parent;
+	}
+	remove(): void {
+		if (!this.parent) return;
+		this.parent.splice(this.parent.indexOf(this), 1);
+		this.parent = null;
+	}
+}
+
+function fanOf(...names: string[]): FakeRing[] {
+	const fan: FakeRing[] = [];
+	for (const name of names) {
+		const node = new FakeRing(name);
+		node.parent = fan;
+		fan.push(node);
+	}
+	return fan;
+}
+
+describe("swapRing", () => {
+	it("shows the new ring when the old one is removed at once (ring animation off)", () => {
+		const fan = fanOf("root", "File");
+		const text = new FakeRing("Text");
+		swapRing(fan[1], text, (old) => old.remove());
+		expect(fan.map((node) => node.name)).toEqual(["root", "Text"]);
+	});
+
+	it("stacks the new ring above the old one while the old one animates out", () => {
+		const fan = fanOf("root", "File", "File > New");
+		const text = new FakeRing("Text");
+		const retired: string[] = [];
+		swapRing(fan[1], text, (old) => retired.push(old.name));
+		expect(fan.map((node) => node.name)).toEqual(["root", "File", "Text", "File > New"]);
+		expect(retired).toEqual(["File"]);
 	});
 });
