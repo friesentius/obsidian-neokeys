@@ -1,4 +1,4 @@
-import { Notice, Plugin } from "obsidian";
+import { Notice, Platform, Plugin } from "obsidian";
 import type { KeymapEventHandler } from "obsidian";
 import { prefersReducedMotion, shouldAnimate } from "./animation";
 import { ComboLeaderError, parseComboLeaderString } from "./comboLeader";
@@ -6,13 +6,17 @@ import { applyHeadingLevelToEditor } from "./headingLevel";
 import { KeymapParseError, parseKeymapSource } from "./keymap";
 import { keyFromEvent, keysEqual } from "./keys";
 import { executeCommandById } from "./obsidianCommands";
-import { DEFAULT_SETTINGS, NeokeysSettingTab } from "./settings";
-import type { NeokeysSettings } from "./types";
-import { WhichKeyModal } from "./ui/whichKeyModal";
+import { DEFAULT_SETTINGS, resolveSettings } from "./defaultSettings";
+import { NeokeysSettingTab } from "./settings";
+import type { GroupNode, NeokeysSettings } from "./types";
+import { MobileDial } from "./ui/mobileDial";
+import { WhichKeyModal, type WhichKeyCallbacks } from "./ui/whichKeyModal";
 
 export default class NeokeysPlugin extends Plugin {
 	settings: NeokeysSettings = DEFAULT_SETTINGS;
 	private comboHandler: KeymapEventHandler | null = null;
+	/** The pinned mobile dial; null on desktop or when the setting is off. */
+	private dial: MobileDial | null = null;
 
 	async onload(): Promise<void> {
 		await this.loadSettings();
@@ -37,15 +41,17 @@ export default class NeokeysPlugin extends Plugin {
 
 		this.addSettingTab(new NeokeysSettingTab(this.app, this));
 		this.registerComboLeader();
+		this.applyMobileDial();
 	}
 
 	onunload(): void {
 		this.unregisterComboLeader();
+		this.dial?.destroy();
+		this.dial = null;
 	}
 
 	async loadSettings(): Promise<void> {
-		const loaded = (await this.loadData()) as Partial<NeokeysSettings> | null;
-		this.settings = Object.assign({}, DEFAULT_SETTINGS, loaded ?? {});
+		this.settings = resolveSettings(await this.loadData());
 	}
 
 	async saveSettings(): Promise<void> {
@@ -82,15 +88,70 @@ export default class NeokeysPlugin extends Plugin {
 		this.comboHandler = null;
 	}
 
-	private activateLeader(): void {
-		let root;
+	/**
+	 * (Re-)create the mobile dial from the current settings. Only mobile gets it: desktop keeps
+	 * the keyboard-driven which-key popup exactly as before. Call after any dial setting changes.
+	 */
+	applyMobileDial(): void {
+		this.dial?.destroy();
+		this.dial = null;
+		if (!Platform.isMobile || !this.settings.mobileDialEnabled) return;
+
+		this.dial = new MobileDial(
+			this.app,
+			() => this.parseRoot(),
+			{
+				corner: this.settings.mobileDialCorner,
+				itemSize: this.settings.mobileDialItemSize,
+				radiusRule: this.settings.mobileDialRadiusRule,
+				lensPeak: this.settings.mobileDialLensPeak,
+				description: this.settings.mobileDialDescription,
+				// The Animations toggle and the OS's reduced-motion preference govern the dial as
+				// they do the popup; a ring's entrance has its own toggle on top of that.
+				animation: () => {
+					const enabled = shouldAnimate(this.settings.animationsEnabled, prefersReducedMotion(window));
+					return {
+						enabled,
+						durationMs: this.settings.animationDurationMs,
+						ring: enabled && this.settings.mobileDialRingAnimation ? this.settings.mobileDialRingAnimationStyle : null,
+					};
+				},
+			},
+			this.leaderCallbacks(),
+		);
+		this.dial.mount();
+	}
+
+	/** The current keymap's root, or null after reporting why it cannot be parsed. */
+	private parseRoot(): GroupNode | null {
 		try {
-			root = parseKeymapSource(this.settings.keymapSource);
+			return parseKeymapSource(this.settings.keymapSource);
 		} catch (err) {
 			const message = err instanceof KeymapParseError ? err.message : String(err);
 			new Notice(`Neokeys: invalid keymap - ${message}`, 8000);
+			return null;
+		}
+	}
+
+	private leaderCallbacks(): WhichKeyCallbacks {
+		return {
+			executeCommand: (id) => executeCommandById(this.app, id),
+			openFile: (path) => {
+				void this.app.workspace.openLinkText(path, "", false);
+			},
+		};
+	}
+
+	private activateLeader(): void {
+		// On mobile with the dial on, Leader (from the command palette or a combo on a hardware
+		// keyboard) opens the dial itself rather than the popup, which has no touch path.
+		if (this.dial) {
+			this.dial.open();
 			return;
 		}
+
+		const root = this.parseRoot();
+		if (!root) return;
 
 		const animate = shouldAnimate(this.settings.animationsEnabled, prefersReducedMotion(window));
 		new WhichKeyModal(
@@ -98,12 +159,7 @@ export default class NeokeysPlugin extends Plugin {
 			root,
 			this.settings.showDelayMs,
 			{ enabled: animate, durationMs: this.settings.animationDurationMs },
-			{
-				executeCommand: (id) => executeCommandById(this.app, id),
-				openFile: (path) => {
-					void this.app.workspace.openLinkText(path, "", false);
-				},
-			},
+			this.leaderCallbacks(),
 		).open();
 	}
 }

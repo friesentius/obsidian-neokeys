@@ -33,6 +33,33 @@ export interface GroupNode {
 
 export type KeymapNode = GroupNode | CommandNode | FileNode;
 
+/** Which bottom corner of the screen the mobile dial's anchor button is pinned to. */
+export type DialCorner = "bottom-right" | "bottom-left";
+
+export const DIAL_CORNERS: readonly DialCorner[] = ["bottom-right", "bottom-left"];
+
+/**
+ * Where the mobile dial describes the item under the thumb beyond the breadcrumb pill's own
+ * line: nowhere else, on a card between the pill and the rings, or in a bubble beside the thumb.
+ */
+export type DialDescription = "none" | "card" | "thumb";
+
+export const DIAL_DESCRIPTIONS: readonly DialDescription[] = ["none", "card", "thumb"];
+
+/**
+ * Where the dial's rings sit: `fixed` keeps every ring at a fixed radius and shrinks a level's
+ * circles to fit it; `fit` grows each ring until its level fits at full size, as far as the
+ * screen allows.
+ */
+export type DialRadiusRule = "fixed" | "fit";
+
+export const DIAL_RADIUS_RULES: readonly DialRadiusRule[] = ["fixed", "fit"];
+
+/** How a ring of the dial appears when it opens: fading in, or flying out from the group it belongs to. */
+export type DialRingAnimation = "fade" | "fly";
+
+export const DIAL_RING_ANIMATIONS: readonly DialRingAnimation[] = ["fade", "fly"];
+
 export interface NeokeysSettings {
 	keymapSource: string;
 	showDelayMs: number;
@@ -41,4 +68,16 @@ export interface NeokeysSettings {
 	animationsEnabled: boolean;
 	/** Milliseconds for the slide-in and crossfade animations; see parseAnimationDurationInput. */
 	animationDurationMs: number;
+	/** Mobile only: show the pinned dial (anchor button plus fan of items) instead of relying on a keyboard. */
+	mobileDialEnabled: boolean;
+	mobileDialCorner: DialCorner;
+	/** Diameter of the dial's items in px, MIN_DIAL_ITEM_SIZE to MAX_DIAL_ITEM_SIZE (see dial/layout.ts). */
+	mobileDialItemSize: number;
+	mobileDialDescription: DialDescription;
+	mobileDialRadiusRule: DialRadiusRule;
+	/** How large the circle under the thumb grows, as a multiple of the item size, MIN_LENS_PEAK to MAX_LENS_PEAK (see dial/layout.ts). */
+	mobileDialLensPeak: number;
+	/** Whether a ring animates as it opens (never when the OS prefers reduced motion). */
+	mobileDialRingAnimation: boolean;
+	mobileDialRingAnimationStyle: DialRingAnimation;
 }
