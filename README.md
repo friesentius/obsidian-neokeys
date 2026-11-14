@@ -228,10 +228,11 @@ even for that (about ten items on the first ring, twenty on the second, thirty o
 default circle size) cannot keep all of its circles apart with the lens on, so the circles far from your thumb fade out and
 are gone, neither drawn nor tappable, while the ones near it stay whole and the circle under your
 thumb keeps its key. They come back as you slide toward them and the ones at the other end drop
-out, so every item can still be brought under your thumb by sliding along the ring. With no thumb
-on a ring, at rest, all of its circles are shown, shrunk to fit as far as 10px (a ring that big
-at rest, 17 or more items on the first ring, lets the circles touch). A ring you have
-left keeps its lens where your thumb left it, so the path you took stays large.
+out, so every item can still be brought under your thumb by sliding along the ring. A ring your
+thumb has not been on yet, at rest, shows all of its circles, shrunk to fit as far as 10px (a ring
+that big at rest, 17 or more items on the first ring, lets the circles touch). A ring you have
+left keeps its lens where your thumb left it, so the path you took stays large and the far circles
+of a level that big stay gone.
 
 Dragging from a group to a sibling group on the same ring (File to Text, say) swaps the child ring
 in place: the old ring fades or flies away while the new one comes in, in the style you chose below,
