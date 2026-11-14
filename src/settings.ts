@@ -43,7 +43,7 @@ const MOBILE_DIAL_RADIUS_NAME = "Dial ring radius";
 const MOBILE_DIAL_RADIUS_DESC =
 	"Fixed keeps every ring at the same radius whatever it holds, shrinking a level's circles to fit it; Fit grows each ring until its level fits at full size, as far as the screen allows.";
 const MOBILE_DIAL_LENS_NAME = "Dial lens";
-const MOBILE_DIAL_LENS_DESC = `How much the circle under your thumb, and its neighbours, grow as you pass over them, as a multiple of the item size (${MIN_LENS_PEAK} to ${MAX_LENS_PEAK}, ${DEFAULT_LENS_PEAK} by default). At ${MIN_LENS_PEAK} only shrunk circles grow, back to full size.`;
+const MOBILE_DIAL_LENS_DESC = `How much the circle under your thumb, and its neighbours, grow as you pass over them, as a multiple of the item size (${MIN_LENS_PEAK} to ${MAX_LENS_PEAK}, ${DEFAULT_LENS_PEAK} by default). At ${MIN_LENS_PEAK} only shrunk circles grow, back to full size. Above about 1.15 the rings sit farther apart, so a grown circle never reaches the next ring.`;
 const MOBILE_DIAL_RING_ANIMATION_NAME = "Dial ring animation";
 const MOBILE_DIAL_RING_ANIMATION_DESC =
 	"Animate a ring as it opens. Off when Animations is off, and always off when your OS's reduced-motion accessibility preference is on, regardless of this toggle.";
