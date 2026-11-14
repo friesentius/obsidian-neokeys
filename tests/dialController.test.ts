@@ -1,4 +1,4 @@
-import { DialController, DWELL_MS, type DialHost, type DialTimers } from "../src/dial/controller";
+import { DialController, type DialHost } from "../src/dial/controller";
 import { DEFAULT_RING_PARAMS, MIN_DIAL_ITEM_SIZE, planRings, ringParamsFor, ringSlots, slotPosition, type DialGeometry } from "../src/dial/layout";
 import { parseKeymapSource } from "../src/keymap";
 
@@ -111,51 +111,17 @@ function makeHost() {
 	return { host, calls };
 }
 
-/** A clock and timer the test advances by hand. */
-function makeTimers() {
-	let now = 1000;
-	let nextId = 1;
-	const scheduled = new Map<number, { at: number; callback: () => void }>();
-	const timers: DialTimers = {
-		now: () => now,
-		setTimeout: (callback, ms) => {
-			const id = nextId++;
-			scheduled.set(id, { at: now + ms, callback });
-			return id;
-		},
-		clearTimeout: (handle) => {
-			scheduled.delete(handle as number);
-		},
-	};
-	const advance = (ms: number): void => {
-		now += ms;
-		for (const [id, timer] of [...scheduled.entries()].sort((a, b) => a[1].at - b[1].at)) {
-			if (timer.at > now) continue;
-			scheduled.delete(id);
-			timer.callback();
-		}
-	};
-	return { timers, advance, pending: () => scheduled.size };
-}
-
 function setup(geometry: DialGeometry = PHONE, raisedGeometry: DialGeometry = geometry, overlapGeometry: DialGeometry = raisedGeometry) {
 	const root = parseKeymapSource(SOURCE);
 	const { host, calls } = makeHost();
-	const { timers, advance, pending } = makeTimers();
 	const changes: string[] = [];
 	const measured: string[] = [];
-	const controller = new DialController(
-		host,
-		(mode) => {
-			measured.push(mode);
-			return mode === "normal" ? geometry : mode === "raised" ? raisedGeometry : overlapGeometry;
-		},
-		DEFAULT_RING_PARAMS,
-		undefined,
-		timers,
-	);
+	const controller = new DialController(host, (mode) => {
+		measured.push(mode);
+		return mode === "normal" ? geometry : mode === "raised" ? raisedGeometry : overlapGeometry;
+	});
 	controller.onChange((change) => changes.push(change));
-	return { root, host, calls, changes, measured, controller, advance, pending };
+	return { root, host, calls, changes, measured, controller };
 }
 
 /** The items on screen, flat, innermost ring first. */
@@ -402,59 +368,32 @@ describe("DialController dragging", () => {
 		expect(controller.view().crumbs).toEqual(["Window"]);
 	});
 
-	it("in the gap outside an inner ring's circles, a sibling only takes over after a rest, so a thumb heading out to the next ring passes through", () => {
-		const { root, controller, advance, pending } = setup();
+	it("in the band outside an inner ring's circles nothing arms, so a thumb heading out to the next ring swaps nothing", () => {
+		const { root, controller, changes } = setup();
 		controller.pressAnchor(root);
 		controller.moveTo(itemAt(controller, "Window"));
 		const radius = controller.view().rings[0].radius;
 		expect(controller.view().rings[1].radius).toBeGreaterThan(radius + 100);
-		// File sits at 0 degrees on the root ring; the gap outside its circle still belongs to its slot.
+		// File sits at 0 degrees on the root ring; just outside its circle, on the way out, nothing is armed and Window's ring stays.
 		controller.moveTo(inGap(PHONE, radius, 0));
-		expect(controller.view().armed?.label).toBe("Window");
+		expect(controller.view().armed).toBeNull();
 		expect(controller.view().rings[1].group.title).toBe("Window");
-		expect(pending()).toBe(1);
-		advance(DWELL_MS / 2);
-		controller.moveTo(inGap(PHONE, radius, 2));
-		expect(controller.view().armed?.label).toBe("Window");
-		// Moving on out to the child ring before the rest is over drops the pending swap.
+		expect(changes[changes.length - 1]).toBe("armed");
 		controller.moveTo(itemAt(controller, "Go to tab"));
 		expect(controller.view().armed?.label).toBe("Go to tab");
-		expect(pending()).toBe(0);
-		advance(DWELL_MS * 2);
-		expect(controller.view().rings[1].group.title).toBe("Window");
+		expect(controller.view().rings).toHaveLength(2);
 	});
 
-	it("a thumb that rests in that gap gets the sibling after the dwell, even without moving again", () => {
-		const { root, controller, advance, changes } = setup();
-		controller.pressAnchor(root);
-		controller.moveTo(itemAt(controller, "Window"));
-		const radius = controller.view().rings[0].radius;
-		controller.moveTo(inGap(PHONE, radius, 0));
-		expect(controller.view().armed?.label).toBe("Window");
-		const before = changes.length;
-		advance(DWELL_MS + 10);
-		expect(controller.view().armed?.label).toBe("File");
-		expect(controller.view().rings[1].group.title).toBe("File");
-		expect(changes.length).toBe(before + 1);
-	});
-
-	it("re-arms the open group itself at once anywhere in its band, since that swaps nothing", () => {
+	it("a sibling on an inner ring takes over as soon as the thumb is inside its circle", () => {
 		const { root, controller } = setup();
 		controller.pressAnchor(root);
 		controller.moveTo(itemAt(controller, "Window"));
 		controller.moveTo(itemAt(controller, "New tab"));
-		const radius = controller.view().rings[0].radius;
-		controller.moveTo(inGap(PHONE, radius, 30));
-		expect(controller.view().armed?.label).toBe("Window");
-	});
-
-	it("re-arms at once over the circles of an inner ring, so browsing along it swaps the ring outside without a wait", () => {
-		const { root, controller, pending } = setup();
-		controller.pressAnchor(root);
-		controller.moveTo(itemAt(controller, "Window"));
-		controller.moveTo(itemAt(controller, "File"));
-		expect(pending()).toBe(0);
+		const file = itemAt(controller, "File");
+		controller.moveTo({ x: file.x + 18, y: file.y });
+		expect(controller.view().armed?.label).toBe("File");
 		expect(controller.view().rings[1].group.title).toBe("File");
+		expect(controller.view().crumbs).toEqual(["File"]);
 	});
 
 	it("moving away from every item disarms without acting and keeps the open rings", () => {

@@ -6,7 +6,6 @@ import {
 	type DialHost,
 	type DialItemView,
 	type DialRingView,
-	type DialTimers,
 	type DialView,
 } from "../dial/controller";
 import { cardFits, cardTop, placeBubble, type CoveredCircle } from "../dial/description";
@@ -118,12 +117,7 @@ export class MobileDial {
 			},
 			vibrate,
 		};
-		const timers: DialTimers = {
-			now: () => performance.now(),
-			setTimeout: (callback, ms) => window.setTimeout(callback, ms),
-			clearTimeout: (handle) => window.clearTimeout(handle as number),
-		};
-		this.controller = new DialController(host, (mode) => this.measure(mode), ringParamsFor(options.itemSize), undefined, timers);
+		this.controller = new DialController(host, (mode) => this.measure(mode), ringParamsFor(options.itemSize));
 		this.controller.onChange((change) => this.render(change));
 
 		this.layerEl = createDiv({ cls: "neokeys-dial" });
@@ -576,11 +570,11 @@ export class MobileDial {
 	/**
 	 * The pill: the path, the armed item at its end (an armed group that is in the path is the
 	 * path's own last crumb, highlighted), the page of the outermost ring, and a line about the
-	 * armed item or the deepest open group.
+	 * armed item, or about the deepest open group when the armed item has nothing to add.
 	 */
 	private renderPill(view: DialView): void {
 		this.crumbsEl.empty();
-		this.descEl.setText(view.open ? (view.armed ? view.armed.description : view.description) : "");
+		this.descEl.setText(view.open ? view.armed?.description || view.description : "");
 		if (!view.open) return;
 		// A leading ellipsis stands in for whatever part of the trail had to be collapsed to fit.
 		const collapsedEl = this.crumbsEl.createSpan({ cls: "neokeys-dial-crumb neokeys-dial-crumb-collapsed neokeys-hidden", text: "…" });
@@ -639,9 +633,10 @@ export class MobileDial {
 	}
 
 	/**
-	 * The card hangs a little below the pill, lifted as far as the rings need it to; when even
-	 * its full height does not fit between the pill and the outermost ring, it drops to its
-	 * compact one-row form first.
+	 * The card hangs a little below the pill, lifted as far as the rings need it to. When its
+	 * full height does not fit between the pill and the outermost ring, it drops to a compact
+	 * form (key and label on one row, the text under them), and when even that does not fit, to
+	 * the row alone.
 	 */
 	private renderCard(view: DialView, armed: DialArmedView): void {
 		this.cardEl.empty();
@@ -653,7 +648,9 @@ export class MobileDial {
 		const pillBottom = this.pillEl.getBoundingClientRect().bottom;
 		const ringTop = Math.min(...view.rings.flatMap((ring) => ring.items.map((item) => item.y - item.size / 2)));
 		this.cardEl.removeClass("neokeys-dial-card-compact");
+		this.cardEl.removeClass("neokeys-dial-card-brief");
 		if (!cardFits(pillBottom, ringTop, this.cardEl.offsetHeight)) this.cardEl.addClass("neokeys-dial-card-compact");
+		if (!cardFits(pillBottom, ringTop, this.cardEl.offsetHeight)) this.cardEl.addClass("neokeys-dial-card-brief");
 		this.cardEl.setCssProps({ "--neokeys-dial-card-top": `${Math.round(cardTop(pillBottom, ringTop, this.cardEl.offsetHeight))}px` });
 	}
 
@@ -666,7 +663,11 @@ export class MobileDial {
 		if (armed.description !== "") this.bubbleEl.createDiv({ cls: "neokeys-dial-bubble-text", text: armed.description });
 		const anchorRect = this.anchorEl.getBoundingClientRect();
 		const anchor = { x: anchorRect.left + anchorRect.width / 2, y: anchorRect.top + anchorRect.height / 2 };
-		const circles: CoveredCircle[] = [{ x: anchor.x, y: anchor.y, radius: ANCHOR_RADIUS, weight: 2 }];
+		// The armed circle itself weighs most: a spot that would cover it once kept on screen is the last choice.
+		const circles: CoveredCircle[] = [
+			{ x: anchor.x, y: anchor.y, radius: ANCHOR_RADIUS, weight: 2 },
+			{ x: armed.x, y: armed.y, radius: (armed.size / 2) * ARMED_SCALE, weight: 3 },
+		];
 		view.rings.forEach((ring, index) => {
 			const weight = index === view.rings.length - 1 ? 2 : 1;
 			for (const item of ring.items) if (!item.armed) circles.push({ x: item.x, y: item.y, radius: item.size / 2, weight });

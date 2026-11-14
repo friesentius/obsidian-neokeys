@@ -847,6 +847,11 @@ body.theme-light .neokeys-dial {
 	display: none;
 }
 
+/* When even the compact form would not fit, the row stands alone (the pill still carries the description). */
+.neokeys-dial-card-brief .neokeys-dial-card-text {
+	display: none;
+}
+
 .neokeys-dial-bubble {
 	position: absolute;
 	left: var(--neokeys-dial-bubble-left, 0px);

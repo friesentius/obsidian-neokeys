@@ -104,7 +104,7 @@ export const DEFAULT_DEAD_ZONE = 36;
 /** Angular reach past a slot's own share of the ring, so a slot is not hard to hit without blank space beside it arming it. */
 const HIT_ANGLE_SLACK_DEG = 8;
 
-/** Radial reach inside the innermost ring's inner edge; closer to the anchor than that arms nothing. */
+/** Radial reach inside the innermost ring's inner edge, and around an inner ring's circles; closer to the anchor than that arms nothing. */
 const HIT_INNER_SLACK = 4;
 
 function degToRad(deg: number): number {
@@ -273,13 +273,15 @@ export function paging(count: number, capacity: number): DialPaging {
  * Which slot a pointer at `point` arms, or null when it arms nothing. The pointer picks a ring by
  * radial distance (bands meet halfway between neighbouring rings, the outermost band reaches
  * `itemSize` past the outermost ring so a slight overshoot still counts, and the innermost band
- * starts just inside that ring's inner edge), then the slot on that ring nearest in angle, as
- * long as the pointer is within half a slot pitch plus a little slack of that slot, or anywhere
- * inside that slot's own item circle. Between two neighbours the band is still split at the
- * midpoint, so a drag is as forgiving as before, but blank space past the end of a short arc, or
- * far from a lone item, arms nothing. Only rings that actually hold a slot take part; beyond the
- * reach, outside the sweep, or inside the dead zone around the anchor, nothing is armed, which
- * is what lets a tap elsewhere on the screen cancel.
+ * starts just inside that ring's inner edge). On the outermost ring, the ring in play, it then
+ * arms the slot nearest in angle, as long as the pointer is within half a slot pitch plus a
+ * little slack of that slot, or anywhere inside that slot's own item circle, so a drag is
+ * forgiving but blank space past the end of a short arc, or far from a lone item, arms nothing.
+ * On an inner ring only the circles themselves arm, so a thumb crossing that ring's band on its
+ * way out to the next ring does not swap the rings outside it unless it actually touches a
+ * sibling. Only rings that hold a slot take part; beyond the reach, outside the sweep, or inside
+ * the dead zone around the anchor, nothing is armed, which is what lets a tap elsewhere on the
+ * screen cancel.
  */
 export function hitTest(
 	point: DialPoint,
@@ -313,12 +315,14 @@ export function hitTest(
 	}
 
 	const radius = rings[ring].radius;
+	const circle = ring === outermost ? itemSize / 2 : itemSize / 2 + HIT_INNER_SLACK;
 	const inside = slots.findIndex((slot) => {
 		if (slot.ring !== ring) return false;
 		const slotAngleRad = degToRad(slot.angleDeg);
-		return Math.hypot(u - radius * Math.cos(slotAngleRad), v - radius * Math.sin(slotAngleRad)) <= itemSize / 2;
+		return Math.hypot(u - radius * Math.cos(slotAngleRad), v - radius * Math.sin(slotAngleRad)) <= circle;
 	});
 	if (inside !== -1) return inside;
+	if (ring !== outermost) return null;
 
 	const angle = radToDeg(Math.atan2(v, u));
 	if (angle < -HIT_ANGLE_SLACK_DEG || angle > DIAL_SWEEP_DEG + HIT_ANGLE_SLACK_DEG) return null;
@@ -335,12 +339,6 @@ export function hitTest(
 		}
 	});
 	return best;
-}
-
-/** Whether `point` lies within the band a ring's own circles occupy: half an item, plus a little slack, either side of its radius. */
-export function overRingCircles(point: DialPoint, geometry: DialGeometry, ring: DialRing, params: DialRingParams): boolean {
-	const distance = Math.hypot(point.x - geometry.anchor.x, point.y - geometry.anchor.y);
-	return Math.abs(distance - ring.radius) <= params.itemSize / 2 + HIT_INNER_SLACK;
 }
 
 /** The radius the outermost ring of a chain of levels of `counts` items would naturally take, unbounded by any screen. */

@@ -9,7 +9,6 @@ import {
 	firstRadius,
 	fittingFrom,
 	hitTest,
-	overRingCircles,
 	paging,
 	planRings,
 	radiusFor,
@@ -36,27 +35,6 @@ export interface DialHost {
 	/** A short haptic tick when the armed item changes; the caller feature-detects it, so it may be absent. */
 	vibrate?(): void;
 }
-
-/** The clock and timer the dwell rule runs on; injected so tests can drive time. */
-export interface DialTimers {
-	now(): number;
-	setTimeout(callback: () => void, ms: number): unknown;
-	clearTimeout(handle: unknown): void;
-}
-
-const DEFAULT_TIMERS: DialTimers = {
-	now: () => performance.now(),
-	setTimeout: (callback, ms) => window.setTimeout(callback, ms),
-	clearTimeout: (handle) => window.clearTimeout(handle as number),
-};
-
-/**
- * How long the pointer must rest in the gap outside an inner ring's circles before the item
- * there (which is not the open group) takes over and swaps the rings outside it: long enough
- * that a thumb on its way out to the next ring passes through without a swap, short enough that
- * a deliberate stop reads as a choice. Over the circles themselves, re-arming is immediate.
- */
-export const DWELL_MS = 150;
 
 export type DialItemKind = "group" | "command" | "file" | "more";
 
@@ -177,8 +155,6 @@ export class DialController {
 	/** Where the pointer last was during the current press, so a relayout or a dwell check can re-arm what is under it. */
 	private lastPoint: DialPoint | null = null;
 	private armed: ArmedKey | null = null;
-	private pending: { key: ArmedKey; since: number } | null = null;
-	private pendingTimer: unknown = null;
 	private geometry: DialGeometry | null = null;
 	private mode: DialLayoutMode = "normal";
 	private rings: DialRing[] = [];
@@ -197,7 +173,6 @@ export class DialController {
 		/** The ring spacing, from the item size setting. */
 		private readonly params: DialRingParams = DEFAULT_RING_PARAMS,
 		private readonly deadZone: number = DEFAULT_DEAD_ZONE,
-		private readonly timers: DialTimers = DEFAULT_TIMERS,
 	) {}
 
 	onChange(listener: (change: DialChange) => void): void {
@@ -222,7 +197,6 @@ export class DialController {
 		this.opened = false;
 		this.pressing = null;
 		this.lastPoint = null;
-		this.clearPending();
 		this.armed = null;
 		this.emit("structure");
 	}
@@ -252,7 +226,6 @@ export class DialController {
 		this.chooseGeometry();
 		if (this.pressing !== null) {
 			this.pressing = "stay";
-			this.clearPending();
 			this.armed = null;
 		}
 		this.plan(true);
@@ -279,18 +252,18 @@ export class DialController {
 		this.emit("armed");
 	}
 
-	/** Pointer down anywhere else while open: arms whatever is under it at once (a direct tap on an item). */
+	/** Pointer down anywhere else while open: arms whatever is under it (a direct tap on an item). */
 	pressAt(point: DialPoint): void {
 		if (!this.opened || this.pressing !== null) return;
 		this.pressing = "close";
 		this.lastPoint = point;
-		this.setArmed(this.hit(point), true);
+		this.setArmed(this.hit(point));
 	}
 
 	moveTo(point: DialPoint): void {
 		if (this.pressing === null) return;
 		this.lastPoint = point;
-		this.setArmed(this.hit(point), false);
+		this.setArmed(this.hit(point));
 	}
 
 	/** Pointer up: commit the armed item, or settle what a release on nothing means for this press. */
@@ -300,7 +273,6 @@ export class DialController {
 		const armed = this.armed;
 		this.pressing = null;
 		this.lastPoint = null;
-		this.clearPending();
 		this.armed = null;
 		const target = armed ? this.findTarget(armed) : null;
 		if (target) {
@@ -323,7 +295,6 @@ export class DialController {
 		if (this.pressing === null) return;
 		this.pressing = null;
 		this.lastPoint = null;
-		this.clearPending();
 		this.armed = null;
 		this.settle();
 	}
@@ -380,7 +351,6 @@ export class DialController {
 		this.pages = [];
 		this.from = 0;
 		this.opened = true;
-		this.clearPending();
 		this.armed = null;
 		this.pressing = pressing;
 		this.lastPoint = null;
@@ -467,43 +437,13 @@ export class DialController {
 		return index === -1 ? null : this.targets[index];
 	}
 
-	/**
-	 * Arm the slot at `index` (null for nothing). On an inner ring, a slot that is not the open
-	 * group takes over at once when the pointer is over the ring's circles, but only after a
-	 * short rest when it is in the gap outside them, so a thumb on its way out to the next ring
-	 * does not swap the rings as it passes. A press that starts on an item arms it at once.
-	 */
-	private setArmed(index: number | null, immediate: boolean): void {
+	/** Arm the slot at `index`, or nothing for null. */
+	private setArmed(index: number | null): void {
 		const key = index !== null ? this.keyOf(index) : null;
-		if (sameKey(key, this.armed)) {
-			this.clearPending();
-			return;
-		}
-		if (!immediate && index !== null && key && this.needsDwell(index)) {
-			const now = this.timers.now();
-			if (!this.pending || !sameKey(this.pending.key, key)) {
-				this.clearPending();
-				this.pending = { key, since: now };
-				this.pendingTimer = this.timers.setTimeout(() => {
-					this.pendingTimer = null;
-					if (this.pressing !== null && this.lastPoint) this.setArmed(this.hit(this.lastPoint), false);
-				}, DWELL_MS + 10);
-				return;
-			}
-			if (now - this.pending.since < DWELL_MS) return;
-		}
-		this.clearPending();
+		if (sameKey(key, this.armed)) return;
 		const restructured = index !== null ? this.arm(index) : this.disarm();
 		if (index !== null) this.host.vibrate?.();
 		this.emit(restructured ? "structure" : "armed");
-	}
-
-	private needsDwell(index: number): boolean {
-		const slot = this.slots[index];
-		const target = this.targets[index];
-		if (slot.ring >= this.rings.length - 1) return false;
-		if (target.kind === "entry" && target.entry.node === this.path[target.level + 1]) return false;
-		return !(this.lastPoint && this.geometry && overRingCircles(this.lastPoint, this.geometry, this.rings[slot.ring], this.params));
 	}
 
 	/** Arm the target at `index`: a group opens its ring outside its own, anything else closes the rings outside its own. Returns whether the items on screen changed. */
@@ -527,14 +467,6 @@ export class DialController {
 		this.path = next;
 		this.plan();
 		return !sameTargets(before, this.targets);
-	}
-
-	private clearPending(): void {
-		this.pending = null;
-		if (this.pendingTimer !== null) {
-			this.timers.clearTimeout(this.pendingTimer);
-			this.pendingTimer = null;
-		}
 	}
 
 	/**

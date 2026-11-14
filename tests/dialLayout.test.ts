@@ -12,7 +12,6 @@ import {
 	MAX_DIAL_ITEM_SIZE,
 	MIN_DIAL_ITEM_SIZE,
 	naturalReach,
-	overRingCircles,
 	paging,
 	planRings,
 	RING_GAP,
@@ -34,8 +33,8 @@ import type { DialCorner } from "../src/types";
 const EDGE = 12;
 /** Obsidian's mobile view header, which the breadcrumb pill normally sits below. */
 const HEADER = 44;
-/** The breadcrumb pill: 8px below whatever is above it, 54px tall with its two lines of text. */
-const PILL_HEIGHT = 62;
+/** The breadcrumb pill: 8px below whatever is above it, 59px tall with its two lines of text (as Obsidian 1.15 lays it out). */
+const PILL_HEIGHT = 67;
 /** Obsidian's editing toolbar slot above the keyboard, as the DOM layer measures it. */
 const TOOLBAR = 52;
 /** Items keep this far from the screen's edges, the pill, and the chrome below the anchor (the DOM layer's EDGE_MARGIN). */
@@ -162,15 +161,17 @@ describe("planRings", () => {
 	});
 
 	it("caps the ring at the reach of the bounds, where a level that needs more pages", () => {
-		const geometry = phone(375, 667, "bottom-right", 260 + TOOLBAR, 20);
-		const rings = planRings(raised(geometry), DEFAULT_RING_PARAMS, [4, 5, 9]);
-		expect(rings[2].radius).toBe(fanReach(raised(geometry), DEFAULT_RING_PARAMS));
+		const geometry = phone(390, 844, "bottom-right", 300 + TOOLBAR, 47);
+		const params = ringParamsFor(MAX_DIAL_ITEM_SIZE);
+		const rings = planRings(geometry, params, [4, 5, 9]);
+		expect(rings).toHaveLength(3);
+		expect(rings[2].radius).toBe(fanReach(geometry, params));
 		expect(rings[2].capacity).toBeLessThan(9);
 		expect(paging(9, rings[2].capacity).pages).toBe(2);
 	});
 
 	it("stops at the first level whose ring would not fit at all", () => {
-		const geometry = phone(360, 640, "bottom-right", 250 + TOOLBAR, 24);
+		const geometry = phone(375, 667, "bottom-right", 260 + TOOLBAR, 20);
 		expect(planRings(raised(geometry), DEFAULT_RING_PARAMS, [4, 5, 9])).toHaveLength(2);
 	});
 
@@ -194,9 +195,12 @@ describe("fittingFrom", () => {
 	});
 
 	it("gives up the innermost levels first when the screen is too short for the path", () => {
-		const geometry = raised(phone(360, 640, "bottom-right", 250 + TOOLBAR, 24));
+		const geometry = raised(phone(375, 667, "bottom-right", 260 + TOOLBAR, 20));
 		expect(fittingFrom(geometry, DEFAULT_RING_PARAMS, [4, 5, 9])).toBe(1);
 		expect(planRings(geometry, DEFAULT_RING_PARAMS, [5, 9])).toHaveLength(2);
+		const shorter = raised(phone(360, 640, "bottom-right", 250 + TOOLBAR, 24));
+		expect(fittingFrom(shorter, DEFAULT_RING_PARAMS, [4, 5, 9])).toBe(2);
+		expect(planRings(shorter, DEFAULT_RING_PARAMS, [9])).toHaveLength(1);
 	});
 
 	it("is the path's length when not even its deepest level fits", () => {
@@ -280,22 +284,25 @@ describe("item placement on real phone sizes", () => {
 		}
 	});
 
-	it("on an iPhone SE with the keyboard up, raises the pill and pages the Heading ring", () => {
+	it("on an iPhone SE with the keyboard up, raises the pill; the Heading ring waits for the release, then opens in the root's place, paged", () => {
 		const geometry = phone(375, 667, "bottom-right", 260 + TOOLBAR, 20);
 		const chosen = chooseMode(DEFAULT_NEED, measureFor(geometry));
 		expect(chosen.mode).toBe("raised");
-		const rings = planRings(chosen.geometry, DEFAULT_RING_PARAMS, [4, 5, 9]);
-		expect(rings).toHaveLength(3);
-		expect(rings.slice(0, 2).map((ring) => ring.radius)).toEqual([97, 151]);
-		expect(paging(9, rings[2].capacity).pages).toBe(2);
+		const onArm = planRings(chosen.geometry, DEFAULT_RING_PARAMS, [4, 5, 9]);
+		expect(onArm.map((ring) => ring.radius)).toEqual([97, 151]);
+		expect(fittingFrom(chosen.geometry, DEFAULT_RING_PARAMS, [4, 5, 9])).toBe(1);
+		const onRelease = planRings(chosen.geometry, DEFAULT_RING_PARAMS, [5, 9]);
+		expect(onRelease).toHaveLength(2);
+		expect(paging(9, onRelease[1].capacity).pages).toBe(2);
 	});
 
-	it("on a small Android phone with the keyboard up, the Heading ring waits for the release and then takes the root's place", () => {
+	it("on a small Android phone with the keyboard up, the Heading ring waits for the release and then stands alone, paged", () => {
 		const geometry = phone(360, 640, "bottom-right", 250 + TOOLBAR, 24);
 		const chosen = chooseMode(DEFAULT_NEED, measureFor(geometry));
 		expect(chosen.mode).toBe("raised");
 		expect(planRings(chosen.geometry, DEFAULT_RING_PARAMS, [4, 5, 9])).toHaveLength(2);
-		expect(fittingFrom(chosen.geometry, DEFAULT_RING_PARAMS, [4, 5, 9])).toBe(1);
+		expect(fittingFrom(chosen.geometry, DEFAULT_RING_PARAMS, [4, 5, 9])).toBe(2);
+		expect(paging(9, planRings(chosen.geometry, DEFAULT_RING_PARAMS, [9])[0].capacity).pages).toBe(2);
 	});
 
 	it("mirrors the rings for the bottom-left corner", () => {
@@ -490,6 +497,18 @@ describe("hitTest", () => {
 		expect(hitTest(atAngle(5), PHONE, rings, lone)).toBeNull();
 	});
 
+	it("on an inner ring only the circles arm, so the band between the rings is blank and a thumb heading outward swaps nothing", () => {
+		const radius = rings[0].radius;
+		const atAngle = (deg: number, distance: number) => ({ x: anchor.x - distance * Math.cos((deg * Math.PI) / 180), y: anchor.y - distance * Math.sin((deg * Math.PI) / 180) });
+		// Window sits at 30 degrees on the root ring: inside its circle (plus a little slack) it arms; between Window and Zoom, past the circles' edge but still in the root ring's band, nothing does.
+		expect(hitTest(atAngle(30, radius), PHONE, rings, slots)).toBe(1);
+		expect(hitTest(atAngle(30, radius + 25), PHONE, rings, slots)).toBe(1);
+		expect(hitTest(atAngle(44, radius + 20), PHONE, rings, slots)).toBeNull();
+		expect(hitTest(atAngle(44, radius + 20), PHONE, rings, ringSlots(0, rings[0].capacity, 4))).toBe(1);
+		// The same angle on the outermost ring's band arms by angle alone.
+		expect(hitTest(atAngle(45, (rings[0].radius + rings[1].radius) / 2 + 1), PHONE, rings, slots)).toBe(4 + 2);
+	});
+
 	it("arms an end item anywhere inside its own circle, even outside the sweep", () => {
 		const end = at(slots[0]);
 		expect(hitTest({ x: end.x, y: end.y + 20 }, PHONE, rings, slots)).toBe(0);
@@ -499,17 +518,5 @@ describe("hitTest", () => {
 		const radius = rings[0].radius;
 		expect(hitTest({ x: anchor.x - (radius - 22 - 10), y: anchor.y }, PHONE, rings, slots)).toBeNull();
 		expect(hitTest({ x: anchor.x - (radius - 22), y: anchor.y }, PHONE, rings, slots)).toBe(0);
-	});
-});
-
-describe("overRingCircles", () => {
-	const ring: DialRing = { radius: 97, capacity: 4 };
-	const { anchor } = PHONE;
-
-	it("is true within half an item plus a little slack of the ring's radius, false in the gap beyond", () => {
-		expect(overRingCircles({ x: anchor.x - 97, y: anchor.y }, PHONE, ring, DEFAULT_RING_PARAMS)).toBe(true);
-		expect(overRingCircles({ x: anchor.x - (97 + 26), y: anchor.y }, PHONE, ring, DEFAULT_RING_PARAMS)).toBe(true);
-		expect(overRingCircles({ x: anchor.x - (97 + 27), y: anchor.y }, PHONE, ring, DEFAULT_RING_PARAMS)).toBe(false);
-		expect(overRingCircles({ x: anchor.x - (97 - 27), y: anchor.y }, PHONE, ring, DEFAULT_RING_PARAMS)).toBe(false);
 	});
 });
