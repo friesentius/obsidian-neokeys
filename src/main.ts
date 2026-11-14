@@ -103,11 +103,19 @@ export default class NeokeysPlugin extends Plugin {
 			{
 				corner: this.settings.mobileDialCorner,
 				itemSize: this.settings.mobileDialItemSize,
+				radiusRule: this.settings.mobileDialRadiusRule,
+				lensPeak: this.settings.mobileDialLensPeak,
 				description: this.settings.mobileDialDescription,
-				animation: () => ({
-					enabled: shouldAnimate(this.settings.animationsEnabled, prefersReducedMotion(window)),
-					durationMs: this.settings.animationDurationMs,
-				}),
+				// The Animations toggle and the OS's reduced-motion preference govern the dial as
+				// they do the popup; a ring's entrance has its own toggle on top of that.
+				animation: () => {
+					const enabled = shouldAnimate(this.settings.animationsEnabled, prefersReducedMotion(window));
+					return {
+						enabled,
+						durationMs: this.settings.animationDurationMs,
+						ring: enabled && this.settings.mobileDialRingAnimation ? this.settings.mobileDialRingAnimationStyle : null,
+					};
+				},
 			},
 			this.leaderCallbacks(),
 		);

@@ -1,13 +1,39 @@
-import { DEFAULT_SETTINGS, parseDialCorner, parseDialDescription, parseDialItemSize, resolveSettings } from "../src/defaultSettings";
+import { DEFAULT_SETTINGS, parseDialCorner, parseDialDescription, parseDialItemSize, parseDialLensPeak, parseDialRadiusRule, parseDialRingAnimation, resolveSettings } from "../src/defaultSettings";
+
+/** The dial keys a fresh install gets. */
+const DIAL_DEFAULTS = {
+	mobileDialEnabled: true,
+	mobileDialCorner: "bottom-right",
+	mobileDialItemSize: 44,
+	mobileDialDescription: "none",
+	mobileDialRadiusRule: "fixed",
+	mobileDialLensPeak: 1.5,
+	mobileDialRingAnimation: true,
+	mobileDialRingAnimationStyle: "fade",
+};
 
 describe("resolveSettings", () => {
 	it("fills in the dial settings for a file saved before the dial existed", () => {
 		const saved = { keymapSource: "title: X\nitems: {}\n", showDelayMs: 50, comboLeader: "c-j", animationsEnabled: false, animationDurationMs: 90 };
-		expect(resolveSettings(saved)).toEqual({ ...saved, mobileDialEnabled: true, mobileDialCorner: "bottom-right", mobileDialItemSize: 44, mobileDialDescription: "none" });
+		expect(resolveSettings(saved)).toEqual({ ...saved, ...DIAL_DEFAULTS });
 	});
 
 	it("fills in the item size for a file saved by a release whose dial had one size", () => {
 		expect(resolveSettings({ mobileDialEnabled: true, mobileDialCorner: "bottom-left" })).toMatchObject({ mobileDialItemSize: 44, mobileDialDescription: "none" });
+	});
+
+	it("fills in fixed rings, the 1.5 lens and the fade for a file saved by a release whose dial paged instead", () => {
+		const saved = { mobileDialEnabled: true, mobileDialCorner: "bottom-left", mobileDialItemSize: 48, mobileDialDescription: "card" };
+		expect(resolveSettings(saved)).toMatchObject({ ...saved, mobileDialRadiusRule: "fixed", mobileDialLensPeak: 1.5, mobileDialRingAnimation: true, mobileDialRingAnimationStyle: "fade" });
+	});
+
+	it("keeps a stored radius rule, lens peak and ring animation, including the animation off", () => {
+		expect(resolveSettings({ mobileDialRadiusRule: "fit", mobileDialLensPeak: 1.25, mobileDialRingAnimation: false, mobileDialRingAnimationStyle: "fly" })).toMatchObject({
+			mobileDialRadiusRule: "fit",
+			mobileDialLensPeak: 1.25,
+			mobileDialRingAnimation: false,
+			mobileDialRingAnimationStyle: "fly",
+		});
 	});
 
 	it("keeps a stored corner, size and an explicit off", () => {
@@ -20,12 +46,9 @@ describe("resolveSettings", () => {
 	});
 
 	it("falls back to the defaults for hand-edited values it does not understand", () => {
-		expect(resolveSettings({ mobileDialEnabled: "yes", mobileDialCorner: "top-left", mobileDialItemSize: "big", mobileDialDescription: "everywhere" })).toMatchObject({
-			mobileDialEnabled: true,
-			mobileDialCorner: "bottom-right",
-			mobileDialItemSize: 44,
-			mobileDialDescription: "none",
-		});
+		expect(
+			resolveSettings({ mobileDialEnabled: "yes", mobileDialCorner: "top-left", mobileDialItemSize: "big", mobileDialDescription: "everywhere", mobileDialRadiusRule: "loose", mobileDialLensPeak: "huge", mobileDialRingAnimation: "sure", mobileDialRingAnimationStyle: "spin" }),
+		).toMatchObject(DIAL_DEFAULTS);
 		expect(resolveSettings(null)).toEqual(DEFAULT_SETTINGS);
 		expect(resolveSettings("junk")).toEqual(DEFAULT_SETTINGS);
 	});
@@ -56,6 +79,33 @@ describe("parseDialDescription", () => {
 		expect(parseDialDescription("none")).toBe("none");
 		expect(parseDialDescription("bubble")).toBe("none");
 		expect(parseDialDescription(undefined)).toBe("none");
+	});
+});
+
+describe("parseDialLensPeak", () => {
+	it("keeps a peak on the slider's steps, holds anything outside the range at the nearer end, and falls back to the default for a non-number", () => {
+		expect(parseDialLensPeak(1.25)).toBe(1.25);
+		expect(parseDialLensPeak(1)).toBe(1);
+		expect(parseDialLensPeak(1.5)).toBe(1.5);
+		expect(parseDialLensPeak(1.333)).toBe(1.35);
+		expect(parseDialLensPeak(2)).toBe(1.5);
+		expect(parseDialLensPeak(0.5)).toBe(1);
+		expect(parseDialLensPeak("1.5")).toBe(1.5);
+		expect(parseDialLensPeak(Number.NaN)).toBe(1.5);
+		expect(parseDialLensPeak(undefined)).toBe(1.5);
+	});
+});
+
+describe("parseDialRadiusRule and parseDialRingAnimation", () => {
+	it("accept the offered values and nothing else", () => {
+		expect(parseDialRadiusRule("fit")).toBe("fit");
+		expect(parseDialRadiusRule("fixed")).toBe("fixed");
+		expect(parseDialRadiusRule("compact")).toBe("fixed");
+		expect(parseDialRadiusRule(undefined)).toBe("fixed");
+		expect(parseDialRingAnimation("fly")).toBe("fly");
+		expect(parseDialRingAnimation("fade")).toBe("fade");
+		expect(parseDialRingAnimation("pop")).toBe("fade");
+		expect(parseDialRingAnimation(undefined)).toBe("fade");
 	});
 });
 

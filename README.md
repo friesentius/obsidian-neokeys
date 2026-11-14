@@ -191,37 +191,56 @@ backspaced away, or you press Esc.
 
 ## Mobile
 
-On phones and tablets, Neokeys replaces typing with a **dial**: a leader button pinned to a bottom
-corner of the screen. Press it and the root menu's keys fan out on a ring of small circles around
-it, each circle showing just its key, groups rimmed in the accent colour. Drag onto a group and its
-own keys open on the next ring out, so one drag walks the keymap: root, then Text, then Heading,
-then the digit you want. Let go on a command to run it, on a file to open it; let go on a group and
-its ring simply stays open for the next press. Passing over an item on the way only highlights it,
-so nothing happens until you release. A direct tap on an item does the same thing, and a tap on
-the button once the dial is open closes the deepest ring (or the dial, at the root), the way
-<kbd>Backspace</kbd> does in the keyboard popup. The note dims behind the open dial; a tap on that
-dimmed area closes it without running anything.
+On phones and tablets, Neokeys replaces typing with a **dial**: a leader button (a `>_` prompt)
+pinned to a bottom corner of the screen. Press it and the root menu's keys fan out on a ring of
+small circles around it, each circle showing just its key, groups rimmed in the accent colour.
+Drag onto a group and its own keys open on the next ring out, so one drag walks the keymap: root,
+then Text, then Heading, then the digit you want. Let go on a command to run it, on a file to open
+it; let go on a group and its ring simply stays open for the next press. Passing over an item on
+the way only highlights it, so nothing happens until you release. A tap on the button once the dial
+is open closes the deepest ring (or the dial, at the root), the way <kbd>Backspace</kbd> does in
+the keyboard popup. The note dims behind the open dial; a tap on that dimmed area closes it without
+running anything.
+
+The rings are always in the same places: the first where four circles fit, each next ring far
+enough out that a circle grown by the lens never reaches a circle on the next ring, so the hand
+learns where each level is. A level with more items than its ring holds spreads them evenly over
+the ring as smaller circles, down to 14px beads, which step in and out of the ring, two deep, where
+even that would not keep them apart; nothing is ever paged or hidden. The circle under your thumb
+grows, up to one and a half times the circle size by default, its neighbours a little less: a
+**lens** that follows the thumb along every ring, so a crowded ring reads as you pass over it and
+the grown circle doubles as the highlight. No two circles ever overlap. The lens takes its room
+from the other gaps on the ring, which close up as far as keeps their circles apart; on a crowded
+ring the other beads pile two deep; the arc may run a few degrees past the ends of its quarter
+turn; and only when even that is not enough does the lens grow a little less (the root ring, full
+with four circles, gets most of the lens mid-ring, all of it at its ends). A ring you have left
+keeps its lens where your thumb left it, so the path you took stays large.
 
 A pill just below Obsidian's header names what you are on: the path of open groups, the item under
-your thumb at its end, and on a second line the group's description, so a ring of bare keys reads
-as what it does (a group without a description lists its keys and labels there instead). On a
-narrow phone the start of the path gives way to an ellipsis, then the page number, so the item
-under your thumb is the last thing ever shortened. Back and Close buttons sit at either end.
+your thumb at its end, and on a second line what that item does: a group's description (or its
+keys and labels, when it has none), a command's name in Obsidian when the keymap labels it
+something else, a file's path. On a narrow phone the start of the path gives way to an ellipsis,
+so the item under your thumb is the last thing ever shortened. Back and Close buttons sit at either
+end.
 
 ![Mobile dial mid-drag through Text and Heading to Heading 2, dark theme](docs/screenshots/mobile/dial-heading-dark.png)
 
 ![Mobile dial mid-drag with an item highlighted, light theme](docs/screenshots/mobile/dial-armed-light.png)
 
-Nothing moves while your finger is down. Each ring sits where its own level needs it, whatever
-opens outside it, and the pill picks its place once per opening: below the header when the
-keymap's widest path fits under it, raised over the header when that wins back room (a phone with
-its keyboard up), with the rings reaching up behind it only on a screen too short for anything
-else. When a group's
-ring has no room outside the current ones, the group stays highlighted, the pill says to let go,
-and the release redraws the dial from the deepest levels that fit; Back brings the outer rings
-back. A level with more items than its ring can hold pages, with a "More" item that turns to the
-next page. On a 390px phone the default keymap's deepest path (root, Text, Heading) opens whole on
-three rings with the keyboard up or down; smaller circles hold more per ring.
+Taps work too. A tap on a circle of 32px or more does what a release on it does: a command runs,
+a file opens, a group opens its ring. A tap on a smaller bead brings it into the lens first, so a
+small target is never run by accident; the next tap runs it (a bead that is a group opens its ring
+on the first tap, since that is harmless, and grows at the same time).
+
+Nothing moves while your finger is down except the lens. The pill picks its place once per
+opening: below the header when the keymap's deepest path fits under it, raised over the header
+when that wins back room (a phone with its keyboard up). On a screen too short for even the first
+ring under the raised pill the whole dial shrinks instead, smaller circles on a smaller ring (down
+to 28px), so that it fits between the pill and the keyboard; no circle ever hides behind the pill.
+When a group's ring has no room outside the current ones,
+the group stays highlighted, the pill says to let go, and the release redraws the dial from the
+deepest levels that fit; Back brings the outer rings back. On a 390px phone the default keymap's
+deepest path (root, Text, Heading) opens whole on three rings with the keyboard up or down.
 
 ![Mobile dial open on the Window group, dark theme](docs/screenshots/mobile/dial-window-dark.png)
 
@@ -240,10 +259,16 @@ exposed to screen readers as a button named after its label and key.
 
 Settings → Neokeys has a **Mobile dial** group with a **Show the dial on mobile** toggle (on by
 default), a **Dial corner** choice, bottom right or bottom left, a **Dial item size** slider (the
-circles' diameter, 40 to 56px, 44 by default; smaller circles put more keys on each ring and more
-rings on the screen) and a **Dial description** choice for where the item under your thumb is
-described beyond the pill's own line: nowhere else (the default), on a card between the pill and
-the rings, or in a bubble beside your thumb.
+circles' diameter, 40 to 56px, 44 by default), a **Dial ring radius** choice between fixed rings
+(the default, described above) and fit, where each ring grows until its level fits at full size as
+far as the screen allows, a **Dial lens** slider for how much the circle under your thumb grows (1
+to 1.5 times the item size; at 1 only shrunk beads grow, back to full size), a **Dial ring
+animation** toggle with a **Dial ring animation style** choice, fade in or fly out from the group
+the ring belongs to (the **Animations** toggle above governs this and the easing of the circles
+as they move, and neither animates when your OS asks for reduced motion), and a **Dial
+description** choice for where the item under your thumb is described beyond the pill's own line:
+nowhere else (the default), on a card between the pill and the rings, or in a bubble beside your
+thumb.
 
 ![Mobile dial with the description card, dark theme](docs/screenshots/mobile/dial-card-dark.png)
 
