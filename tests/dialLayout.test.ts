@@ -2,7 +2,6 @@ import {
 	ANCHOR_RADIUS,
 	BEAD_FLOOR,
 	chooseMode,
-	crowdedFloor,
 	DEFAULT_DIAL_ITEM_SIZE,
 	DEFAULT_DIAL_MIN_ITEM_SIZE,
 	DIAL_LEGIBLE_SIZE,
@@ -344,11 +343,23 @@ describe("lensLayout at rest", () => {
 
 describe("the minimum circle size on a crowded ring", () => {
 	const minimum = (minSize: number): DialRingParams => ringParamsFor(DEFAULT_DIAL_ITEM_SIZE, { minSize });
-	/** The smallest circle of a `count`-item level on the first fixed ring over the whole sweep, at rest included. */
-	const smallest = (count: number, params: DialRingParams): number => {
-		let least = Math.min(...lensLayout(count, 4, 97, params, 66, null).sizes);
-		for (const focus of SWEEP) least = Math.min(least, ...lensLayout(count, 4, 97, params, 66, focus, 36).sizes);
+	/** The first fixed ring, and the second ring of the fit rule's sizes. */
+	const RINGS = [
+		{ radius: 97, capacity: 4 },
+		{ radius: 167, capacity: ringCapacity(167, 44, 6) },
+	];
+	/** The smallest circle of a `count`-item level on `ring` over the whole sweep, at rest included. */
+	const smallest = (count: number, params: DialRingParams, ring = RINGS[0]): number => {
+		let least = Math.min(...lensLayout(count, ring.capacity, ring.radius, params, 66, null).sizes);
+		for (const focus of SWEEP) least = Math.min(least, ...lensLayout(count, ring.capacity, ring.radius, params, 66, focus, 36).sizes);
 		return least;
+	};
+	/** The circle under the thumb with the finger on the circle nearest mid-sweep, the largest it grows to anywhere on the sweep, and the least. */
+	const focused = (count: number, params: DialRingParams, ring = RINGS[0]): { centre: number; reach: number; weakest: number } => {
+		const layout = (focus: number): LensLayout => lensLayout(count, ring.capacity, ring.radius, params, 66, focus, 36);
+		const centre = Math.max(...layout(Math.round((count - 1) / 2) / (count - 1)).sizes);
+		const grown = SWEEP.map((focus) => Math.max(...layout(focus).sizes));
+		return { centre, reach: Math.max(...grown), weakest: Math.min(...grown) };
 	};
 
 	it("defaults to the legible size and is offered from the hard floor", () => {
@@ -363,44 +374,65 @@ describe("the minimum circle size on a crowded ring", () => {
 		expect(showsGlyph(BEAD_FLOOR)).toBe(false);
 	});
 
-	it("is the floor of a ring whose level fits at it, else the hard floor, and never more than the item size", () => {
-		expect(crowdedFloor(20, minimum(18))).toBe(18);
-		expect(crowdedFloor(18, minimum(18))).toBe(18);
-		expect(crowdedFloor(17.9, minimum(18))).toBe(BEAD_FLOOR);
-		expect(crowdedFloor(30, minimum(24))).toBe(24);
-		expect(crowdedFloor(30, ringParamsFor(28, { minSize: 40 }))).toBe(28);
-		expect(crowdedFloor(30, minimum(4))).toBe(BEAD_FLOOR);
-	});
-
-	it("keeps every circle at least the minimum, at rest and under the finger anywhere along the sweep, on a level that fits at it; the lens grows less instead", () => {
-		for (const minSize of [14, 18, 24]) {
-			for (let count = 5; lensLayout(count, 4, 97, minimum(minSize), 66, null).base >= minSize; count++) {
-				expect(smallest(count, minimum(minSize))).toBeGreaterThanOrEqual(minSize - 1e-6);
-				for (const focus of SWEEP) {
-					const layout = lensLayout(count, 4, 97, minimum(minSize), 66, focus, 36);
-					expect(overlapIn(layout, 97, 2 - 1e-6)).toBeNull();
-					// The circle under the finger always grows past the rest: the lens never collapses onto the floor.
-					expect(Math.max(...layout.sizes)).toBeGreaterThan(layout.base);
+	it("keeps every circle at least the minimum, at rest and under the finger anywhere along the sweep, while the lens has room to grow the circle under the thumb past the item size", () => {
+		for (const ring of RINGS) {
+			for (const minSize of [14, 18, 24]) {
+				for (let count = ring.capacity + 1; focused(count, minimum(minSize), ring).weakest > DEFAULT_DIAL_ITEM_SIZE + 1e-6; count++) {
+					expect(smallest(count, minimum(minSize), ring)).toBeGreaterThanOrEqual(minSize - 1e-6);
+					for (const focus of SWEEP) expect(overlapIn(lensLayout(count, ring.capacity, ring.radius, minimum(minSize), 66, focus, 36), ring.radius, 2 - 1e-6)).toBeNull();
 				}
 			}
 		}
-		// At the default, a crowded level that fits at the legible size never hides a key.
-		for (const focus of SWEEP) expect(lensLayout(8, 4, 97, FIXED, 66, focus, 36).sizes.every(showsGlyph)).toBe(true);
-		expect(lensLayout(8, 4, 97, LOWEST, 66, 0.5, 36).sizes.every(showsGlyph)).toBe(false);
+		// At the default, six on the first ring and twelve on the second never hide a key, whatever the finger does.
+		for (const focus of SWEEP) {
+			expect(lensLayout(6, 4, 97, FIXED, 66, focus, 36).sizes.every(showsGlyph)).toBe(true);
+			expect(lensLayout(12, RINGS[1].capacity, 167, FIXED, 66, focus, 36).sizes.every(showsGlyph)).toBe(true);
+		}
+		expect(lensLayout(6, 4, 97, LOWEST, 66, 0.5, 36).sizes.every(showsGlyph)).toBe(false);
+	});
+
+	it("gives way below the minimum only as far as lets the circle under the thumb reach the item size: eight on the first ring and fourteen on the second", () => {
+		for (const [count, ring] of [
+			[8, RINGS[0]],
+			[14, RINGS[1]],
+		] as const) {
+			const { centre, reach } = focused(count, FIXED, ring);
+			expect(centre).toBeGreaterThanOrEqual(DEFAULT_DIAL_ITEM_SIZE - 1e-6);
+			expect(reach).toBeGreaterThanOrEqual(DEFAULT_DIAL_ITEM_SIZE - 1e-6);
+			expect(smallest(count, FIXED, ring)).toBeLessThan(DEFAULT_DIAL_MIN_ITEM_SIZE);
+			expect(smallest(count, FIXED, ring)).toBeGreaterThanOrEqual(BEAD_FLOOR);
+			for (const focus of SWEEP) expect(overlapIn(lensLayout(count, ring.capacity, ring.radius, FIXED, 66, focus, 36), ring.radius, 2 - 1e-6)).toBeNull();
+		}
+	});
+
+	it("has no cliff between adjacent counts: the circle under the thumb only ever shrinks as items are added, by no more than the room one more circle takes at the minimum", () => {
+		for (const ring of RINGS) {
+			for (const params of [FIXED, LOWEST, minimum(30)]) {
+				let previous = focused(ring.capacity + 1, params, ring);
+				for (let count = ring.capacity + 2; count <= 3 * ring.capacity; count++) {
+					const next = focused(count, params, ring);
+					for (const key of ["centre", "reach"] as const) {
+						expect(next[key]).toBeLessThanOrEqual(previous[key] + 1e-6);
+						expect(previous[key] - next[key]).toBeLessThanOrEqual(params.minSize + 2);
+					}
+					previous = next;
+				}
+			}
+		}
 	});
 
 	it("lets more items keep their circles at a size when the minimum is smaller, and gives the lens more room", () => {
 		const fitsAt = (minSize: number): number => {
 			let count = 5;
-			while (smallest(count + 1, minimum(minSize)) >= minSize - 1e-6) count++;
+			while (smallest(count + 1, minimum(minSize), RINGS[1]) >= minSize - 1e-6) count++;
 			return count;
 		};
 		expect(fitsAt(14)).toBeGreaterThan(fitsAt(18));
 		expect(fitsAt(18)).toBeGreaterThan(fitsAt(24));
-		expect(lensLayout(8, 4, 97, minimum(BEAD_FLOOR), 66, 0.5, 36).growth).toBeGreaterThan(lensLayout(8, 4, 97, minimum(18), 66, 0.5, 36).growth);
+		expect(lensLayout(7, 4, 97, minimum(BEAD_FLOOR), 66, 0.5, 36).growth).toBeGreaterThan(lensLayout(7, 4, 97, minimum(18), 66, 0.5, 36).growth);
 	});
 
-	it("yields on a level that does not fit at it: the circles shrink below it, never below the hard floor, and never overlap", () => {
+	it("yields on a level that does not fit at it even at rest: the circles shrink below it, never below the hard floor, and never overlap", () => {
 		const count = 10;
 		expect(lensLayout(count, 4, 97, FIXED, 66, null).base).toBeLessThan(DEFAULT_DIAL_MIN_ITEM_SIZE);
 		expect(smallest(count, FIXED)).toBeLessThan(DEFAULT_DIAL_MIN_ITEM_SIZE);

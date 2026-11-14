@@ -53,7 +53,7 @@ export interface DialRingParams {
 	peak: number;
 	/** Where the rings sit: at fixed radii, or each as far out as its level needs. */
 	rule: DialRadiusRule;
-	/** The smallest a circle shrinks to on a crowded ring whose level fits at this size (see `crowdedFloor`). */
+	/** The smallest a circle shrinks to on a crowded ring while the lens still has room to grow the circle under the finger to `itemSize` (see `crowdedLayout`). */
 	minSize: number;
 }
 
@@ -143,8 +143,8 @@ const FALLOFF_SHAPE = 1.5;
 
 /**
  * The least falloff on a crowded ring: where the circles need more room than that leaves, the
- * lens grows less rather than the falloff dropping further, which would leave the finger
- * between two circles with neither of them grown.
+ * lens grows less or the floor gives way rather than the falloff dropping further, which would
+ * leave the finger between two circles with neither of them grown.
  */
 const FALLOFF_LEAST = 0.25;
 
@@ -362,8 +362,7 @@ export interface LensLayout {
  *
  * At rest a ring that fits its level keeps the full-size circles at their slot angles; a crowded
  * ring spreads its level evenly over the whole sweep with circles shrunk to the chord between
- * neighbours (never below BEAD_FLOOR, and below the minimum size only when the level does not
- * fit at it).
+ * neighbours (never below BEAD_FLOOR).
  *
  * A ring that fits, with a finger on it: the circle nearest the finger and its neighbours
  * (LENS_WIDTH items either way) grow toward `peak`, and no two circles on the ring ever overlap:
@@ -378,9 +377,9 @@ export interface LensLayout {
  * A crowded ring, with a finger on it, has no room to spare, so the farther a circle is from
  * the finger the more it shrinks (see `crowdedLayout`): the circle under the finger grows to
  * the peak, and each circle past it is a constant fraction smaller than the one before, down to
- * the ring's floor (see `crowdedFloor`), by as little as lets every circle fit on the ring's own
- * radius without touching its neighbours; where even that leaves too little room, the lens grows
- * less. The level still spans the whole sweep with the finger on the circle it grew. Only a
+ * the minimum size, by as little as lets every circle fit on the ring's own radius without
+ * touching its neighbours; where even that leaves too little room, the lens grows less, down to
+ * the item size, then the far circles give way below the minimum (see `crowdedLayout`). The level still spans the whole sweep with the finger on the circle it grew. Only a
  * level with more circles than the ring holds even at BEAD_FLOOR overlaps, as it must.
  */
 export function lensLayout(count: number, capacity: number, radius: number, params: DialRingParams, peak: number, focus: number | null, edgeRoom = Number.POSITIVE_INFINITY): LensLayout {
@@ -389,7 +388,6 @@ export function lensLayout(count: number, capacity: number, radius: number, para
 	const pitch = ringPitch(count, capacity);
 	const restAngle = (index: number): number => (crowded ? pitch * index : slotAngle(index, count, capacity));
 	const base = crowded ? clamp(chord(radius, pitch) - BEAD_GAP, BEAD_FLOOR, full) : full;
-	const floor = crowdedFloor(base, params);
 	const theta = focus === null ? null : clamp(focus, 0, 1) * DIAL_SWEEP_DEG;
 	const position = theta === null ? null : (theta - restAngle(0)) / pitch;
 	const weights = Array.from({ length: count }, (_, i) => (position === null ? 0 : Math.max(0, 1 - Math.abs(i - position) / LENS_WIDTH)));
@@ -401,7 +399,7 @@ export function lensLayout(count: number, capacity: number, radius: number, para
 	}
 
 	if (crowded) {
-		const layout = crowdedLayout(count, radius, peak, theta, edgeRoom, base, floor, weights);
+		const layout = crowdedLayout(count, radius, peak, theta, edgeRoom, base, full, clamp(params.minSize, BEAD_FLOOR, full), weights);
 		return { ...layout, weights, crowded, base };
 	}
 
@@ -524,18 +522,6 @@ function largest(fits: (x: number) => boolean): number | null {
 }
 
 /**
- * The smallest a circle on a crowded ring shrinks to, given `base`, the size its level is spread
- * at when no finger is on it: the minimum size from the settings (never more than the item size)
- * when the level fits the ring at that size, so no circle ever drops below it and the lens grows
- * less instead; else the hard floor, BEAD_FLOOR, since a level that does not fit at the minimum
- * is already shrunk below it at rest and only a lower floor leaves the lens room to grow.
- */
-export function crowdedFloor(base: number, params: DialRingParams): number {
-	const minimum = clamp(params.minSize, BEAD_FLOOR, params.itemSize);
-	return base >= minimum ? minimum : BEAD_FLOOR;
-}
-
-/**
  * The layout of a crowded ring with the finger on it at `theta` degrees along the sweep, which
  * is `theta / (the rest pitch)` circles along the level (the finger's `position`, a fraction
  * between two circles when it is in a gap). Every circle stays on the ring; there is no room to
@@ -544,10 +530,17 @@ export function crowdedFloor(base: number, params: DialRingParams): number {
  *
  *     floor + (top - floor) * falloff^(k^FALLOFF_SHAPE)
  *
- * where `top` is the lens peak (growth 1) and `falloff`, from FALLOFF_LEAST to 1, is as large as lets
- * every circle fit (`distance` is raised to FALLOFF_SHAPE first). The farther a circle is from
- * the finger, the smaller it is, down to the floor (see `crowdedFloor`); the nearer the finger,
- * the closer a circle is to the peak.
+ * where `top` is the lens peak, `floor` the minimum size, and `falloff`, from FALLOFF_LEAST to 1,
+ * as large as lets every circle fit (`distance` is raised to FALLOFF_SHAPE first). The farther a
+ * circle is from the finger, the smaller it is, down to the floor; the nearer the finger, the
+ * closer a circle is to the peak.
+ *
+ * When that does not fit even at FALLOFF_LEAST, the room is found in this order, each step going
+ * only as far as it must, so the layout changes smoothly with the finger and the item count: the
+ * lens grows less, until the circle nearest the finger is no larger than `full` (the item size);
+ * the floor gives way below the minimum, down to BEAD_FLOOR, keeping that circle at `full`; the
+ * lens grows less still. When not even an ungrown lens fits, the level is laid out at rest. A
+ * level with more circles than fit at BEAD_FLOOR overlaps, as it must.
  *
  * Neighbours sit exactly as far apart as their sizes need (see `clearance`), scaled up evenly
  * on each side of the finger so the level spans the whole sweep, and the finger keeps its
@@ -555,9 +548,7 @@ export function crowdedFloor(base: number, params: DialRingParams): number {
  * stays under it, or, where the ends of the sweep leave no room for that, as near it as keeps
  * the finger inside the share of one of its gap's two circles. The arc may run past an end of
  * the sweep by END_SLACK_DEG (never with an end circle outside `edgeRoom` of the anchor) when
- * the circles need the room. When even FALLOFF_LEAST does not fit, the lens grows less; when
- * not even an ungrown lens fits, the level is laid out at rest. A level with more circles than
- * fit at BEAD_FLOOR overlaps, as it must.
+ * the circles need the room.
  */
 function crowdedLayout(
 	count: number,
@@ -566,7 +557,8 @@ function crowdedLayout(
 	theta: number,
 	edgeRoom: number,
 	base: number,
-	floor: number,
+	full: number,
+	minimum: number,
 	weights: readonly number[],
 ): { angles: number[]; sizes: number[]; growth: number } {
 	const restPitch = DIAL_SWEEP_DEG / (count - 1);
@@ -574,9 +566,12 @@ function crowdedLayout(
 	const whole = Math.min(Math.floor(position), count - 2);
 	const fraction = position - whole;
 	const distances = Array.from({ length: count }, (_, i) => Math.abs(i - position));
-	const sizesFor = (falloff: number, growth: number): number[] => {
-		const top = base + (Math.max(peak, base) - base) * growth;
-		return distances.map((distance) => floor + (top - floor) * falloff ** distance ** FALLOFF_SHAPE);
+	const peakTop = Math.max(peak, base);
+	const growthOf = (top: number): number => (peakTop > base ? clamp((top - base) / (peakTop - base), 0, 1) : 1);
+	/** The top that grows the circle nearest the finger to the item size at FALLOFF_LEAST over `floor`, within the peak. */
+	const fullTop = (floor: number): number => {
+		const nearest = FALLOFF_LEAST ** Math.min(...distances) ** FALLOFF_SHAPE;
+		return clamp(floor + (full - floor) / nearest, full, peakTop);
 	};
 	const rest = (): { angles: number[]; sizes: number[]; growth: number } => ({
 		angles: Array.from({ length: count }, (_, i) => restPitch * i),
@@ -584,9 +579,9 @@ function crowdedLayout(
 		growth: 0,
 	});
 	const sum = (values: readonly number[], from = 0, to = values.length): number => values.slice(from, to).reduce((total, value) => total + value, 0);
-	/** The layout at this falloff and growth, or null when the circles do not fit the sweep (the arc may run past its ends by the slack). */
-	const build = (falloff: number, growth: number): { angles: number[]; sizes: number[]; growth: number } | null => {
-		const sizes = sizesFor(falloff, growth);
+	/** The layout at this falloff, top and floor, or null when the circles do not fit the sweep (the arc may run past its ends by the slack). */
+	const build = (falloff: number, top: number, floor: number): { angles: number[]; sizes: number[]; growth: number } | null => {
+		const sizes = distances.map((distance) => floor + (top - floor) * falloff ** distance ** FALLOFF_SHAPE);
 		const least = Array.from({ length: count - 1 }, (_, gap) => angleOnRing(radius, clearance(sizes, weights, gap, gap + 1)));
 		const low = -endSlack(sizes[0], radius, edgeRoom);
 		const high = DIAL_SWEEP_DEG + endSlack(sizes[count - 1], radius, edgeRoom);
@@ -614,13 +609,24 @@ function crowdedLayout(
 			angles.push(at);
 			at += gaps[i] ?? 0;
 		}
-		return { angles, sizes, growth };
+		return { angles, sizes, growth: growthOf(top) };
 	};
-	const falloffAt = (x: number): number => FALLOFF_LEAST + (1 - FALLOFF_LEAST) * x;
-	const grown = largest((x) => build(falloffAt(x), 1) !== null);
-	if (grown !== null) return build(falloffAt(grown), 1) ?? rest();
-	const growth = largest((g) => build(FALLOFF_LEAST, g) !== null);
-	return (growth !== null ? build(FALLOFF_LEAST, growth) : null) ?? rest();
+	const between = (from: number, to: number) => (x: number): number => from + (to - from) * x;
+	/** The first of these steps that fits, at the largest `x` it fits at. */
+	const steps: ((x: number) => ReturnType<typeof build>)[] = [
+		(x) => build(between(FALLOFF_LEAST, 1)(x), peakTop, minimum),
+		(x) => build(FALLOFF_LEAST, between(fullTop(minimum), peakTop)(x), minimum),
+		(x) => {
+			const floor = between(BEAD_FLOOR, minimum)(x);
+			return build(FALLOFF_LEAST, fullTop(floor), floor);
+		},
+		(x) => build(FALLOFF_LEAST, between(Math.min(base, fullTop(BEAD_FLOOR)), fullTop(BEAD_FLOOR))(x), BEAD_FLOOR),
+	];
+	for (const step of steps) {
+		const x = largest((at) => step(at) !== null);
+		if (x !== null) return step(x) ?? rest();
+	}
+	return rest();
 }
 
 /** The slots of a level of `count` items on ring `ring` (`geometry` is that ring), with the lens at `focus`. */

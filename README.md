@@ -217,9 +217,10 @@ one of them on the ring's own radius and shrinks the circles the farther they ar
 down to the minimum circle size you set (18px by default, the smallest a circle still shows its key
 at), so the few near it stay easy to hit and the far end is still there, reached by bringing it
 into the lens; nothing is ever paged or piled up. When the level and the lens do not both fit at
-that minimum, the lens grows less; a level with more items than fit on the ring even at the minimum
-shrinks below it instead, down to 10px, rather than letting circles overlap, and a circle under
-18px is a dot that shows its key once the lens grows it. The circle under your thumb
+that minimum, the lens grows less, but never less than the circle size: past that the far circles
+shrink below the minimum instead, gradually and only as far as they must, down to 10px, so circles
+never overlap and the lens keeps working on every ring. A circle under 18px is a dot that shows
+its key once the lens grows it. The circle under your thumb
 grows, up to one and a half times the circle size by default, its neighbours a little less: a
 **lens** that follows the thumb along every ring, so a crowded ring reads as you pass over it and
 the grown circle doubles as the highlight. No two circles ever overlap. On a ring that is not
@@ -279,8 +280,8 @@ Settings → Neokeys has a **Mobile dial** group with a **Show the dial on mobil
 default), a **Dial corner** choice, bottom right or bottom left, a **Dial item size** slider (the
 circles' diameter, 40 to 56px, 44 by default), a **Dial minimum circle size** slider (the smallest
 the circles of a crowded ring shrink to, from 10px up to the item size, 18 by default, so their
-keys stay in view; a level that does not fit at it still shrinks below it, never under 10px, so
-circles never overlap), a **Dial ring radius** choice between fixed rings
+keys stay in view; where a level and a lens grown to the item size do not fit at it, the far
+circles shrink below it, never under 10px, so circles never overlap), a **Dial ring radius** choice between fixed rings
 (the default, described above) and fit, where each ring grows until its level fits at full size as
 far as the screen allows, a **Dial lens** slider for how much the circle under your thumb grows (1
 to 1.5 times the item size; at 1 only shrunk beads grow, back toward full size as far as the
