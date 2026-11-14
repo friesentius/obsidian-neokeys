@@ -58,6 +58,8 @@ export interface DialItemView {
 	size: number;
 	/** How far inside the lens the circle is, 0 to 1, so a grown circle is drawn above the ones it crowds. */
 	weight: number;
+	/** How much of the circle is there, 0 to 1: below 1 it is fading out (the far circles of a level too big for its ring while the lens is on it), drawn that transparent with `size` shrunk by as much, and at 0 it is gone: not drawn, not hit. */
+	presence: number;
 }
 
 export interface DialRingView {
@@ -674,6 +676,7 @@ export class DialController {
 			y: position.y,
 			size: this.slots[index].size,
 			weight: this.slots[index].weight,
+			presence: this.slots[index].presence,
 		};
 	}
 

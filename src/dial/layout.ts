@@ -72,6 +72,13 @@ export interface DialSlot {
 	weight: number;
 	/** A shrunk circle outside the lens on a crowded ring, which a tap brings into the lens rather than selecting. */
 	bead: boolean;
+	/**
+	 * How much of the circle is there, 0 to 1: 1 for every circle but the far ones of a level too
+	 * big for its ring while the lens is on it, which fade out toward 0 (drawn that transparent, and
+	 * `size` is already shrunk by as much). A gone circle (0) is not drawn and not hit; a circle
+	 * less than half there is not hit either.
+	 */
+	presence: number;
 }
 
 /** The fan spans one quarter turn: from pointing sideways into the screen to pointing straight up. */
@@ -135,6 +142,23 @@ const FALLOFF_SHAPE = 1.5;
 
 /** The smallest circle that still shows its key (or icon): the key is drawn at 10px at the least, and a smaller circle would clip it. */
 export const DIAL_LEGIBLE_SIZE = 18;
+
+/**
+ * The size a circle half an item from the finger (the nearer of the two when the finger is
+ * between them) is kept at least, on a ring too crowded to give the lens more: well above
+ * DIAL_LEGIBLE_SIZE, so that the circle under the finger shows its key even where it is partly
+ * faded out at an end of the sweep.
+ */
+const FINGER_READABLE_SIZE = DIAL_LEGIBLE_SIZE + 6;
+
+/** How far up toward the lens peak that circle half an item from the finger is kept, as a share of the way from BEAD_FLOOR, so the lens does not pulse as the finger passes from one circle to the next. */
+const HALF_ITEM_SHARE = 0.35;
+
+/** How much a level may miss fitting its ring, in degrees of the sweep, before the shift that was fitting it has faded out altogether. */
+const SHIFT_FADE_DEG = 20;
+
+/** A circle less than this much there is not hit: it is mostly gone. */
+export const HIT_PRESENCE = 0.5;
 
 /** A tap on a circle smaller than this brings it into the lens first; a larger circle is selected by the tap itself. */
 export const TAP_FOCUS_BELOW = 32;
@@ -317,6 +341,8 @@ export interface LensLayout {
 	base: number;
 	/** How much of the way to the peak the lens grew: 1 unless the ring had no room for all of it. */
 	growth: number;
+	/** How much of each circle is there, 0 to 1 (see `DialSlot.presence`; `sizes` are already shrunk by it): 1 everywhere but on a level too big for its ring with the lens on it. */
+	presences: number[];
 }
 
 /**
@@ -344,7 +370,11 @@ export interface LensLayout {
  * the peak, and each circle past it is a constant fraction smaller than the one before, down to
  * BEAD_FLOOR, by as little as lets every circle fit on the ring's own radius without touching
  * its neighbours. The level still spans the whole sweep with the finger on the circle it grew.
- * Only a level with more circles than the ring holds even at the floor size overlaps, as it must.
+ * A level too big even for that (every circle at the floor, the lens circle at its peak, does
+ * not fit) loses the circles far from the finger instead: they fade out past the ends of the
+ * sweep (`presences`, see `crowdedLayout`), so what is there never overlaps and the circle under
+ * the finger keeps the lens. At rest nothing fades: a level with more circles than the ring
+ * holds even at the floor size overlaps there, as it must.
  */
 export function lensLayout(count: number, capacity: number, radius: number, params: DialRingParams, peak: number, focus: number | null, edgeRoom = Number.POSITIVE_INFINITY): LensLayout {
 	const full = params.itemSize;
@@ -359,7 +389,7 @@ export function lensLayout(count: number, capacity: number, radius: number, para
 	if (theta === null || position === null || count <= 1) {
 		// At rest: the slot angles at the rest size; a lone circle mid-sweep has room for the whole lens.
 		const angles = Array.from({ length: count }, (_, i) => restAngle(i));
-		return { angles, sizes: weights.map((weight) => base + (peak - base) * weight), weights, crowded, base, growth: 1 };
+		return { angles, sizes: weights.map((weight) => base + (peak - base) * weight), weights, crowded, base, growth: 1, presences: angles.map(() => 1) };
 	}
 
 	if (crowded) {
@@ -453,7 +483,7 @@ export function lensLayout(count: number, capacity: number, radius: number, para
 		angles.push(at);
 		at += gaps[i] ?? 0;
 	}
-	return { angles, sizes, weights, crowded, base, growth };
+	return { angles, sizes, weights, crowded, base, growth, presences: angles.map(() => 1) };
 }
 
 /** The least angle around the anchor between two circles on a ring of `radius` whose centres must be `distance` apart, in degrees. */
@@ -486,18 +516,31 @@ function largest(fits: (x: number) => boolean): number | null {
 }
 
 /**
+ * The falloff a crowded ring under the finger keeps at the least, for a lens whose top is `top`:
+ * so small that the circles far from the finger are at BEAD_FLOOR, but large enough that the
+ * circle half an item from the finger (the nearer of the two when the finger is between them)
+ * is still HALF_ITEM_SHARE of the way up to the peak, and FINGER_READABLE_SIZE at the least:
+ * the circle under the finger is readable wherever it is, and the lens does not pulse as the
+ * finger passes from one circle to the next.
+ */
+function leastFalloff(top: number): number {
+	const half = Math.max(FINGER_READABLE_SIZE, BEAD_FLOOR + HALF_ITEM_SHARE * (top - BEAD_FLOOR));
+	if (top <= half) return 1;
+	return ((half - BEAD_FLOOR) / (top - BEAD_FLOOR)) ** (1 / 0.5 ** FALLOFF_SHAPE);
+}
+
+/**
  * The layout of a crowded ring with the finger on it at `theta` degrees along the sweep, which
  * is `theta / (the rest pitch)` circles along the level (the finger's `position`, a fraction
- * between two circles when it is in a gap). Every circle stays on the ring; there is no room to
- * spare, so the circles shrink with their distance from the finger instead: the circle at
- * distance k from the position is
+ * between two circles when it is in a gap). Every circle stays on the ring; the farther a circle
+ * is from the finger the more it shrinks: the circle at distance k from the position is
  *
  *     BEAD_FLOOR + (top - BEAD_FLOOR) * falloff^(k^FALLOFF_SHAPE)
  *
- * where `top` is the lens peak (growth 1) and `falloff`, between 0 and 1, is as large as lets
- * every circle fit (`distance` is raised to FALLOFF_SHAPE first). The farther a circle is from
- * the finger, the smaller it is, down to the floor; the nearer the finger, the closer a circle
- * is to the peak.
+ * where `top` is the lens peak (growth 1) and `falloff`, between `leastFalloff(top)` and 1, is
+ * as large as lets every circle fit (`distance` is raised to FALLOFF_SHAPE first). The farther a
+ * circle is from the finger, the smaller it is, down to the floor; the nearer the finger, the
+ * closer a circle is to the peak.
  *
  * Neighbours sit exactly as far apart as their sizes need (see `clearance`), scaled up evenly
  * on each side of the finger so the level spans the whole sweep, and the finger keeps its
@@ -505,29 +548,43 @@ function largest(fits: (x: number) => boolean): number | null {
  * stays under it, or, where the ends of the sweep leave no room for that, as near it as keeps
  * the finger inside the share of one of its gap's two circles. The arc may run past an end of
  * the sweep by END_SLACK_DEG (never with an end circle outside `edgeRoom` of the anchor) when
- * the circles need the room. When even the floor size does not fit (the lens next to an end of
- * the sweep), the lens grows less. A level with more circles than fit at the floor size
- * overlaps, as it must: it is laid out at rest.
+ * the circles need the room.
+ *
+ * When the circles do not all fit even at that least falloff (the level is too big for its ring
+ * with the lens on it), the circles far from the finger go instead, so the ones that stay never
+ * overlap and the circle under the finger keeps the lens: they are packed outward from the
+ * finger as close as their sizes allow, and where the sweep ends the circles past it fade out
+ * over the width of one more circle (`presences`), shrinking as they go, and are gone beyond
+ * that. As the finger sweeps along the ring they come back in at the end it is moving toward and
+ * go out at the other, so every circle can be brought under the finger. The finger's own gap
+ * shifts the packing the way it would shift the whole level, as far as the level fitting would
+ * have, so the layout does not jump where the level stops fitting. When even that does not leave
+ * room for the lens at the end of the sweep, the lens grows less; only a ring too small for
+ * that is laid out at rest.
  */
-function crowdedLayout(count: number, radius: number, peak: number, theta: number, edgeRoom: number, base: number, weights: readonly number[]): { angles: number[]; sizes: number[]; growth: number } {
+function crowdedLayout(count: number, radius: number, peak: number, theta: number, edgeRoom: number, base: number, weights: readonly number[]): { angles: number[]; sizes: number[]; growth: number; presences: number[] } {
 	const restPitch = DIAL_SWEEP_DEG / (count - 1);
 	const position = clamp(theta / restPitch, 0, count - 1);
 	const whole = Math.min(Math.floor(position), count - 2);
 	const fraction = position - whole;
 	const distances = Array.from({ length: count }, (_, i) => Math.abs(i - position));
+	const topFor = (growth: number): number => base + (Math.max(peak, base) - base) * growth;
 	const sizesFor = (falloff: number, growth: number): number[] => {
-		const top = base + (Math.max(peak, base) - base) * growth;
+		const top = topFor(growth);
 		return distances.map((distance) => BEAD_FLOOR + (top - BEAD_FLOOR) * falloff ** distance ** FALLOFF_SHAPE);
 	};
-	const rest = (): { angles: number[]; sizes: number[]; growth: number } => ({
-		angles: Array.from({ length: count }, (_, i) => restPitch * i),
-		sizes: Array.from({ length: count }, () => base),
-		growth: 0,
-	});
+	const here = (): number[] => Array.from({ length: count }, () => 1);
 	const sum = (values: readonly number[], from = 0, to = values.length): number => values.slice(from, to).reduce((total, value) => total + value, 0);
-	/** The layout at this falloff and growth, or null when the circles do not fit the sweep (the arc may run past its ends by the slack). */
-	const build = (falloff: number, growth: number): { angles: number[]; sizes: number[]; growth: number } | null => {
-		const sizes = sizesFor(falloff, growth);
+	/** How far the circle before the finger's gap may be from where the finger keeps its exact place in the gap, as `least` (the gaps' least angles) and `sizes` allow: by half the local pitch (so the finger stays inside the share of one of the gap's two circles), and by no more than two thirds of the radius of the circle the lens grew (so the finger stays on it). The pitch and the radius are blended between the gap's two circles, so the limit moves smoothly as the finger passes from one gap to the next. */
+	const shiftBound = (least: readonly number[], sizes: readonly number[]): number => {
+		const pitch = (i: number): number => (least[Math.max(0, i - 1)] + least[Math.min(count - 2, i)]) / 2;
+		const blend = (at: (i: number) => number): number => (1 - fraction) * at(whole) + fraction * at(whole + 1);
+		return Math.max(0, Math.min(blend(pitch) / 2 - SHARE_MARGIN_DEG, (blend((i) => radToDeg(sizes[i] / 2 / radius)) * 2) / 3));
+	};
+
+	/** Every circle there, at this falloff: the layout, or null when the circles do not fit the sweep (the arc may run past its ends by the slack). */
+	const entireLevel = (falloff: number): { angles: number[]; sizes: number[] } | null => {
+		const sizes = sizesFor(falloff, 1);
 		const least = Array.from({ length: count - 1 }, (_, gap) => angleOnRing(radius, clearance(sizes, weights, gap, gap + 1)));
 		const low = -endSlack(sizes[0], radius, edgeRoom);
 		const high = DIAL_SWEEP_DEG + endSlack(sizes[count - 1], radius, edgeRoom);
@@ -535,10 +592,7 @@ function crowdedLayout(count: number, radius: number, peak: number, theta: numbe
 		const rested = theta - fraction * mid;
 		const needBefore = sum(least, 0, whole);
 		const needAfter = sum(least, whole + 1);
-		// Where the circle before the finger's gap sits when the finger keeps its exact place in the gap, and how far the arc may shift from there: by half the local pitch (so the finger stays inside the share of one of its gap's two circles), and by no more than two thirds of the radius of the circle the lens grew (so the finger stays on it), and while the circles at each end keep inside the sweep and its slack. The pitch and the radius are blended between the gap's two circles, so the limit moves smoothly as the finger passes from one gap to the next.
-		const pitch = (i: number): number => (least[Math.max(0, i - 1)] + least[Math.min(count - 2, i)]) / 2;
-		const blend = (at: (i: number) => number): number => (1 - fraction) * at(whole) + fraction * at(whole + 1);
-		const bound = Math.max(0, Math.min(blend(pitch) / 2 - SHARE_MARGIN_DEG, (blend((i) => radToDeg(sizes[i] / 2 / radius)) * 2) / 3));
+		const bound = shiftBound(least, sizes);
 		const shiftLow = Math.max(-bound, needBefore - (rested - low));
 		const shiftHigh = Math.min(bound, high - rested - mid - needAfter);
 		if (shiftLow > shiftHigh + 1e-9) return null;
@@ -555,12 +609,54 @@ function crowdedLayout(count: number, radius: number, peak: number, theta: numbe
 			angles.push(at);
 			at += gaps[i] ?? 0;
 		}
-		return { angles, sizes, growth };
+		return { angles, sizes };
 	};
-	const grown = largest((falloff) => build(falloff, 1) !== null);
-	if (grown !== null) return build(grown, 1) ?? rest();
-	const least = largest((growth) => build(0, growth) !== null);
-	return (least !== null ? build(0, least) : null) ?? rest();
+	const lowest = leastFalloff(topFor(1));
+	if (entireLevel(lowest) !== null) {
+		const grown = largest((x) => entireLevel(lowest + (1 - lowest) * x) !== null) ?? 0;
+		const layout = entireLevel(lowest + (1 - lowest) * grown);
+		if (layout) return { ...layout, growth: 1, presences: here() };
+	}
+
+	/**
+	 * The circles packed outward from the finger at the least falloff, as close as their sizes
+	 * allow, the ones past the sweep's ends fading out. Where the whole level only just stops
+	 * fitting, the packing keeps the shift that was fitting it (see `entireLevel`), so that
+	 * nothing jumps there; that shift fades out as the level misses fitting by more
+	 * (SHIFT_FADE_DEG), since moving the finger's gap about does a level that is far too big no
+	 * good. On top of it the gap shifts as far as brings the circle under the finger inside the
+	 * sweep (the finger stays on one of the gap's two circles): which of the two that is moves
+	 * over from one to the other as the finger passes through the middle half of the gap, so
+	 * the shift does not jump at the half way mark.
+	 */
+	const full = sizesFor(leastFalloff(topFor(1)), 1);
+	const least = Array.from({ length: count - 1 }, (_, gap) => angleOnRing(radius, clearance(full, weights, gap, gap + 1)));
+	const low = -endSlack(full[0], radius, edgeRoom);
+	const high = DIAL_SWEEP_DEG + endSlack(full[count - 1], radius, edgeRoom);
+	const mid = least[whole];
+	const rested = theta - fraction * mid;
+	const bound = shiftBound(least, full);
+	const softLow = sum(least, 0, whole) - (rested - low);
+	const softHigh = high - rested - mid - sum(least, whole + 1);
+	const fitting = softLow <= softHigh ? clamp(0, softLow, softHigh) : (softLow + softHigh) / 2;
+	const levelShift = clamp(fitting * clamp(1 - (softLow - softHigh) / SHIFT_FADE_DEG, 0, 1), -bound, bound);
+	const inside = (angle: number): number => clamp(0, low - angle, high - angle);
+	const onNext = clamp((fraction - 0.25) / 0.5, 0, 1);
+	const keepIn = (1 - onNext) * inside(rested + levelShift) + onNext * inside(rested + mid + levelShift);
+	const angles = new Array<number>(count);
+	angles[whole] = rested + clamp(levelShift + keepIn, -bound, bound);
+	for (let i = whole - 1; i >= 0; i--) angles[i] = angles[i + 1] - least[i];
+	for (let i = whole + 1; i < count; i++) angles[i] = angles[i - 1] + least[i - 1];
+	const presences = angles.map((angle, i) => {
+		const beyond = Math.max(0, low - angle, angle - high);
+		return clamp(1 - beyond / least[i <= whole ? i : i - 1], 0, 1);
+	});
+	return {
+		angles: angles.map((angle, i) => (presences[i] === 0 ? clamp(angle, low, high) : angle)),
+		sizes: full.map((size, i) => size * presences[i]),
+		growth: 1,
+		presences,
+	};
 }
 
 /** The slots of a level of `count` items on ring `ring` (`geometry` is that ring), with the lens at `focus`. */
@@ -577,6 +673,7 @@ export function ringSlots(ring: number, geometry: DialRing, count: number, param
 			size,
 			weight,
 			bead: layout.crowded && weight < 1 && size < TAP_FOCUS_BELOW,
+			presence: layout.presences[index],
 		});
 	}
 	return slots;
@@ -621,14 +718,16 @@ export interface DialArc {
 export function ringArcs(geometry: DialGeometry, rings: readonly DialRing[], slots: readonly DialSlot[]): DialArc[] {
 	const arcs: DialArc[] = [];
 	rings.forEach((ring, index) => {
-		const own = slots.filter((slot) => slot.ring === index);
+		const own = slots.filter((slot) => slot.ring === index && slot.presence > 0);
 		if (own.length < 2) return;
 		const first = own.reduce((a, b) => (b.angleDeg < a.angleDeg ? b : a));
 		const last = own.reduce((a, b) => (b.angleDeg > a.angleDeg ? b : a));
+		// A circle fading out past an end of the sweep does not pull the arc past it.
+		const along = (angleDeg: number): number => clamp(angleDeg, -END_SLACK_DEG, DIAL_SWEEP_DEG + END_SLACK_DEG);
 		arcs.push({
 			radius: ring.radius,
-			from: pointAt(geometry, ring.radius, first.angleDeg),
-			to: pointAt(geometry, ring.radius, last.angleDeg),
+			from: pointAt(geometry, ring.radius, along(first.angleDeg)),
+			to: pointAt(geometry, ring.radius, along(last.angleDeg)),
 			clockwise: geometry.corner === "bottom-right",
 		});
 	});
@@ -678,7 +777,8 @@ export function ringUnder(point: DialPoint, geometry: DialGeometry, rings: reado
  * the next ring does not swap the rings outside it unless it actually touches a sibling; the one
  * exception is again `sticky`, which keeps its share of its ring's band even once that ring is
  * an inner one, so a group armed through the band does not lose its arm the moment its own ring
- * opens outside it. Outside the sweep nothing arms either.
+ * opens outside it. Outside the sweep nothing arms either. A circle less than HIT_PRESENCE there
+ * (fading out, or gone: see `DialSlot.presence`) arms nothing and takes no share of the arc.
  */
 export function hitTest(
 	point: DialPoint,
@@ -696,6 +796,7 @@ export function hitTest(
 	let inside: number | null = null;
 	let nearest = Number.POSITIVE_INFINITY;
 	slots.forEach((slot, index) => {
+		if (slot.presence < HIT_PRESENCE) return;
 		const centre = slotPosition(slot, geometry, rings);
 		// On an inner ring a circle arms within the size it has at rest and a little slack: grown by the lens it is drawn larger, but a thumb heading out past it must not catch it; the armed circle itself keeps all it is drawn with.
 		const reach = slot.ring === outermost ? slot.size / 2 : (index === sticky ? slot.size : Math.min(slot.size, itemSize)) / 2 + HIT_INNER_SLACK;
@@ -714,8 +815,10 @@ export function hitTest(
 	const sideways = geometry.corner === "bottom-right" ? -1 : 1;
 	const angle = radToDeg(Math.atan2(geometry.anchor.y - point.y, (point.x - geometry.anchor.x) * sideways));
 	if (angle < -HIT_ANGLE_SLACK_DEG || angle > DIAL_SWEEP_DEG + HIT_ANGLE_SLACK_DEG) return null;
-	const own = slots.map((slot, index) => ({ slot, index })).filter(({ slot }) => slot.ring === ring);
-	const pitch = ringPitch(own.length, rings[ring].capacity);
+	const onRing = slots.map((slot, index) => ({ slot, index })).filter(({ slot }) => slot.ring === ring);
+	const pitch = ringPitch(onRing.length, rings[ring].capacity);
+	// Circles mostly faded out are not there to be hit, and the arc is shared out among the ones that are.
+	const own = onRing.filter(({ slot }) => slot.presence >= HIT_PRESENCE);
 	/** The arc a slot owns: half way to each neighbour, the ends reaching half a pitch and a little slack past themselves. */
 	const share = (i: number): { low: number; high: number } => {
 		const here = own[i].slot.angleDeg;

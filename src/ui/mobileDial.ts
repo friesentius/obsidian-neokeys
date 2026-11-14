@@ -7,9 +7,9 @@ import {
 	type DialItemView,
 	type DialView,
 } from "../dial/controller";
-import { BUBBLE_MARGIN, bubbleNeedsShortForm, cardFits, cardTop, placeBubble, preferShortBubble, type BubblePlacement, type CoveredCircle } from "../dial/description";
+import { BUBBLE_MARGIN, bubbleNeedsShortForm, cardFits, cardTop, coveredCircles, placeBubble, preferShortBubble, type BubblePlacement } from "../dial/description";
 import { shownIcon } from "../icons";
-import { ANCHOR_RADIUS, DIAL_LEGIBLE_SIZE, ringParamsFor, type DialArc, type DialGeometry, type DialLayoutMode } from "../dial/layout";
+import { DIAL_LEGIBLE_SIZE, ringParamsFor, type DialArc, type DialGeometry, type DialLayoutMode } from "../dial/layout";
 import { diffRings, swapRing } from "../dial/ringDiff";
 import { getCommandName, hasCommand } from "../obsidianCommands";
 import type { DialCorner, DialDescription, DialRadiusRule, DialRingAnimation, GroupEntry, GroupNode } from "../types";
@@ -617,7 +617,12 @@ export class MobileDial {
 			"--neokeys-dial-y": `${item.y}px`,
 			"--neokeys-dial-size": `${item.size}px`,
 			"--neokeys-dial-lens": `${Math.round(item.weight * 10)}`,
+			"--neokeys-dial-presence": `${item.presence}`,
 		});
+		// A circle gone from a level too big for its ring (far from the lens) is neither drawn nor there for assistive technology.
+		el.toggleClass("neokeys-dial-item-gone", item.presence <= 0);
+		if (item.presence <= 0) el.setAttribute("aria-hidden", "true");
+		else el.removeAttribute("aria-hidden");
 		el.toggleClass("neokeys-dial-item-armed", item.armed);
 		el.toggleClass("neokeys-dial-item-open", item.open);
 		// A circle shrunk below what a key or icon can be read at is only a dot until the lens grows it.
@@ -752,11 +757,7 @@ export class MobileDial {
 		}
 		const anchorRect = this.anchorEl.getBoundingClientRect();
 		const anchor = { x: anchorRect.left + anchorRect.width / 2, y: anchorRect.top + anchorRect.height / 2 };
-		const circles: CoveredCircle[] = [{ x: anchor.x, y: anchor.y, radius: ANCHOR_RADIUS, weight: 2 }];
-		view.rings.forEach((ring, index) => {
-			const weight = index === view.rings.length - 1 ? 2 : 1;
-			for (const item of ring.items) if (!item.armed) circles.push({ x: item.x, y: item.y, radius: item.size / 2, weight });
-		});
+		const circles = coveredCircles(view.rings, anchor);
 		const place = (): BubblePlacement =>
 			placeBubble(
 				{ x: armed.x, y: armed.y },

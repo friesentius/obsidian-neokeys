@@ -2,15 +2,18 @@ import {
 	ANCHOR_RADIUS,
 	BEAD_FLOOR,
 	chooseMode,
+	DEFAULT_DEAD_ZONE,
 	DEFAULT_DIAL_ITEM_SIZE,
 	DEFAULT_LENS_PEAK,
 	DEFAULT_RING_PARAMS,
+	DIAL_LEGIBLE_SIZE,
 	DIAL_SWEEP_DEG,
 	edgeRoom,
 	fanReach,
 	firstRadius,
 	fittingFrom,
 	fixedFirstRadius,
+	HIT_PRESENCE,
 	hitTest,
 	ITEM_GAP,
 	LEAST_DIAL_ITEM_SIZE,
@@ -117,31 +120,31 @@ function expectApart(geometry: DialGeometry, params: DialRingParams, counts: num
 }
 
 /** The circle whose share of the arc (half way to each neighbour) `theta` falls in. */
+/** The circle the finger at `theta` degrees is on by share of the arc, among the circles that are there to be hit (as `hitTest` shares the arc out). */
 function onShare(layout: LensLayout, theta: number): number {
-	const count = layout.angles.length;
-	for (let i = 0; i < count; i++) {
-		const high = i < count - 1 ? (layout.angles[i] + layout.angles[i + 1]) / 2 : Number.POSITIVE_INFINITY;
-		if (theta <= high + 1e-6) return i;
+	const there = layout.angles.map((_, i) => i).filter((i) => layout.presences[i] >= HIT_PRESENCE);
+	for (let k = 0; k < there.length; k++) {
+		const high = k < there.length - 1 ? (layout.angles[there[k]] + layout.angles[there[k + 1]]) / 2 : Number.POSITIVE_INFINITY;
+		if (theta <= high + 1e-6) return there[k];
 	}
-	return count - 1;
+	return there[there.length - 1];
 }
-
-/** The first pair of circles in `layout` (on a ring of `radius`) closer than their radii plus `gap`, described, or null. */
+/** Whether two circles of the layout, as drawn, are closer than their radii plus `gap` (the gap scaled by how much of the smaller-presence one is there); a gone circle is not drawn, so it overlaps nothing. */
 function overlapIn(layout: LensLayout, radius: number, gap: number): string | null {
 	const count = layout.angles.length;
-	const describe = (i: number): string => `${i} (${layout.sizes[i].toFixed(1)}px at ${layout.angles[i].toFixed(1)}°, w ${layout.weights[i].toFixed(2)})`;
+	const describe = (i: number): string => `${i} (${layout.sizes[i].toFixed(1)}px at ${layout.angles[i].toFixed(1)}°, w ${layout.weights[i].toFixed(2)}, presence ${layout.presences[i].toFixed(2)})`;
 	for (let i = 0; i < count; i++) {
 		for (let j = i + 1; j < count; j++) {
+			if (layout.presences[i] <= 0 || layout.presences[j] <= 0) continue;
 			const a = (layout.angles[i] * Math.PI) / 180;
 			const b = (layout.angles[j] * Math.PI) / 180;
 			const distance = Math.hypot(radius * Math.cos(a) - radius * Math.cos(b), radius * Math.sin(a) - radius * Math.sin(b));
-			const needed = (layout.sizes[i] + layout.sizes[j]) / 2 + gap;
+			const needed = (layout.sizes[i] + layout.sizes[j]) / 2 + gap * Math.min(layout.presences[i], layout.presences[j]);
 			if (distance < needed - 1e-6) return `${describe(i)} and ${describe(j)} are ${distance.toFixed(2)} apart, need ${needed.toFixed(2)}`;
 		}
 	}
 	return null;
 }
-
 const PHONE = phone(390, 844, "bottom-right", 0, 47);
 const SWEEP = Array.from({ length: 101 }, (_, i) => i / 100);
 
@@ -312,16 +315,25 @@ describe("lensLayout at rest", () => {
 		expect(lensLayout(8, ringCapacity(205, 44, 6), 205, FIXED, 66, null).base).toBeCloseTo(44, 0);
 	});
 
-	it("never shrinks a circle below the floor: a level with more circles than the floor holds overlaps rather than leaving its ring", () => {
+	it("never shrinks a circle below the floor at rest: a level with more circles than the floor holds overlaps there (the lens, once the finger is on the ring, fades the far circles instead)", () => {
 		const layout = lensLayout(40, 4, 97, FIXED, 66, null);
 		expect(layout.base).toBe(BEAD_FLOOR);
 		expect(layout.sizes.every((size) => size === BEAD_FLOOR)).toBe(true);
+		expect(layout.presences.every((presence) => presence === 1)).toBe(true);
 		expect(layout.angles[0]).toBe(0);
 		expect(layout.angles[39]).toBeCloseTo(90);
 		const pressed = lensLayout(40, 4, 97, FIXED, 66, 0.5, 36);
-		expect(Math.min(...pressed.sizes)).toBeGreaterThanOrEqual(BEAD_FLOOR);
-		expect(Math.min(...pressed.angles)).toBeGreaterThanOrEqual(-4 - 1e-6);
-		expect(Math.max(...pressed.angles)).toBeLessThanOrEqual(94 + 1e-6);
+		// Circles still there are never below the floor; the rest are fading out, shrinking as they go.
+		pressed.sizes.forEach((size, i) => {
+			if (pressed.presences[i] === 1) expect(size).toBeGreaterThanOrEqual(BEAD_FLOOR);
+			else expect(size).toBeLessThanOrEqual(BEAD_FLOOR * pressed.presences[i] + 1e-9);
+		});
+		// The circles that are fully there stay inside the sweep and its slack; the ones fading out sit just past it, and the gone ones at its end.
+		pressed.angles.forEach((angle, i) => {
+			if (pressed.presences[i] === 1) expect(angle).toBeGreaterThanOrEqual(-4 - 1e-6);
+			if (pressed.presences[i] === 1) expect(angle).toBeLessThanOrEqual(94 + 1e-6);
+			if (pressed.presences[i] === 0) expect(Math.abs(angle - 45)).toBeLessThanOrEqual(49 + 1e-6);
+		});
 	});
 
 	it("marks a bead for the tap rule only on a crowded ring, outside the lens, below the tap size", () => {
@@ -424,8 +436,8 @@ describe("lensLayout under the finger", () => {
 		expect(layout.sizes[11]).toBeLessThan(TAP_FOCUS_BELOW / 2);
 		for (let i = 0; i < 11; i++) expect(layout.sizes[i]).toBeGreaterThanOrEqual(layout.sizes[i + 1]);
 		// Nothing is placed off the ring: the layout has no radial offsets to apply, only angles and sizes.
-		expect(Object.keys(layout).sort()).toEqual(["angles", "base", "crowded", "growth", "sizes", "weights"]);
-		expect(Object.keys(ringSlots(1, { radius: 167, capacity: 6 }, 12, FIXED, 66, 0.3)[0]).sort()).toEqual(["angleDeg", "bead", "index", "ring", "size", "weight"]);
+		expect(Object.keys(layout).sort()).toEqual(["angles", "base", "crowded", "growth", "presences", "sizes", "weights"]);
+		expect(Object.keys(ringSlots(1, { radius: 167, capacity: 6 }, 12, FIXED, 66, 0.3)[0]).sort()).toEqual(["angleDeg", "bead", "index", "presence", "ring", "size", "weight"]);
 	});
 
 	it("shrinks the circles past the finger by more the more the ring is crowded, and by none at rest or on a ring that fits", () => {
@@ -849,5 +861,163 @@ describe("slotAngle", () => {
 		expect([0, 1, 2, 3].map((i) => slotAngle(i, 4, 4))).toEqual([0, 30, 60, 90]);
 		expect([0, 1].map((i) => slotAngle(i, 2, 5))).toEqual([33.75, 56.25]);
 		expect(slotAngle(0, 1, 5)).toBe(45);
+	});
+});
+
+describe("a level too big for its ring, with the finger on it: the far circles fade out instead of overlapping", () => {
+	const geometry = PHONE;
+	const params = FIXED;
+	const room = edgeRoom(geometry);
+	const peak = peakSize(geometry, params);
+	/** The finger on the ring of level `counts.length - 1`, `angleDeg` into the sweep, at the ring's own radius. */
+	function fingerAt(counts: number[], ring: number, angleDeg: number) {
+		const rings = planRings(geometry, params, counts);
+		const focus = angleDeg / DIAL_SWEEP_DEG;
+		const slots = rings.flatMap((r, index) => ringSlots(index, r, counts[index], params, peak, index === ring ? focus : null, room));
+		const point = slotPosition({ ring, index: 0, angleDeg, size: 0, weight: 0, bead: false, presence: 1 }, geometry, rings);
+		const armed = hitTest(point, geometry, rings, slots, DEFAULT_DEAD_ZONE, params.itemSize, null);
+		return { rings, slots, point, armed };
+	}
+	const SWEEP_DEGREES = Array.from({ length: 181 }, (_, i) => i / 2);
+
+	it.each([[16], [24], [30]])("%i items on the first ring: no drawn circle ever overlaps another, the circle under the finger always shows its key, and a gone circle takes no room", (count) => {
+		const problems: string[] = [];
+		for (const degrees of SWEEP_DEGREES) {
+			const { slots, armed } = fingerAt([count], 0, degrees);
+			const layout = lensLayout(count, 4, 97, params, peak, degrees / DIAL_SWEEP_DEG, room);
+			const bad = overlapIn(layout, 97, 2 - 0.01);
+			if (bad) problems.push(`at ${degrees}°: ${bad}`);
+			if (armed === null) problems.push(`at ${degrees}°: the finger is on nothing`);
+			else {
+				if (slots[armed].size < DIAL_LEGIBLE_SIZE) problems.push(`at ${degrees}°: the armed circle ${armed} is ${slots[armed].size.toFixed(1)}px, too small to show its key`);
+				if (slots[armed].presence < HIT_PRESENCE) problems.push(`at ${degrees}°: the armed circle ${armed} is mostly gone`);
+			}
+			for (const slot of slots) if (slot.presence === 0 && slot.size !== 0) problems.push(`at ${degrees}°: circle ${slot.index} is gone but has a size`);
+		}
+		expect(problems.slice(0, 5)).toEqual([]);
+	});
+
+	it.each([[16], [24], [30]])("%i items on the first ring: every item can be brought under the finger by sweeping along the ring, from either end", (count) => {
+		for (const sweep of [SWEEP_DEGREES, [...SWEEP_DEGREES].reverse()]) {
+			const reached = new Set<number>();
+			for (const degrees of sweep) {
+				const { armed } = fingerAt([count], 0, degrees);
+				if (armed !== null) reached.add(armed);
+			}
+			expect([...reached].sort((a, b) => a - b)).toEqual(Array.from({ length: count }, (_, i) => i));
+		}
+	});
+
+	it("never arms a circle that is mostly gone, not even with the finger right where the gone circles wait at the end of the sweep", () => {
+		for (const [counts, ring] of [[[16], 0], [[24], 0], [[8, 22], 1]] as [number[], number][]) {
+			for (const degrees of SWEEP_DEGREES) {
+				const { slots, armed } = fingerAt(counts, ring, degrees);
+				if (armed !== null) expect(slots[armed].presence).toBeGreaterThanOrEqual(HIT_PRESENCE);
+			}
+			// The finger at the very ends of the sweep, with the lens at the other end.
+			for (const [focusDegrees, pointDegrees] of [[0, 90], [90, 0], [45, 0], [45, 90]]) {
+				const rings = planRings(geometry, params, counts);
+				const slots = rings.flatMap((r, index) => ringSlots(index, r, counts[index], params, peak, index === ring ? focusDegrees / DIAL_SWEEP_DEG : null, room));
+				const point = slotPosition({ ring, index: 0, angleDeg: pointDegrees, size: 0, weight: 0, bead: false, presence: 1 }, geometry, rings);
+				const armed = hitTest(point, geometry, rings, slots, DEFAULT_DEAD_ZONE, params.itemSize, null);
+				if (armed !== null) expect(slots[armed].presence).toBeGreaterThanOrEqual(HIT_PRESENCE);
+			}
+		}
+	});
+
+	it("fades the far circles out on the side the finger is moving away from and in on the side it is moving toward: with the finger at the first end the last circles are gone, and the other way round", () => {
+		for (const count of [16, 24]) {
+			const start = lensLayout(count, 4, 97, params, peak, 0, room);
+			const end = lensLayout(count, 4, 97, params, peak, 1, room);
+			expect(start.presences[0]).toBe(1);
+			expect(start.presences[count - 1]).toBe(0);
+			expect(end.presences[count - 1]).toBe(1);
+			expect(end.presences[0]).toBe(0);
+			// The circle under the finger gets the whole lens, at either end.
+			expect(start.sizes[0]).toBeCloseTo(peak);
+			expect(end.sizes[count - 1]).toBeCloseTo(peak);
+			// Part of the level is there and part is not: that is the point.
+			expect(start.presences.filter((p) => p === 1).length).toBeGreaterThan(8);
+			expect(start.presences.filter((p) => p === 0).length).toBeGreaterThan(0);
+		}
+	});
+
+	it.each([[16], [24], [30]])("%i items: the fade is smooth as the finger moves: per 1/400 of the sweep no circle's presence changes by more than a third, and the circles that stay (more than 15% there) move and grow by no more than the crowded rings' usual few pixels and degrees", (count) => {
+		const worst: string[] = [];
+		let previous: LensLayout | null = null;
+		for (let step = 0; step <= 400; step++) {
+			const layout = lensLayout(count, 4, 97, params, peak, step / 400, room);
+			if (previous) {
+				for (let i = 0; i < count; i++) {
+					const presence = Math.abs(layout.presences[i] - previous.presences[i]);
+					if (presence > 0.34) worst.push(`${count} at ${step / 400}: circle ${i} faded ${presence.toFixed(2)}`);
+					if (layout.presences[i] < 0.15 || previous.presences[i] < 0.15) continue;
+					const size = Math.abs(layout.sizes[i] - previous.sizes[i]);
+					const angle = Math.abs(layout.angles[i] - previous.angles[i]);
+					if (size > 8 || angle > 6.5) worst.push(`${count} at ${step / 400}: circle ${i} moved ${size.toFixed(1)}px, ${angle.toFixed(1)} degrees`);
+				}
+			}
+			previous = layout;
+		}
+		expect(worst.slice(0, 5)).toEqual([]);
+	});
+
+	it("keeps rest as it was: with no finger on the ring every circle is there, whatever the level", () => {
+		for (const count of [5, 16, 24, 40]) {
+			const layout = lensLayout(count, 4, 97, params, peak, null, room);
+			expect(layout.presences.every((presence) => presence === 1)).toBe(true);
+			expect(layout.angles[0]).toBeCloseTo(0);
+			expect(layout.angles[count - 1]).toBeCloseTo(DIAL_SWEEP_DEG);
+		}
+		expect(ringSlots(0, { radius: 97, capacity: 4 }, 24, params, peak, null, room).every((slot) => slot.presence === 1)).toBe(true);
+	});
+
+	it("has no cliff between a level that still fits with the lens on it and one circle more: over a sweep of the finger the number of circles there grows by about one per circle added", () => {
+		for (const { radius, capacity } of planRings(geometry, params, [4, 5, 9])) {
+			let previous: number | null = null;
+			for (let count = capacity + 1; count <= 34; count++) {
+				// Averaged over the finger's places: with the finger right on a circle the lens takes a little more room than between two.
+				let there = 0;
+				for (let step = 0; step <= 40; step++) there += lensLayout(count, capacity, radius, params, peak, step / 40, room).presences.reduce((total, presence) => total + presence, 0) / 41;
+				// One more circle adds at most one to what is there (nothing, once the ring is full), and never takes away more than a fraction of one.
+				if (previous !== null) {
+					expect(there - previous).toBeLessThanOrEqual(1 + 1e-6);
+					expect(there - previous).toBeGreaterThanOrEqual(-0.5);
+				}
+				previous = there;
+			}
+		}
+	});
+
+	it("never lets the circle under the finger be a small one on any ring, whatever the level: from a level that fits to one far too big", () => {
+		const problems: string[] = [];
+		for (const ring of planRings(geometry, params, [4, 5, 9]).map((r, index) => ({ ...r, index }))) {
+			for (let count = ring.capacity + 1; count <= 34; count++) {
+				for (const degrees of SWEEP_DEGREES) {
+					const layout = lensLayout(count, ring.capacity, ring.radius, params, peak, degrees / DIAL_SWEEP_DEG, room);
+					const position = (degrees / DIAL_SWEEP_DEG) * (count - 1);
+					const nearest = Math.round(position);
+					if (layout.sizes[nearest] < DIAL_LEGIBLE_SIZE) problems.push(`${count} on ring ${ring.index} at ${degrees}°: the circle nearest the finger is ${layout.sizes[nearest].toFixed(1)}px`);
+				}
+			}
+		}
+		expect(problems.slice(0, 5)).toEqual([]);
+	});
+
+	it("draws the guide arc between the circles that are there, not out to the gone ones", () => {
+		const counts = [24];
+		const rings = planRings(geometry, params, counts);
+		const slots = ringSlots(0, rings[0], 24, params, peak, 0.5, room);
+		const [arc] = ringArcs(geometry, rings, slots);
+		const gone = slots.filter((slot) => slot.presence === 0);
+		expect(gone.length).toBeGreaterThan(0);
+		// Both ends are inside the sweep and its slack (a gone circle waits at the end of the sweep, never beyond it).
+		const angleOf = (point: { x: number; y: number }) => (Math.atan2(geometry.anchor.y - point.y, geometry.anchor.x - point.x) * 180) / Math.PI;
+		const fromAngle = angleOf(arc.from);
+		const toAngle = angleOf(arc.to);
+		for (const angle of [fromAngle, toAngle]) {
+			expect(angle).toBeGreaterThanOrEqual(-4 - 1e-6);
+			expect(angle).toBeLessThanOrEqual(94 + 1e-6);
+		}
 	});
 });

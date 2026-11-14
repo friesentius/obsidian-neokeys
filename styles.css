@@ -737,6 +737,12 @@ body.theme-light .neokeys-dial {
 	pointer-events: none;
 	/* A circle grown by the lens stacks above the neighbours it crowds (0 to 10, from the plugin). */
 	z-index: var(--neokeys-dial-lens, 0);
+	/* A far circle of a level too big for its ring fades out as the lens leaves it (0 to 1, from the plugin), and is gone at 0. */
+	opacity: var(--neokeys-dial-presence, 1);
+}
+
+.neokeys-dial-item-gone {
+	visibility: hidden;
 }
 
 /* The key fills about a third of the circle, never under 10px so a shrunk bead still reads; a glyph longer than a letter or two ("Esc", "Space", "Ctrl+B") is scaled down by the plugin so it stays inside. */
@@ -798,7 +804,7 @@ body.theme-light .neokeys-dial {
 
 /* On an inner ring, everything but the open group steps back; the outermost ring is the one in play. A ring that is leaving starts from full strength: it fades out from there rather than dimming first. */
 .neokeys-dial-ring:not(:last-child):not(.neokeys-dial-ring-leaving) .neokeys-dial-item:not(.neokeys-dial-item-open):not(.neokeys-dial-item-armed) {
-	opacity: 0.45;
+	opacity: calc(0.45 * var(--neokeys-dial-presence, 1));
 }
 
 /* The armed circle is filled in the accent and drawn above its neighbours; its size is the lens's business, so no extra pop. */

@@ -1,4 +1,4 @@
-import type { DialPoint } from "./layout";
+import { ANCHOR_RADIUS, DIAL_LEGIBLE_SIZE, type DialPoint } from "./layout";
 
 /**
  * Where the optional description of the armed item goes, as pure arithmetic over measured
@@ -11,7 +11,7 @@ export interface DescriptionBox {
 	height: number;
 }
 
-/** A circle the bubble should not cover, weighted by how much covering it would cost. */
+/** A circle the bubble should keep off, weighted by how much covering it would cost (see `coveredCircles`). */
 export interface CoveredCircle {
 	x: number;
 	y: number;
@@ -30,7 +30,7 @@ export interface BubbleArea {
 export interface BubblePlacement {
 	left: number;
 	top: number;
-	/** How many circles' keys the bubble hides at this spot (it comes within a key's reach of their centres); the DOM layer drops to a shorter bubble when this is not zero. */
+	/** How many of the circles that must stay readable (weight of 1 or more: the thumb's neighbours and the anchor) the bubble hides at this spot, by coming within a key's reach of their centres; the DOM layer drops to a shorter bubble when this is not zero. */
 	hidden: number;
 	/** What the spot cost: the DOM layer compares the full bubble's with the short form's. */
 	cost: number;
@@ -69,8 +69,13 @@ export function cardTop(pillBottom: number, ringTop: number, height: number): nu
 	return Math.max(pillBottom + CARD_GAP_PILL, Math.min(pillBottom + CARD_DROP, ringTop - CARD_GAP_RINGS - height));
 }
 
-/** How the placement scores the spots it tries: a point of cost per this many pixels the bubble is from the thumb, per circle covered (times its weight), for the hand, and per pixel moved from where it was. */
-const COST_PER_NEAR_PX = 1.6 / 100;
+/**
+ * How the placement scores the spots it tries: so much per pixel the bubble is from the thumb,
+ * per circle covered (times its weight), for the hand, and per pixel moved from where it was.
+ * The bubble belongs beside the thumb before anything else: a pixel of distance costs more than
+ * covering the key of a circle that is not next to the thumb does (see `coveredCircles`).
+ */
+const COST_PER_NEAR_PX = 4 / 100;
 /** Past this far from the thumb's keep-out circle the bubble is no longer beside it, and each further pixel costs this much more. */
 export const BESIDE_REACH = 60;
 const COST_PER_FAR_PX = 5 / 100;
@@ -122,8 +127,9 @@ function coverage(circle: CoveredCircle, left: number, top: number, box: Descrip
  * (the armed circle's centre, which the finger is on) it tries every 15 degrees, at a few
  * distances from the keep-out circle the thumb covers plus a gap, kept inside `area`, and scores
  * each by how far from the thumb it ends up (the bubble belongs beside the finger, however
- * crowded that is), the circles it would cover (the outermost ring's circles weigh more, the
- * thumb's own keep-out circle is never covered at all), the hand it would sit under (the strip
+ * crowded that is), the circles it would cover (each by its weight: see `coveredCircles`, where
+ * the circles next to the thumb weigh far more than the rest; the thumb's own keep-out circle
+ * is never covered at all), the hand it would sit under (the strip
  * from the thumb back to `hand`, the anchor in the corner, and, between spots otherwise as good,
  * the side the hand is on), and, when `previous` is given, how
  * far it has moved from where it was, so a finger sliding along a ring does not make the bubble
@@ -172,7 +178,7 @@ export function placeBubble(
 			if (cost >= best.cost) return;
 		}
 		if (segmentDistanceToBox(thumb, hand, left, top, box) < HAND_PAD) cost += COST_HAND;
-		if (cost < best.cost - 1e-9) best = { left, top, cost, away, hidden: circles.filter((circle) => distanceToBox(circle, left, top, box) < KEY_CLEARANCE).length };
+		if (cost < best.cost - 1e-9) best = { left, top, cost, away, hidden: circles.filter((circle) => circle.weight >= WEIGHT_MUST_STAY / 2 && distanceToBox(circle, left, top, box) < KEY_CLEARANCE).length };
 	};
 	// First the spots snug against the thumb, in every direction and a few distances out: where the bubble belongs when there is room.
 	for (const extra of [0, 22, 48, 80]) {
@@ -198,8 +204,45 @@ export function placeBubble(
 	return best;
 }
 
-/** What the short form costs the reader: it drops the description, so it must be clearly better placed to be worth it. */
-const COST_SHORT_FORM = 1;
+/** The weight of the circles the bubble must not cover: the anchor, and the armed circle's neighbours on its ring, which the thumb moves on to next. */
+const WEIGHT_MUST_STAY = 2;
+/** The weight of any other circle that shows a key or icon: the bubble may cover it where that keeps the bubble beside the thumb, but it would rather not. */
+const WEIGHT_OTHER_KEY = 0.06;
+/** The weight of any other circle too small to show a key (a bead): there is nothing there to hide. */
+const WEIGHT_OTHER_DOT = 0.01;
+/** A circle less than this much there (see `DialItemView.presence`) is not counted: it is nearly gone. */
+const GONE_BELOW = 0.2;
+
+/**
+ * The circles the bubble keeps off, as the rings draw them (each ring's items in order, the
+ * armed one flagged): the anchor and the armed circle's two neighbours on its own ring are never
+ * to be covered, and every other circle costs little to cover (a little more where it shows a
+ * key), scaled by how much of it is there. The bubble belongs beside the thumb first, the
+ * circles near it only second: a ring crowded with beads, or a thumb at the end of a ring
+ * with its neighbours along one side, must not push the bubble away from the finger.
+ */
+export function coveredCircles(
+	rings: readonly { items: readonly { x: number; y: number; size: number; presence: number; armed: boolean }[] }[],
+	anchor: DialPoint,
+): CoveredCircle[] {
+	const circles: CoveredCircle[] = [{ x: anchor.x, y: anchor.y, radius: ANCHOR_RADIUS, weight: WEIGHT_MUST_STAY }];
+	for (const ring of rings) {
+		const at = ring.items.findIndex((item) => item.armed);
+		ring.items.forEach((item, i) => {
+			if (item.armed || item.presence < GONE_BELOW) return;
+			const next = at !== -1 && Math.abs(i - at) === 1;
+			const weight = next ? WEIGHT_MUST_STAY : item.size >= DIAL_LEGIBLE_SIZE ? WEIGHT_OTHER_KEY : WEIGHT_OTHER_DOT;
+			circles.push({ x: item.x, y: item.y, radius: item.size / 2, weight: weight * (next ? 1 : item.presence) });
+		});
+	}
+	return circles;
+}
+
+/** What the short form costs the reader: it drops the description (which the pill still shows), so it must be better placed to be worth it, by about this much (a few tens of pixels nearer the thumb). */
+const COST_SHORT_FORM = 0.3;
+
+/** The full bubble is worth trying a short one against once it sits this far from the thumb's keep-out circle and gap. */
+export const NEAR_ENOUGH = 25;
 
 /**
  * Whether to show the short bubble (key and label alone) rather than the full one. It is tried
@@ -210,7 +253,7 @@ export function preferShortBubble(full: BubblePlacement, short: BubblePlacement)
 	return short.cost + COST_SHORT_FORM < full.cost;
 }
 
-/** Whether the full bubble is worth trying a short one against: it hides a key, or it landed away from the thumb. */
+/** Whether the full bubble is worth trying a short one against: it hides a key that must stay, or it landed away from the thumb. */
 export function bubbleNeedsShortForm(full: BubblePlacement): boolean {
-	return full.hidden > 0 || full.away > BESIDE_REACH;
+	return full.hidden > 0 || full.away > NEAR_ENOUGH;
 }
