@@ -529,6 +529,15 @@ function leastFalloff(top: number): number {
 	return ((half - BEAD_FLOOR) / (top - BEAD_FLOOR)) ** (1 / 0.5 ** FALLOFF_SHAPE);
 }
 
+/** What is there of a crowded level with the finger right on each of its circles (see `crowdedLayout`), by level and ring: it does not depend on the finger, so it is worked out once. */
+const crowdedEnds = new Map<string, { ahead: number[]; behind: number[] }>();
+/** How many levels and rings `crowdedEnds` keeps before it starts over. */
+const CROWDED_ENDS_KEPT = 64;
+/** How many times per circle `crowdedLayout` samples what the packing has room for, to keep the ends of what is there from coming and going. */
+const CROWDED_SAMPLES = 8;
+/** How much short of the sampled room the ends of what is there stay, in circles, so that the room between two samples (which may dip a little below both) still holds them and they do not turn back there. */
+const CROWDED_ENDS_MARGIN = 0.12;
+
 /**
  * The layout of a crowded ring with the finger on it at `theta` degrees along the sweep, which
  * is `theta / (the rest pitch)` circles along the level (the finger's `position`, a fraction
@@ -556,12 +565,67 @@ function leastFalloff(top: number): number {
  * finger as close as their sizes allow, and where the sweep ends the circles past it fade out
  * over the width of one more circle (`presences`), shrinking as they go, and are gone beyond
  * that. As the finger sweeps along the ring they come back in at the end it is moving toward and
- * go out at the other, so every circle can be brought under the finger. The finger's own gap
+ * go out at the other, so every circle can be brought under the finger; a circle fades in or out
+ * only once on the way (the ends of what is there move only the way the finger does), never out
+ * and back in as the lens passes each circle. The finger's own gap
  * shifts the packing the way it would shift the whole level, as far as the level fitting would
  * have, so the layout does not jump where the level stops fitting. A crowded ring always grows
  * the lens all the way to the peak (`growth` is 1).
  */
 function crowdedLayout(count: number, radius: number, peak: number, theta: number, edgeRoom: number, base: number, weights: readonly number[]): { angles: number[]; sizes: number[]; growth: number; presences: number[] } {
+	const restPitch = DIAL_SWEEP_DEG / (count - 1);
+	const position = clamp(theta / restPitch, 0, count - 1);
+	const placed = crowdedPlacement(count, radius, peak, theta, edgeRoom, base, weights);
+	const split = Math.floor(position);
+	/** How far along the level what is there reaches, past the finger (`ahead`) and before it (`behind`), in circles: circle i is `ahead - i` there toward the far end and `i + 1 - behind` toward the near one. */
+	const edges = (presences: readonly number[], at: number): { ahead: number; behind: number } => {
+		let ahead = 0;
+		let behind = 0;
+		presences.forEach((presence, i) => {
+			ahead += i <= at ? 1 : presence;
+			behind += i <= at ? 1 - presence : 0;
+		});
+		return { ahead, behind };
+	};
+	const here = edges(placed.presences, split);
+	// Read off the packing, what is there would come and go as the finger passes each circle (the lens takes the most room with the finger right on a circle), so the ends of what is there only ever move the way the finger does: each is as far as the packing leaves room for from here to the end of the sweep the finger moves toward (sampled CROWDED_SAMPLES times per circle, in between from one sample to the next), and never further than the packing has room for here.
+	const key = [count, radius, peak, edgeRoom, base].join(" ");
+	let ends = crowdedEnds.get(key);
+	if (!ends) {
+		const samples = (count - 1) * CROWDED_SAMPLES + 1;
+		const sampled = Array.from({ length: samples }, (_, k) => {
+			const at = k / CROWDED_SAMPLES;
+			const sampleWeights = Array.from({ length: count }, (_, i) => Math.max(0, 1 - Math.abs(i - at) / LENS_WIDTH));
+			return edges(crowdedPlacement(count, radius, peak, at * restPitch, edgeRoom, base, sampleWeights).presences, Math.floor(at));
+		});
+		const aheadOf = sampled.map(({ ahead }) => ahead);
+		const behindOf = sampled.map(({ behind }) => behind);
+		for (let k = samples - 2; k >= 0; k--) aheadOf[k] = Math.min(aheadOf[k], aheadOf[k + 1]);
+		for (let k = 1; k < samples; k++) behindOf[k] = Math.max(behindOf[k], behindOf[k - 1]);
+		if (crowdedEnds.size >= CROWDED_ENDS_KEPT) crowdedEnds.clear();
+		ends = { ahead: aheadOf, behind: behindOf };
+		crowdedEnds.set(key, ends);
+	}
+	const step = position * CROWDED_SAMPLES;
+	const k = Math.min(Math.floor(step), ends.ahead.length - 1);
+	const after = Math.min(k + 1, ends.ahead.length - 1);
+	const between = (values: readonly number[]): number => values[k] + (values[after] - values[k]) * (step - k);
+	// The margin only where something is gone: with the whole of one end there, its end circle stays all there.
+	const aheadEnd = between(ends.ahead);
+	const behindEnd = between(ends.behind);
+	const ahead = Math.min(here.ahead, aheadEnd - Math.min(CROWDED_ENDS_MARGIN, count - aheadEnd));
+	const behind = Math.max(here.behind, behindEnd + Math.min(CROWDED_ENDS_MARGIN, behindEnd));
+	const presences = placed.full.map((_, i) => Math.min(clamp(ahead - i, 0, 1), clamp(i + 1 - behind, 0, 1)));
+	return {
+		angles: placed.angles.map((angle, i) => (presences[i] === 0 ? clamp(angle, placed.low, placed.high) : angle)),
+		sizes: placed.full.map((size, i) => size * presences[i]),
+		growth: 1,
+		presences,
+	};
+}
+
+/** Where `crowdedLayout` packs the circles with the finger at `theta`, their sizes before they fade (`full`), how much of each is inside the sweep and its slack (`presences`), and the ends of that slack. */
+function crowdedPlacement(count: number, radius: number, peak: number, theta: number, edgeRoom: number, base: number, weights: readonly number[]): { angles: number[]; full: number[]; presences: number[]; low: number; high: number } {
 	const restPitch = DIAL_SWEEP_DEG / (count - 1);
 	const position = clamp(theta / restPitch, 0, count - 1);
 	const whole = Math.min(Math.floor(position), count - 2);
@@ -614,7 +678,7 @@ function crowdedLayout(count: number, radius: number, peak: number, theta: numbe
 	if (entireLevel(lowest) !== null) {
 		const grown = largest((x) => entireLevel(lowest + (1 - lowest) * x) !== null) ?? 0;
 		const layout = entireLevel(lowest + (1 - lowest) * grown);
-		if (layout) return { ...layout, growth: 1, presences: here() };
+		if (layout) return { angles: layout.angles, full: layout.sizes, presences: here(), low: Number.NEGATIVE_INFINITY, high: Number.POSITIVE_INFINITY };
 	}
 
 	/**
@@ -650,12 +714,7 @@ function crowdedLayout(count: number, radius: number, peak: number, theta: numbe
 		const beyond = Math.max(0, low - angle, angle - high);
 		return clamp(1 - beyond / least[i <= whole ? i : i - 1], 0, 1);
 	});
-	return {
-		angles: angles.map((angle, i) => (presences[i] === 0 ? clamp(angle, low, high) : angle)),
-		sizes: full.map((size, i) => size * presences[i]),
-		growth: 1,
-		presences,
-	};
+	return { angles, full, presences, low, high };
 }
 
 /** The slots of a level of `count` items on ring `ring` (`geometry` is that ring), with the lens at `focus`. */

@@ -964,6 +964,30 @@ describe("a level too big for its ring, with the finger on it: the far circles f
 		expect(worst.slice(0, 5)).toEqual([]);
 	});
 
+	it.each([[16], [24], [30]])("%i items: as the finger sweeps one way a circle fades in ahead of it and out behind it, never out and back in (no pulsing at the ends of what is there)", (count) => {
+		const problems: string[] = [];
+		for (const forward of [true, false]) {
+			const steps = Array.from({ length: 801 }, (_, i) => (forward ? i : 800 - i) / 800);
+			const trend = new Array<number>(count).fill(0);
+			let previous: LensLayout | null = null;
+			for (const focus of steps) {
+				const layout = lensLayout(count, 4, 97, params, peak, focus, room);
+				if (previous) {
+					for (let i = 0; i < count; i++) {
+						const change = layout.presences[i] - previous.presences[i];
+						if (Math.abs(change) < 1e-6) continue;
+						const direction = Math.sign(change);
+						// Fading in ahead of the finger and later out behind it is the point; fading out and then back in is the pulse.
+						if (trend[i] < 0 && direction > 0) problems.push(`${forward ? "forward" : "backward"} at ${focus.toFixed(4)}: circle ${i} turned from fading ${trend[i] > 0 ? "in" : "out"} to fading ${direction > 0 ? "in" : "out"} (${previous.presences[i].toFixed(2)} to ${layout.presences[i].toFixed(2)})`);
+						trend[i] = direction;
+					}
+				}
+				previous = layout;
+			}
+		}
+		expect(problems.slice(0, 5)).toEqual([]);
+	});
+
 	it("keeps rest as it was: with no finger on the ring every circle is there, whatever the level", () => {
 		for (const count of [5, 16, 24, 40]) {
 			const layout = lensLayout(count, 4, 97, params, peak, null, room);
