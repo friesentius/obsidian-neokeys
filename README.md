@@ -193,11 +193,12 @@ backspaced away, or you press Esc.
 
 On phones and tablets, Neokeys replaces typing with a **dial**: a leader button pinned to a bottom
 corner of the screen. Press it and the current menu's items fan out on evenly spaced concentric
-rings around it, innermost ring first, each ring holding more than the one inside it, so on a
-typical phone even the default keymap's twelve-item Window group stays on one screen. Every item
-shows its label on up to three lines, with its key as a small chip at the top. Drag from the
-button onto an item and let go to act on it: a group opens its own items, a command runs, a file
-opens. Passing over an item on the way only highlights it, so nothing happens until you release.
+rings around it, innermost ring first, each ring holding more than the one inside it and a thin
+arc linking the items of each ring, so on a typical phone a menu of a dozen items stays on one
+screen. Every item shows its label on up to three lines, sized to fit its circle, with its key as
+a small chip before the first word (when a menu has a label that cannot sit beside its chip, that
+menu's chips move up into the circles' caps instead). Drag from the button onto an item and let
+go to act on it: a group opens its own items, a command runs, a file opens. Passing over an item on the way only highlights it, so nothing happens until you release.
 A direct tap on an item does the same thing, and a tap on the button once the dial is open goes
 back up one level (or closes it at the root), the way <kbd>Backspace</kbd> does in the keyboard
 popup. The note dims behind the open dial; a tap on that dimmed area, including the blank space
@@ -214,12 +215,14 @@ buttons at either end and the page number when a level is paged.
 The dial keeps clear of the on-screen keyboard, Obsidian's editing toolbar and its navigation bar,
 and touching it never takes focus away from the note, so a selection stays selected and the
 keyboard stays up. If the keyboard or a bar comes or goes while the dial is open, the rings move
-with it in place. Items that reference a command Obsidian does not currently have (several of the
-default keymap's window commands are desktop-only, for instance) show in red and report the same
-notice the keyboard popup does. If a level has more items than the rings on your screen can hold
-at thumb size (44px or larger), the dial first tightens its spacing, then moves the pill up over
-the header to win back that strip (a small phone with its keyboard up), and only then pages the
-level, with a "More" item that turns to the next page.
+with it in place. Items that reference a command Obsidian does not have on this device (several
+of the default keymap's window commands are desktop-only, for instance) are left out of the dial,
+along with any group that would be left empty, since there is nothing a phone could do with them;
+the keyboard popup still lists them in red, which is also where a mistyped command id shows up.
+If a level has more items than the rings on your screen can hold at thumb size (44px or larger),
+the dial first tightens to smaller circles, then moves the pill up over the header to win back
+that strip (a small phone with its keyboard up), and only then pages the level, with a "More"
+item that turns to the next page.
 
 With a hardware keyboard (an iPad with a keyboard, say) the open dial answers keys exactly like
 the popup: a key bound in the current menu picks that item, <kbd>Backspace</kbd> goes back,
@@ -227,7 +230,11 @@ the popup: a key bound in the current menu picks that item, <kbd>Backspace</kbd>
 exposed to screen readers as a button named after its label and key.
 
 Settings → Neokeys has a **Mobile dial** group with a **Show the dial on mobile** toggle (on by
-default) and a **Dial corner** choice, bottom right or bottom left. With the dial off, the Leader
+default), a **Dial corner** choice, bottom right or bottom left, and a **Dial item size** slider
+(the circles' diameter, 56 to 72px, 66 by default; smaller circles fit more on one screen). A theme
+or CSS snippet can restyle the items through `--neokeys-dial-item-radius`,
+`--neokeys-dial-item-background`, `--neokeys-dial-item-border`, `--neokeys-dial-item-color` and
+`--neokeys-dial-arc-color`. With the dial off, the Leader
 command on mobile opens the keyboard-driven popup instead, which is only useful with a hardware
 keyboard. Desktop is unaffected either way.
 
