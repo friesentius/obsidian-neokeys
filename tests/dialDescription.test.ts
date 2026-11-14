@@ -1,5 +1,5 @@
-import { BUBBLE_MARGIN, bubbleNeedsShortForm, cardFits, cardTop, coveredCircles, NEAR_ENOUGH, placeBubble, preferShortBubble, type BubbleArea, type CoveredCircle } from "../src/dial/description";
-import { ANCHOR_RADIUS, DEFAULT_RING_PARAMS, edgeRoom, peakSize, planRings, ringParamsFor, ringSlots, slotPosition, type DialGeometry, type DialRingParams } from "../src/dial/layout";
+import { BUBBLE_MARGIN, bubbleNeedsShortForm, cardFits, cardTop, coveredCircles, NEAR_ENOUGH, placeBubble, preferShortBubble, type BubbleArea, type BubblePlacement, type CoveredCircle } from "../src/dial/description";
+import { ANCHOR_RADIUS, DEFAULT_DEAD_ZONE, DEFAULT_RING_PARAMS, DIAL_SWEEP_DEG, edgeRoom, hitTest, peakSize, planRings, ringParamsFor, ringSlots, slotPosition, type DialGeometry, type DialRingParams } from "../src/dial/layout";
 
 const AREA: BubbleArea = { left: 8, top: 166, right: 382, bottom: 836 };
 const ANCHOR = { x: 350, y: 804 };
@@ -64,15 +64,16 @@ describe("the bubble beside the thumb", () => {
 		expect(placed.hidden).toBeGreaterThan(0);
 	});
 
-	it("asks for a short bubble only when the full one hides a key that must stay or is not snug against the thumb, and takes it when it is better placed by a few tens of pixels", () => {
+	it("asks for a short bubble only when the full one hides a key or is not snug against the thumb, and takes it when it is better placed by a few tens of pixels", () => {
 		const at = { left: 0, top: 0 };
-		expect(bubbleNeedsShortForm({ ...at, cost: 1, away: 10, hidden: 0 })).toBe(false);
-		expect(bubbleNeedsShortForm({ ...at, cost: 1, away: NEAR_ENOUGH, hidden: 0 })).toBe(false);
-		expect(bubbleNeedsShortForm({ ...at, cost: 1, away: NEAR_ENOUGH + 1, hidden: 0 })).toBe(true);
-		expect(bubbleNeedsShortForm({ ...at, cost: 1, away: 0, hidden: 1 })).toBe(true);
-		const full = { ...at, cost: 2, away: 50, hidden: 0 };
-		expect(preferShortBubble(full, { ...at, cost: 0.2, away: 5, hidden: 0 })).toBe(true);
-		expect(preferShortBubble(full, { ...at, cost: 1.9, away: 45, hidden: 0 })).toBe(false);
+		expect(bubbleNeedsShortForm({ ...at, cost: 1, away: 10, hidden: 0, covered: 0 })).toBe(false);
+		expect(bubbleNeedsShortForm({ ...at, cost: 1, away: NEAR_ENOUGH, hidden: 0, covered: 0 })).toBe(false);
+		expect(bubbleNeedsShortForm({ ...at, cost: 1, away: NEAR_ENOUGH + 1, hidden: 0, covered: 0 })).toBe(true);
+		expect(bubbleNeedsShortForm({ ...at, cost: 1, away: 0, hidden: 1, covered: 0 })).toBe(true);
+		expect(bubbleNeedsShortForm({ ...at, cost: 1, away: 0, hidden: 0, covered: 1 })).toBe(true);
+		const full = { ...at, cost: 2, away: 50, hidden: 0, covered: 0 };
+		expect(preferShortBubble(full, { ...at, cost: 0.2, away: 5, hidden: 0, covered: 0 })).toBe(true);
+		expect(preferShortBubble(full, { ...at, cost: 1.9, away: 45, hidden: 0, covered: 0 })).toBe(false);
 	});
 
 	it("keeps clear of the thumb's own circle whatever else is around, even with no room beside it", () => {
@@ -174,8 +175,8 @@ describe("the bubble beside the thumb", () => {
 			return { corner, anchor: { x: anchorX, y: anchorY }, bounds: { left: MARGIN, top: topInset + 44 + 67 + MARGIN, right: width - MARGIN, bottom: anchorY + ANCHOR_RADIUS + (EDGE - MARGIN) } };
 		}
 
-		/** How far from the armed circle's rim the bubble may be: a circle's width or so. */
-		const BESIDE_GAP = 50;
+		/** How far from the armed circle's rim the bubble may be: at the default circle size a bit more than half a circle's width, a little more with the larger or the smaller circles' rings. */
+		const besideGap = (params: DialRingParams): number => (params.itemSize === DEFAULT_RING_PARAMS.itemSize ? 40 : 50);
 
 		const cases: [string, DialGeometry][] = [
 			["390x844, keyboard down", phone(390, 844, "bottom-right", 0, 47)],
@@ -207,8 +208,9 @@ describe("the bubble beside the thumb", () => {
 			return { thumb: slotPosition(armed, geometry, rings), half: armed.size / 2, circles: coveredCircles(view, geometry.anchor), area };
 		}
 
-		const FULL = { width: 215, height: 62 };
-		const SHORT = { width: 150, height: 40 };
+		// The largest the bubble measures in Obsidian (a long description wrapped to two lines) and a long label's short form.
+		const FULL = { width: 220, height: 78 };
+		const SHORT = { width: 150, height: 42 };
 		/** What the DOM layer does: the full bubble, and the short one where the full one hides a key that must stay or sits away from the thumb, if that does better. */
 		function chooseBubble(thumb: { x: number; y: number }, half: number, area: BubbleArea, circles: CoveredCircle[], anchor: { x: number; y: number }) {
 			let box = FULL;
@@ -227,7 +229,8 @@ describe("the bubble beside the thumb", () => {
 			const problems: string[] = [];
 			for (const params of [DEFAULT_RING_PARAMS, ringParamsFor(56, { peak: 1.5 }), ringParamsFor(40, { peak: 1 })]) {
 				const counts = [4, 5, 9];
-				for (const box of [FULL, SHORT]) {
+				// The boxes as Obsidian measures a short description's bubble and its short form; the larger one below is for the tests of nearness, where a small phone's room is not the point.
+				for (const box of [{ width: 215, height: 62 }, { width: 150, height: 40 }]) {
 					for (let level = 0; level < counts.length; level++) {
 						for (let index = 0; index < counts[level]; index++) {
 							const around = scene(geometry, params, counts, level, index);
@@ -247,7 +250,7 @@ describe("the bubble beside the thumb", () => {
 			expect(problems.slice(0, 6)).toEqual([]);
 		});
 
-		it.each(cases)("%s: the bubble is always beside the thumb, as the DOM layer chooses its form: within 50px of the armed circle's rim at every item of every ring, the rings of a 22 item File group and of the default keymap included", (_name, geometry) => {
+		it.each(cases)("%s: the bubble is always beside the thumb, as the DOM layer chooses its form: within 40px of the armed circle's rim at every item of every ring (50px with the larger and smaller circles), the rings of a 22 item File group and of the default keymap included", (_name, geometry) => {
 			const problems: string[] = [];
 			for (const params of [DEFAULT_RING_PARAMS, ringParamsFor(56, { peak: 1.5 }), ringParamsFor(40, { peak: 1 })]) {
 				for (const counts of [[4, 5, 9], [8, 22], [6, 18, 12], [6, 24]]) {
@@ -259,8 +262,55 @@ describe("the bubble beside the thumb", () => {
 							const { placed, box } = chooseBubble(thumb, half, area, circles, geometry.anchor);
 							const gap = distanceFrom(thumb, placed, box) - half;
 							const what = `${params.itemSize}px, counts ${counts.join("/")}, ring ${level} item ${index}`;
-							if (gap > BESIDE_GAP) problems.push(`${what}: the bubble is ${gap.toFixed(0)}px from the armed circle`);
+							if (gap > besideGap(params)) problems.push(`${what}: the bubble is ${gap.toFixed(0)}px from the armed circle`);
 						}
+					}
+				}
+			}
+			expect(problems.slice(0, 6)).toEqual([]);
+		});
+
+		it.each(cases)("%s: sliding the finger along a ring and back, with the bubble keeping its last spot while it is nearly as good, never leaves it far from the thumb", (_name, geometry) => {
+			const problems: string[] = [];
+			const params = DEFAULT_RING_PARAMS;
+			for (const counts of [[4, 5, 9], [4, 5], [8, 22], [6, 12, 9]]) {
+				const rings = planRings(geometry, params, counts);
+				const peak = peakSize(geometry, params);
+				const room = edgeRoom(geometry);
+				if (rings.length === 0) continue;
+				const level = Math.min(counts.length, rings.length) - 1;
+				const area: BubbleArea = { left: BUBBLE_MARGIN, top: geometry.bounds.top - MARGIN + BUBBLE_MARGIN, right: geometry.bounds.right + MARGIN - BUBBLE_MARGIN, bottom: geometry.bounds.bottom };
+				const degrees = Array.from({ length: 89 }, (_, i) => i + 1);
+				for (const sweep of [degrees, [...degrees].reverse()]) {
+					let previous: BubblePlacement | null = null;
+					for (const angle of sweep) {
+						const slots = rings.flatMap((ring, ringIndex) => ringSlots(ringIndex, ring, counts[ringIndex], params, peak, ringIndex === level ? angle / DIAL_SWEEP_DEG : 0.5, room));
+						const finger = slotPosition({ ring: level, index: 0, angleDeg: angle, size: 0, weight: 0, bead: false, presence: 1 }, geometry, rings);
+						const armedIndex = hitTest(finger, geometry, rings, slots, DEFAULT_DEAD_ZONE, params.itemSize, null);
+						if (armedIndex === null) continue;
+						const armed = slots[armedIndex];
+						const view = rings.map((_, ringIndex) => ({
+							items: slots
+								.filter((slot) => slot.ring === ringIndex)
+								.map((slot) => {
+									const at = slotPosition(slot, geometry, rings);
+									return { x: at.x, y: at.y, size: slot.size, presence: slot.presence, armed: slot === armed };
+								}),
+						}));
+						const thumb = slotPosition(armed, geometry, rings);
+						const circles = coveredCircles(view, geometry.anchor);
+						let box = FULL;
+						let placed = placeBubble(thumb, armed.size / 2, box, area, circles, geometry.anchor, previous);
+						if (bubbleNeedsShortForm(placed)) {
+							const shorter = placeBubble(thumb, armed.size / 2, SHORT, area, circles, geometry.anchor, previous);
+							if (preferShortBubble(placed, shorter)) {
+								placed = shorter;
+								box = SHORT;
+							}
+						}
+						previous = placed;
+						const gap = distanceFrom(thumb, placed, box) - armed.size / 2;
+						if (gap > 45) problems.push(`counts ${counts.join("/")} at ${angle}°, item ${armed.index}: ${gap.toFixed(0)}px from the armed circle`);
 					}
 				}
 			}

@@ -1403,6 +1403,37 @@ describe("DialController on a level too big for its ring", () => {
 		expect(controller.view().armed?.label).toBe("Item 24");
 	});
 
+	it("as an inner ring, with a group of it open outside, a level too big for its ring still has every item reachable by sliding along it, from the group out to both ends; a flick straight into the gone stretch lands on a circle that is there, never on a gone one", () => {
+		const lines = Array.from({ length: 16 }, (_, i) =>
+			i === 7 ? "  h:\n    title: Group H\n    items:\n      x: workspace:new-tab Child X\n      y: workspace:new-tab Child Y" : `  ${String.fromCharCode(97 + i + (i > 7 ? 1 : 0))}: workspace:new-tab Item ${i + 1}`,
+		);
+		const root = parseKeymapSource(`items:\n${lines.join("\n")}\n`);
+		const controller = new DialController(makeHost().host, () => PHONE);
+		controller.pressAnchor(root);
+		// Open the group: slide along the ring until it is armed, then the ring outside it is there and the root ring is an inner one.
+		for (let degrees = 0; degrees <= 90 && controller.view().armed?.label !== "Group H"; degrees += 1) controller.moveTo(onRing(degrees));
+		expect(controller.view().armed?.label).toBe("Group H");
+		expect(controller.view().rings).toHaveLength(2);
+		const reached = new Set<string>();
+		for (const sweep of [DEGREES, [...DEGREES].reverse()]) {
+			for (const degrees of sweep) {
+				controller.moveTo(onRing(degrees));
+				const armed = controller.view().armed;
+				if (armed) reached.add(armed.label);
+			}
+		}
+		// Every item of the root level has been under the finger, from the group out to either end.
+		expect([...reached].filter((label) => label.startsWith("Item")).sort()).toEqual(Array.from({ length: 16 }, (_, i) => i + 1).filter((n) => n !== 8).map((n) => `Item ${n}`).sort());
+		// A flick from one end to the other lands on a circle that is drawn, never on a gone one.
+		for (const degrees of [88, 2, 88, 45, 2]) {
+			controller.moveTo(onRing(degrees));
+			const armed = controller.view().armed;
+			if (!armed) continue;
+			const circle = controller.view().rings[0].items.find((item) => item.label === armed.label) ?? controller.view().rings[1]?.items.find((item) => item.label === armed.label);
+			expect(circle?.presence ?? 1).toBeGreaterThanOrEqual(0.5);
+		}
+	});
+
 	it("a tap on a dot of a level too big for its ring brings it into the lens, where it is whole and shows its key, instead of running it; a second tap runs it", () => {
 		const { root, controller, calls } = crowdedRoot(16);
 		controller.open(root);

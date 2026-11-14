@@ -32,6 +32,8 @@ export interface BubblePlacement {
 	top: number;
 	/** How many of the circles that must stay readable (weight of 1 or more: the thumb's neighbours and the anchor) the bubble hides at this spot, by coming within a key's reach of their centres; the DOM layer drops to a shorter bubble when this is not zero. */
 	hidden: number;
+	/** How many other circles that show a key the bubble hides at this spot: the DOM layer tries the short form, which covers less, when this is not zero. */
+	covered: number;
 	/** What the spot cost: the DOM layer compares the full bubble's with the short form's. */
 	cost: number;
 	/** How far past the thumb's keep-out circle and gap the bubble is, in pixels: beyond `BESIDE_REACH` it is no longer beside the thumb. */
@@ -82,6 +84,8 @@ const COST_PER_FAR_PX = 5 / 100;
 const COST_COVER = 2;
 const COST_HAND = 2.5;
 const COST_PER_MOVED_PX = 0.6 / 100;
+/** The most moving can cost, so that a bubble left far from the thumb by an earlier spot does not stay there for want of a near one being worth the jump: a few pixels of distance outweigh it. */
+const COST_MOVED_CAP = 0.25;
 /** Between spots that are otherwise as good, the one away from the hand wins: the thumb is on that side. */
 const COST_TOWARD_HAND = 0.4;
 /** A circle's key is hidden when the bubble comes this close to its centre. */
@@ -160,7 +164,7 @@ export function placeBubble(
 		right: Math.max(area.left, area.right - box.width),
 		bottom: Math.max(area.top, area.bottom - box.height),
 	};
-	let best: BubblePlacement = { left: room.left, top: room.top, cost: Number.POSITIVE_INFINITY, away: 0, hidden: 0 };
+	let best: BubblePlacement = { left: room.left, top: room.top, cost: Number.POSITIVE_INFINITY, away: 0, hidden: 0, covered: 0 };
 	/** Scores the spot, giving up as soon as it cannot beat the best so far (every cost term is at least 0). */
 	const consider = (left: number, top: number, direction: DialPoint | null): void => {
 		const rim = distanceToBox(thumb, left, top, box);
@@ -169,7 +173,7 @@ export function placeBubble(
 		if (rim < keepOut) cost += COST_ON_THUMB + (keepOut - rim) * COST_PER_PX_ON_THUMB;
 		else cost += Math.max(0, keepOut + BUBBLE_GAP - rim) * COST_PER_PX_SNUG;
 		if (direction) cost += COST_TOWARD_HAND * Math.max(0, direction.x * handward.x + direction.y * handward.y);
-		if (previous) cost += Math.hypot(left - previous.left, top - previous.top) * COST_PER_MOVED_PX;
+		if (previous) cost += Math.min(COST_MOVED_CAP, Math.hypot(left - previous.left, top - previous.top) * COST_PER_MOVED_PX);
 		if (cost >= best.cost) return;
 		for (const circle of circles) {
 			cost += circle.weight * coverage(circle, left, top, box) * COST_COVER;
@@ -178,7 +182,7 @@ export function placeBubble(
 			if (cost >= best.cost) return;
 		}
 		if (segmentDistanceToBox(thumb, hand, left, top, box) < HAND_PAD) cost += COST_HAND;
-		if (cost < best.cost - 1e-9) best = { left, top, cost, away, hidden: circles.filter((circle) => circle.weight >= WEIGHT_MUST_STAY / 2 && distanceToBox(circle, left, top, box) < KEY_CLEARANCE).length };
+		if (cost < best.cost - 1e-9) best = { left, top, cost, away, hidden: circles.filter((circle) => circle.weight >= WEIGHT_MUST_STAY / 2 && distanceToBox(circle, left, top, box) < KEY_CLEARANCE).length, covered: circles.filter((circle) => circle.weight > 0 && circle.weight < WEIGHT_MUST_STAY / 2 && circle.radius * 2 >= DIAL_LEGIBLE_SIZE && distanceToBox(circle, left, top, box) < KEY_CLEARANCE).length };
 	};
 	// First the spots snug against the thumb, in every direction and a few distances out: where the bubble belongs when there is room.
 	for (const extra of [0, 22, 48, 80]) {
@@ -253,7 +257,7 @@ export function preferShortBubble(full: BubblePlacement, short: BubblePlacement)
 	return short.cost + COST_SHORT_FORM < full.cost;
 }
 
-/** Whether the full bubble is worth trying a short one against: it hides a key that must stay, or it landed away from the thumb. */
+/** Whether the full bubble is worth trying a short one against: it hides a key, or it landed away from the thumb. */
 export function bubbleNeedsShortForm(full: BubblePlacement): boolean {
-	return full.hidden > 0 || full.away > NEAR_ENOUGH;
+	return full.hidden > 0 || full.covered > 0 || full.away > NEAR_ENOUGH;
 }

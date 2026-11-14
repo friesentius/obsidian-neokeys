@@ -473,7 +473,7 @@ describe("lensLayout under the finger", () => {
 		expect(worst.slice(0, 5)).toEqual([]);
 	});
 
-	it("never lets two circles on a ring overlap, at rest or with the finger anywhere, for any level its ring holds at the floor size, at any size and peak, never grows a circle the farther it is from the finger, and keeps the finger on a circle it grew", () => {
+	it("never lets two circles on a ring overlap: at rest for any level its ring holds at the floor size, and with the finger anywhere for any level at all (the far circles fade out), at any size and peak, never grows a circle the farther it is from the finger, and keeps the finger on a circle it grew", () => {
 		const violations: string[] = [];
 		const grid = Array.from({ length: 41 }, (_, i) => i / 40);
 		for (const itemSize of [40, 44, 56]) {
@@ -481,11 +481,12 @@ describe("lensLayout under the finger", () => {
 				const params = ringParamsFor(itemSize, { peak: peakFactor });
 				const peak = peakSize(PHONE, params);
 				for (const { radius, capacity } of planRings(PHONE, params, [4, 5, 9])) {
-					// Up to what the ring holds at the floor size; more circles than that overlap by necessity.
+					// At rest a ring holds its level without overlap only up to what fits at the floor size; with the finger on it, any level is held (the far circles fade out).
 					const floorPitch = (Math.asin((BEAD_FLOOR + 2) / (2 * radius)) * 2 * 180) / Math.PI;
 					const most = Math.min(25, 1 + Math.floor(90 / floorPitch + 1e-9));
-					for (let count = 1; count <= most; count++) {
+					for (let count = 1; count <= 34; count++) {
 						for (const focus of [null, ...grid]) {
+							if (focus === null && count > most) continue;
 							const layout = lensLayout(count, capacity, radius, params, peak, focus, 36);
 							const bad = overlapIn(layout, radius, 2 - 0.01);
 							if (bad) violations.push(`${count} at ${itemSize}px, peak ${peakFactor}, on r${radius} at focus ${focus}: ${bad}`);
@@ -498,6 +499,7 @@ describe("lensLayout under the finger", () => {
 								for (let i = 0; i + 1 < count; i++) {
 									const here = Math.abs(i - position);
 									const next = Math.abs(i + 1 - position);
+									if (layout.presences[i] < 1 || layout.presences[i + 1] < 1) continue;
 									if (here < next - 1e-9 && layout.sizes[i] < layout.sizes[i + 1] - 1e-6) violations.push(`${count} at ${itemSize}px, peak ${peakFactor}, on r${radius} at focus ${focus}: circle ${i + 1} (${layout.sizes[i + 1].toFixed(1)}px) is larger than the nearer circle ${i} (${layout.sizes[i].toFixed(1)}px)`);
 									if (next < here - 1e-9 && layout.sizes[i + 1] < layout.sizes[i] - 1e-6) violations.push(`${count} at ${itemSize}px, peak ${peakFactor}, on r${radius} at focus ${focus}: circle ${i} (${layout.sizes[i].toFixed(1)}px) is larger than the nearer circle ${i + 1} (${layout.sizes[i + 1].toFixed(1)}px)`);
 								}
