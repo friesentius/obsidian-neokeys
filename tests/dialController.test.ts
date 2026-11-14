@@ -384,6 +384,40 @@ describe("DialController dragging", () => {
 		expect(controller.view().rings).toHaveLength(2);
 	});
 
+	it("a tap a little past a group's circle keeps the group armed through the jitter and the ring it opens", () => {
+		const { root, controller, calls } = setup();
+		controller.open(root);
+		const file = itemAt(controller, "File");
+		// 30px beyond File's centre along its ray: in the root ring's outer band while the root ring is the outermost one.
+		const point = { x: file.x - 30, y: file.y };
+		controller.pressAt(point);
+		expect(controller.view().armed?.label).toBe("File");
+		expect(controller.view().rings).toHaveLength(2);
+		controller.moveTo({ x: point.x + 3, y: point.y - 4 });
+		controller.moveTo(point);
+		expect(controller.view().armed?.label).toBe("File");
+		controller.release();
+		expect(calls.executed).toEqual([]);
+		expect(calls.opened).toEqual([]);
+		expect(controller.view().open).toBe(true);
+		expect(controller.view().crumbs).toEqual(["File"]);
+	});
+
+	it("a group armed through its band keeps its arm while the thumb stays in that share, even after its ring opened outside", () => {
+		const { root, controller } = setup();
+		controller.open(root);
+		const window_ = itemAt(controller, "Window");
+		const file = itemAt(controller, "File");
+		// Press on Window's circle, then drift 30px outward from its centre: well past the jitter, still Window's share of the root band.
+		controller.pressAt(window_);
+		controller.moveTo({ x: window_.x + (window_.x - PHONE.anchor.x) * 0.3, y: window_.y + (window_.y - PHONE.anchor.y) * 0.3 });
+		expect(controller.view().armed?.label).toBe("Window");
+		// Past the midpoint to the Window ring it is that ring's band, and its items arm by angle as ever.
+		controller.moveTo({ x: file.x - 140, y: file.y });
+		expect(controller.view().armed?.label).not.toBe("Window");
+		expect(controller.view().rings).toHaveLength(2);
+	});
+
 	it("a sibling on an inner ring takes over as soon as the thumb is inside its circle", () => {
 		const { root, controller } = setup();
 		controller.pressAnchor(root);
@@ -687,6 +721,20 @@ describe("DialController paging", () => {
 		expect(controller.view().pages).toBe(0);
 		controller.pressAt({ x: 200, y: 80 });
 		controller.release();
+		expect(controller.view().open).toBe(false);
+	});
+
+	it("keeps the root when a press opens it on such a screen, so a relayout and a key afterwards still work", () => {
+		const nothing: DialGeometry = { corner: "bottom-right", anchor: { x: 350, y: 100 }, bounds: { left: 4, top: 60, right: 386, bottom: 136 } };
+		const { root, controller, calls } = setup(nothing);
+		controller.pressAnchor(root);
+		controller.release();
+		expect(controller.view().open).toBe(true);
+		expect(controller.view().title).toBe("Neokeys");
+		controller.relayout();
+		expect(controller.view().rings).toEqual([]);
+		controller.typeKey(key("z"));
+		expect(calls.executed).toEqual(["app:zoom"]);
 		expect(controller.view().open).toBe(false);
 	});
 });

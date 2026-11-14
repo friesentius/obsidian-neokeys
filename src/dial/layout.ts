@@ -279,9 +279,11 @@ export function paging(count: number, capacity: number): DialPaging {
  * forgiving but blank space past the end of a short arc, or far from a lone item, arms nothing.
  * On an inner ring only the circles themselves arm, so a thumb crossing that ring's band on its
  * way out to the next ring does not swap the rings outside it unless it actually touches a
- * sibling. Only rings that hold a slot take part; beyond the reach, outside the sweep, or inside
- * the dead zone around the anchor, nothing is armed, which is what lets a tap elsewhere on the
- * screen cancel.
+ * sibling; the one exception is `sticky`, the slot already armed, which keeps its angular share
+ * of its ring's band even once that ring is an inner one, so a group armed through the band does
+ * not lose its arm the moment its own ring opens outside it. Only rings that hold a slot take
+ * part; beyond the reach, outside the sweep, or inside the dead zone around the anchor, nothing
+ * is armed, which is what lets a tap elsewhere on the screen cancel.
  */
 export function hitTest(
 	point: DialPoint,
@@ -290,6 +292,7 @@ export function hitTest(
 	slots: readonly DialSlot[],
 	deadZone: number = DEFAULT_DEAD_ZONE,
 	itemSize: number = DEFAULT_RING_PARAMS.itemSize,
+	sticky: number | null = null,
 ): number | null {
 	const sideways = geometry.corner === "bottom-right" ? -1 : 1;
 	const u = (point.x - geometry.anchor.x) * sideways;
@@ -322,14 +325,18 @@ export function hitTest(
 		return Math.hypot(u - radius * Math.cos(slotAngleRad), v - radius * Math.sin(slotAngleRad)) <= circle;
 	});
 	if (inside !== -1) return inside;
-	if (ring !== outermost) return null;
 
 	const angle = radToDeg(Math.atan2(v, u));
 	if (angle < -HIT_ANGLE_SLACK_DEG || angle > DIAL_SWEEP_DEG + HIT_ANGLE_SLACK_DEG) return null;
 	const capacity = rings[ring].capacity;
 	const pitch = capacity > 1 ? DIAL_SWEEP_DEG / (capacity - 1) : DIAL_SWEEP_DEG;
+	const share = pitch / 2 + HIT_ANGLE_SLACK_DEG;
+	if (ring !== outermost) {
+		const kept = sticky !== null ? slots[sticky] : undefined;
+		return kept && kept.ring === ring && Math.abs(angle - kept.angleDeg) <= share ? sticky : null;
+	}
 	let best: number | null = null;
-	let bestDelta = pitch / 2 + HIT_ANGLE_SLACK_DEG;
+	let bestDelta = share;
 	slots.forEach((slot, index) => {
 		if (slot.ring !== ring) return;
 		const delta = Math.abs(angle - slot.angleDeg);

@@ -758,6 +758,8 @@ body.theme-light .neokeys-dial {
 	left: var(--size-4-6);
 	right: var(--size-4-6);
 	top: var(--neokeys-dial-card-top, 0px);
+	max-width: 360px;
+	margin: 0 auto;
 	padding: var(--size-4-3) var(--size-4-4);
 	border-radius: var(--radius-l);
 	background-color: var(--background-primary);

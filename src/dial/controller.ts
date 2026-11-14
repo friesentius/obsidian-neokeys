@@ -121,6 +121,13 @@ interface ArmedKey {
 }
 
 /**
+ * How far a pointer may wander from where its press began before the press counts as a drag:
+ * a tap jitters by a few pixels, and the rings a tap on a group opens must not turn that jitter
+ * into a move onto one of the group's items.
+ */
+const TAP_SLOP = 8;
+
+/**
  * What a release on nothing means for the current press: the press that opened the dial leaves
  * it open (a tap on the anchor opens it), as does a press whose layout moved under the finger; a
  * later tap on the anchor goes back up one level, or closes at the root, the way Backspace does
@@ -152,8 +159,10 @@ export class DialController {
 	private from = 0;
 	private opened = false;
 	private pressing: ReleaseOnNothing | null = null;
-	/** Where the pointer last was during the current press, so a relayout or a dwell check can re-arm what is under it. */
+	/** Where the pointer last was during the current press, so a relayout can re-arm what is under it. */
 	private lastPoint: DialPoint | null = null;
+	/** Where the current press began, until the pointer has moved past TAP_SLOP from it; null for a press on the anchor. */
+	private pressStart: DialPoint | null = null;
 	private armed: ArmedKey | null = null;
 	private geometry: DialGeometry | null = null;
 	private mode: DialLayoutMode = "normal";
@@ -248,6 +257,7 @@ export class DialController {
 		}
 		this.pressing = "back";
 		this.lastPoint = null;
+		this.pressStart = null;
 		this.armed = null;
 		this.emit("armed");
 	}
@@ -257,11 +267,15 @@ export class DialController {
 		if (!this.opened || this.pressing !== null) return;
 		this.pressing = "close";
 		this.lastPoint = point;
+		this.pressStart = point;
 		this.setArmed(this.hit(point));
 	}
 
+	/** Pointer movement during a press. A tap's jitter around where it began changes nothing. */
 	moveTo(point: DialPoint): void {
 		if (this.pressing === null) return;
+		if (this.pressStart && Math.hypot(point.x - this.pressStart.x, point.y - this.pressStart.y) <= TAP_SLOP) return;
+		this.pressStart = null;
 		this.lastPoint = point;
 		this.setArmed(this.hit(point));
 	}
@@ -273,6 +287,7 @@ export class DialController {
 		const armed = this.armed;
 		this.pressing = null;
 		this.lastPoint = null;
+		this.pressStart = null;
 		this.armed = null;
 		const target = armed ? this.findTarget(armed) : null;
 		if (target) {
@@ -295,6 +310,7 @@ export class DialController {
 		if (this.pressing === null) return;
 		this.pressing = null;
 		this.lastPoint = null;
+		this.pressStart = null;
 		this.armed = null;
 		this.settle();
 	}
@@ -354,8 +370,9 @@ export class DialController {
 		this.armed = null;
 		this.pressing = pressing;
 		this.lastPoint = null;
+		this.pressStart = null;
 		this.chooseGeometry();
-		this.plan();
+		this.plan(true);
 		this.emit("structure");
 	}
 
@@ -414,17 +431,19 @@ export class DialController {
 		this.pages.length = this.path.length;
 	}
 
-	/** After a press ends without acting: drop any level left undrawn and redraw from the deepest levels that fit. */
+	/** After a press ends without acting: drop any level left undrawn (never the root) and redraw from the deepest levels that fit. */
 	private settle(): void {
 		const before = this.targets;
-		this.path.length = Math.min(this.path.length, this.from + this.rings.length);
+		this.path.length = Math.max(1, Math.min(this.path.length, this.from + this.rings.length));
 		this.plan();
 		this.emit(sameTargets(before, this.targets) ? "armed" : "structure");
 	}
 
+	/** The slot under `point`, with the armed slot keeping its share of its ring's band even once that ring is an inner one. */
 	private hit(point: DialPoint): number | null {
 		if (!this.geometry) return null;
-		return hitTest(point, this.geometry, this.rings, this.slots, this.deadZone, this.params.itemSize);
+		const sticky = this.armed ? this.targets.findIndex((_, i) => sameKey(this.keyOf(i), this.armed)) : -1;
+		return hitTest(point, this.geometry, this.rings, this.slots, this.deadZone, this.params.itemSize, sticky === -1 ? null : sticky);
 	}
 
 	private keyOf(index: number): ArmedKey {

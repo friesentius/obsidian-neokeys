@@ -509,6 +509,17 @@ describe("hitTest", () => {
 		expect(hitTest(atAngle(45, (rings[0].radius + rings[1].radius) / 2 + 1), PHONE, rings, slots)).toBe(4 + 2);
 	});
 
+	it("keeps the sticky slot's angular share on an inner ring, and only that slot's", () => {
+		const radius = rings[0].radius;
+		const atAngle = (deg: number, distance: number) => ({ x: anchor.x - distance * Math.cos((deg * Math.PI) / 180), y: anchor.y - distance * Math.sin((deg * Math.PI) / 180) });
+		// 10 degrees off Window, 25px past its circle: nothing on its own, Window when Window is the slot already armed, still nothing when File is.
+		expect(hitTest(atAngle(40, radius + 25), PHONE, rings, slots)).toBeNull();
+		expect(hitTest(atAngle(40, radius + 25), PHONE, rings, slots, undefined, undefined, 1)).toBe(1);
+		expect(hitTest(atAngle(40, radius + 25), PHONE, rings, slots, undefined, undefined, 0)).toBeNull();
+		// Past the midpoint the outer ring's band takes over, sticky or not: the 45 degree slot of the five on the outer ring.
+		expect(hitTest(atAngle(40, (rings[0].radius + rings[1].radius) / 2 + 1), PHONE, rings, slots, undefined, undefined, 1)).toBe(4 + 2);
+	});
+
 	it("arms an end item anywhere inside its own circle, even outside the sweep", () => {
 		const end = at(slots[0]);
 		expect(hitTest({ x: end.x, y: end.y + 20 }, PHONE, rings, slots)).toBe(0);

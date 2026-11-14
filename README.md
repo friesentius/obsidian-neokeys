@@ -200,7 +200,7 @@ its ring simply stays open for the next press. Passing over an item on the way o
 so nothing happens until you release. A direct tap on an item does the same thing, and a tap on
 the button once the dial is open closes the deepest ring (or the dial, at the root), the way
 <kbd>Backspace</kbd> does in the keyboard popup. The note dims behind the open dial; a tap on that
-dimmed area, including the blank space between the circles, closes it without running anything.
+dimmed area closes it without running anything.
 
 A pill just below Obsidian's header names what you are on: the path of open groups, the item under
 your thumb at its end, and on a second line the group's description, so a ring of bare keys reads
@@ -215,7 +215,8 @@ under your thumb is the last thing ever shortened. Back and Close buttons sit at
 Nothing moves while your finger is down. Each ring sits where its own level needs it, whatever
 opens outside it, and the pill picks its place once per opening: below the header when the
 keymap's widest path fits under it, raised over the header when that wins back room (a phone with
-its keyboard up), behind the rings only on a screen too short for anything else. When a group's
+its keyboard up), with the rings reaching up behind it only on a screen too short for anything
+else. When a group's
 ring has no room outside the current ones, the group stays highlighted, the pill says to let go,
 and the release redraws the dial from the deepest levels that fit; Back brings the outer rings
 back. A level with more items than its ring can hold pages, with a "More" item that turns to the
