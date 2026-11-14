@@ -30,6 +30,8 @@ export interface BubbleArea {
 export interface BubblePlacement {
 	left: number;
 	top: number;
+	/** How many circles' keys the bubble hides at this spot (it comes within a key's reach of their centres); the DOM layer drops to a shorter bubble when this is not zero. */
+	hidden: number;
 }
 
 /** Margin the bubble keeps from the edges of the area it is placed in. */
@@ -65,13 +67,25 @@ export function cardTop(pillBottom: number, ringTop: number, height: number): nu
 
 /** How the placement scores the spots it tries: a point of cost per this many pixels the bubble is from the thumb, per circle covered (times its weight), for the hand, and per pixel moved from where it was. */
 const COST_PER_NEAR_PX = 1.6 / 100;
+/** Past this far from the thumb's keep-out circle the bubble is no longer beside it, and each further pixel costs this much more. */
+const BESIDE_REACH = 60;
+const COST_PER_FAR_PX = 5 / 100;
 const COST_COVER = 2;
 const COST_HAND = 2.5;
 const COST_PER_MOVED_PX = 0.6 / 100;
 /** Between spots that are otherwise as good, the one away from the hand wins: the thumb is on that side. */
 const COST_TOWARD_HAND = 0.4;
+/** A circle's key is hidden when the bubble comes this close to its centre. */
+const KEY_CLEARANCE = 12;
+const COST_HIDES_KEY = 2;
+/** The grid of spots tried over the whole area, in pixels. */
+const GRID_STEP = 10;
 /** A spot that puts the bubble on the thumb is worse than any spot that does not. */
 const COST_ON_THUMB = 1000;
+/** Where no spot clears the thumb, the one that sits least on it wins, whatever else it covers. */
+const COST_PER_PX_ON_THUMB = 100;
+/** Between the keep-out circle and the gap beyond it the bubble is allowed but looks cramped: a little cost for each pixel short of the gap. */
+const COST_PER_PX_SNUG = 4 / 100;
 
 /** The distance from `point` to the rectangle (0 inside it). */
 function distanceToBox(point: DialPoint, left: number, top: number, box: DescriptionBox): number {
@@ -136,22 +150,46 @@ export function placeBubble(
 		right: Math.max(area.left, area.right - box.width),
 		bottom: Math.max(area.top, area.bottom - box.height),
 	};
-	let best: (BubblePlacement & { cost: number }) | null = null;
+	let best: BubblePlacement & { cost: number } = { left: room.left, top: room.top, cost: Number.POSITIVE_INFINITY, hidden: 0 };
+	/** Scores the spot, giving up as soon as it cannot beat the best so far (every cost term is at least 0). */
+	const consider = (left: number, top: number, direction: DialPoint | null): void => {
+		const rim = distanceToBox(thumb, left, top, box);
+		const away = Math.max(0, rim - (keepOut + BUBBLE_GAP));
+		let cost = away * COST_PER_NEAR_PX + Math.max(0, away - BESIDE_REACH) * COST_PER_FAR_PX;
+		if (rim < keepOut) cost += COST_ON_THUMB + (keepOut - rim) * COST_PER_PX_ON_THUMB;
+		else cost += Math.max(0, keepOut + BUBBLE_GAP - rim) * COST_PER_PX_SNUG;
+		if (direction) cost += COST_TOWARD_HAND * Math.max(0, direction.x * handward.x + direction.y * handward.y);
+		if (previous) cost += Math.hypot(left - previous.left, top - previous.top) * COST_PER_MOVED_PX;
+		if (cost >= best.cost) return;
+		for (const circle of circles) {
+			cost += circle.weight * coverage(circle, left, top, box) * COST_COVER;
+			// A circle whose key the bubble hides is lost to the thumb altogether, however little of its rim is covered.
+			if (distanceToBox(circle, left, top, box) < KEY_CLEARANCE) cost += circle.weight * COST_HIDES_KEY;
+			if (cost >= best.cost) return;
+		}
+		if (segmentDistanceToBox(thumb, hand, left, top, box) < HAND_PAD) cost += COST_HAND;
+		if (cost < best.cost - 1e-9) best = { left, top, cost, hidden: circles.filter((circle) => distanceToBox(circle, left, top, box) < KEY_CLEARANCE).length };
+	};
+	// First the spots snug against the thumb, in every direction and a few distances out: where the bubble belongs when there is room.
 	for (const extra of [0, 22, 48, 80]) {
 		for (let degrees = 0; degrees < 360; degrees += 15) {
 			const direction = { x: Math.cos((degrees * Math.PI) / 180), y: -Math.sin((degrees * Math.PI) / 180) };
 			const distance = keepOut + BUBBLE_GAP + extent(direction) + extra;
-			const left = Math.max(room.left, Math.min(room.right, thumb.x + direction.x * distance - box.width / 2));
-			const top = Math.max(room.top, Math.min(room.bottom, thumb.y + direction.y * distance - box.height / 2));
-			const rim = distanceToBox(thumb, left, top, box);
-			let cost = Math.max(0, rim - (keepOut + BUBBLE_GAP)) * COST_PER_NEAR_PX;
-			if (rim < keepOut) cost += COST_ON_THUMB + (keepOut - rim);
-			for (const circle of circles) cost += circle.weight * coverage(circle, left, top, box) * COST_COVER;
-			if (segmentDistanceToBox(thumb, hand, left, top, box) < HAND_PAD) cost += COST_HAND;
-			cost += COST_TOWARD_HAND * Math.max(0, direction.x * handward.x + direction.y * handward.y);
-			if (previous) cost += Math.hypot(left - previous.left, top - previous.top) * COST_PER_MOVED_PX;
-			if (!best || cost < best.cost - 1e-9) best = { left, top, cost };
+			consider(
+				Math.max(room.left, Math.min(room.right, thumb.x + direction.x * distance - box.width / 2)),
+				Math.max(room.top, Math.min(room.bottom, thumb.y + direction.y * distance - box.height / 2)),
+				direction,
+			);
 		}
 	}
-	return best ? { left: best.left, top: best.top } : { left: room.left, top: room.top };
+	// Then every spot of a grid over the whole area, so a crowded dial's one free patch is found wherever it is, not only where a ray from the thumb happens to land.
+	for (let top = room.top; ; top += GRID_STEP) {
+		const y = Math.min(top, room.bottom);
+		for (let left = room.left; ; left += GRID_STEP) {
+			consider(Math.min(left, room.right), y, null);
+			if (left >= room.right) break;
+		}
+		if (top >= room.bottom) break;
+	}
+	return { left: best.left, top: best.top, hidden: best.hidden };
 }

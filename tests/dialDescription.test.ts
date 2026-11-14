@@ -24,6 +24,19 @@ describe("the bubble beside the thumb", () => {
 	const distanceFrom = (point: { x: number; y: number }, placed: { left: number; top: number }, box = BOX): number =>
 		Math.hypot(point.x - Math.max(placed.left, Math.min(placed.left + box.width, point.x)), point.y - Math.max(placed.top, Math.min(placed.top + box.height, point.y)));
 
+	/** Whether some spot in the area, at most `reach` from the thumb and off its circle, hides no circle's key (its centre within 12px of the box). */
+	function hasCleanSpotWithin(reach: number, thumb: { x: number; y: number }, half: number, box: { width: number; height: number }, area: BubbleArea, circles: readonly CoveredCircle[]): boolean {
+		for (let top = area.top; top + box.height <= area.bottom; top += 4) {
+			for (let left = area.left; left + box.width <= area.right; left += 4) {
+				const spot = { left, top };
+				const near = distanceFrom(thumb, spot, box);
+				if (near > reach || near < Math.max(half, 30) + 10) continue;
+				if (!circles.some((circle) => distanceFrom(circle, spot, box) < 12)) return true;
+			}
+		}
+		return false;
+	}
+
 	it("sits beside the thumb, on the side away from the hand, when nothing is around it", () => {
 		const thumb = { x: 350 - 97, y: 804 };
 		const placed = placeBubble(thumb, 25, BOX, AREA, [], ANCHOR);
@@ -38,6 +51,30 @@ describe("the bubble beside the thumb", () => {
 		for (let x = 0; x <= 390; x += 30) for (let y = 160; y <= 844; y += 30) everywhere.push({ x, y, radius: 22, weight: 2 });
 		const placed = placeBubble(thumb, 25, BOX, AREA, everywhere, ANCHOR);
 		expect(distanceFrom(thumb, placed)).toBeLessThan(110);
+	});
+
+	it("on a dial crowded all round the thumb (measured in Obsidian: Text, then Heading, thumb on h), finds the free patch above the rings rather than hiding the key of a circle beside it", () => {
+		// ring, x, y, radius of every circle; the thumb is the second of ring 1.
+		const measured = [[0, 253, 727, 25], [0, 267, 670, 29], [0, 309, 632, 24], [0, 357, 623, 22], [1, 184, 704, 26], [1, 201, 644, 33], [1, 239, 595, 25], [1, 284, 567, 22], [1, 334, 554, 22], [2, 113, 732, 23], [2, 117, 679, 28], [2, 136, 618, 32], [2, 173, 562, 32], [2, 220, 522, 27], [2, 266, 498, 22], [2, 306, 487, 18], [2, 340, 483, 14], [2, 367, 484, 11]];
+		const circles: CoveredCircle[] = [{ x: 350, y: 720, radius: 28, weight: 2 }];
+		for (const [ring, x, y, radius] of measured) if (!(x === 201 && y === 644)) circles.push({ x, y, radius, weight: ring === 2 ? 2 : 1 });
+		const box = { width: 220, height: 78 };
+		const area: BubbleArea = { left: 8, top: 179, right: 382, bottom: 760 };
+		const placed = placeBubble({ x: 201, y: 644 }, 33, box, area, circles, { x: 350, y: 720 });
+		const hidden = circles.filter((circle) => distanceFrom(circle, placed, box) < 12);
+		expect(hidden).toEqual([]);
+		// Still beside the thumb, as near as the circles allow: above the outer ring's digits, not at the top of the screen.
+		expect(distanceFrom({ x: 201, y: 644 }, placed, box)).toBeLessThan(160);
+	});
+
+	it("reports how many circles' keys the spot it chose hides, so the DOM layer can try a shorter bubble: none where there is room, some where there is not", () => {
+		const thumb = { x: 200, y: 400 };
+		expect(placeBubble(thumb, 25, BOX, AREA, [], ANCHOR).hidden).toBe(0);
+		const crowd: CoveredCircle[] = [];
+		for (let x = 0; x <= 390; x += 20) for (let y = 200; y <= 800; y += 20) if (Math.hypot(x - thumb.x, y - thumb.y) > 40) crowd.push({ x, y, radius: 24, weight: 2 });
+		const placed = placeBubble(thumb, 33, BOX, AREA, crowd, ANCHOR);
+		expect(placed.hidden).toBe(crowd.filter((circle) => distanceFrom(circle, placed) < 12).length);
+		expect(placed.hidden).toBeGreaterThan(0);
 	});
 
 	it("keeps clear of the thumb's own circle whatever else is around, even with no room beside it", () => {
@@ -137,7 +174,11 @@ describe("the bubble beside the thumb", () => {
 							const near = distanceFrom(thumb, placed, box);
 							// A screen too small to hold the box beside the thumb, even a 320px phone with its keyboard up, may let the box's edge touch the circle's rim, but never the thumb's own centre.
 							if (near < armed.size / 2 - 2) problems.push(`${what}: on the thumb (${near.toFixed(0)}px from it, the circle is ${(armed.size / 2).toFixed(0)}px)`);
-							if (near > 135) problems.push(`${what}: ${near.toFixed(0)}px from the thumb`);
+							// Beside the thumb, unless every spot that near would hide the key of some circle (the last ring's first items, at the bottom of the arc, with a box too wide to go beside them): then it moves off to the nearest spot that hides none, but not to the far side of the screen.
+							if (near > 135) {
+								if (hasCleanSpotWithin(110, thumb, armed.size / 2, box, area, circles)) problems.push(`${what}: ${near.toFixed(0)}px from the thumb, though a spot within 110px hides no circle's key`);
+								else if (near > 260) problems.push(`${what}: ${near.toFixed(0)}px from the thumb`);
+							}
 						}
 					}
 				}

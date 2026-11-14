@@ -757,15 +757,25 @@ export class MobileDial {
 			const weight = index === view.rings.length - 1 ? 2 : 1;
 			for (const item of ring.items) if (!item.armed) circles.push({ x: item.x, y: item.y, radius: item.size / 2, weight });
 		});
-		const placed = placeBubble(
-			{ x: armed.x, y: armed.y },
-			armed.size / 2,
-			{ width: this.bubbleEl.offsetWidth, height: this.bubbleEl.offsetHeight },
-			{ left: BUBBLE_MARGIN, top: this.pillEl.getBoundingClientRect().bottom + BUBBLE_MARGIN, right: activeWindow.innerWidth - BUBBLE_MARGIN, bottom: view.bounds.bottom },
-			circles,
-			anchor,
-			this.bubblePlacement,
-		);
+		const place = (): BubblePlacement =>
+			placeBubble(
+				{ x: armed.x, y: armed.y },
+				armed.size / 2,
+				{ width: this.bubbleEl.offsetWidth, height: this.bubbleEl.offsetHeight },
+				{ left: BUBBLE_MARGIN, top: this.pillEl.getBoundingClientRect().bottom + BUBBLE_MARGIN, right: activeWindow.innerWidth - BUBBLE_MARGIN, bottom: view.bounds.bottom },
+				circles,
+				anchor,
+				this.bubblePlacement,
+			);
+		// The full bubble first; where it can only go over the keys of circles, the shorter one (key and label, without the description the pill already shows) if that hides fewer.
+		this.bubbleEl.removeClass("neokeys-dial-bubble-compact");
+		let placed = place();
+		if (placed.hidden > 0 && armed.description !== "") {
+			this.bubbleEl.addClass("neokeys-dial-bubble-compact");
+			const shorter = place();
+			if (shorter.hidden < placed.hidden) placed = shorter;
+			else this.bubbleEl.removeClass("neokeys-dial-bubble-compact");
+		}
 		this.bubblePlacement = placed;
 		this.bubbleEl.setCssProps({ "--neokeys-dial-bubble-left": `${Math.round(placed.left)}px`, "--neokeys-dial-bubble-top": `${Math.round(placed.top)}px` });
 	}

@@ -973,6 +973,11 @@ body.theme-light .neokeys-dial {
 	line-height: 1.3;
 }
 
+/* Where the full bubble could only go over the keys of other circles, it drops its description (the pill shows it too) and shrinks to the key and label. */
+.neokeys-dial-bubble-compact .neokeys-dial-bubble-text {
+	display: none;
+}
+
 /*
  * Motion. .neokeys-animate is set unless the OS prefers reduced motion: the backdrop fades, and
  * the circles ease between the positions and sizes the lens gives them as the thumb moves. The
