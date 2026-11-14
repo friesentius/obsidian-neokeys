@@ -9,7 +9,7 @@ import {
 } from "../dial/controller";
 import { BUBBLE_MARGIN, bubbleNeedsShortForm, cardFits, cardTop, placeBubble, preferShortBubble, type BubblePlacement, type CoveredCircle } from "../dial/description";
 import { shownIcon } from "../icons";
-import { ANCHOR_RADIUS, ringParamsFor, showsGlyph, type DialArc, type DialGeometry, type DialLayoutMode } from "../dial/layout";
+import { ANCHOR_RADIUS, DIAL_LEGIBLE_SIZE, ringParamsFor, type DialArc, type DialGeometry, type DialLayoutMode } from "../dial/layout";
 import { diffRings } from "../dial/ringDiff";
 import { getCommandName, hasCommand } from "../obsidianCommands";
 import type { DialCorner, DialDescription, DialRadiusRule, DialRingAnimation, GroupEntry, GroupNode } from "../types";
@@ -31,8 +31,6 @@ export interface MobileDialOptions {
 	corner: DialCorner;
 	/** Diameter of the dial's items in px, from the settings (MIN_DIAL_ITEM_SIZE to MAX_DIAL_ITEM_SIZE). */
 	itemSize: number;
-	/** The smallest a circle shrinks to on a crowded ring that fits its level at this size, from the settings. */
-	minItemSize: number;
 	/** Where the rings sit: at fixed radii, or each as far out as its level needs. */
 	radiusRule: DialRadiusRule;
 	/** How large the circle under the thumb grows, as a multiple of the item size. */
@@ -129,7 +127,7 @@ export class MobileDial {
 			},
 			vibrate,
 		};
-		this.controller = new DialController(host, (mode) => this.measure(mode), ringParamsFor(options.itemSize, { peak: options.lensPeak, rule: options.radiusRule, minSize: options.minItemSize }));
+		this.controller = new DialController(host, (mode) => this.measure(mode), ringParamsFor(options.itemSize, { peak: options.lensPeak, rule: options.radiusRule }));
 		this.controller.onChange((change) => this.render(change));
 
 		this.layerEl = createDiv({ cls: "neokeys-dial" });
@@ -625,7 +623,7 @@ export class MobileDial {
 		el.toggleClass("neokeys-dial-item-armed", item.armed);
 		el.toggleClass("neokeys-dial-item-open", item.open);
 		// A circle shrunk below what a key or icon can be read at is only a dot until the lens grows it.
-		el.toggleClass("neokeys-dial-item-tiny", !showsGlyph(item.size));
+		el.toggleClass("neokeys-dial-item-tiny", item.size < DIAL_LEGIBLE_SIZE);
 		el.setAttribute("aria-pressed", item.armed ? "true" : "false");
 	}
 

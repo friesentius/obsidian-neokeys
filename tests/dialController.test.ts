@@ -1118,13 +1118,11 @@ describe("DialController lens", () => {
 		controller.release();
 		controller.pressAt(itemAt(controller, "Close tab"));
 		controller.release();
-		const grown = item(controller, "Close tab").size;
-		expect(grown).toBe(Math.max(...controller.view().rings[1].items.map((bead) => bead.size)));
-		expect(grown).toBeGreaterThan(TAP_FOCUS_BELOW);
+		expect(item(controller, "Close tab").size).toBe(66);
 		const before = itemAt(controller, "Close tab");
 		geometry = { ...PHONE, anchor: { x: 350, y: 704 } };
 		controller.relayout();
-		expect(item(controller, "Close tab").size).toBe(grown);
+		expect(item(controller, "Close tab").size).toBe(66);
 		expect(itemAt(controller, "Close tab").y).toBeCloseTo(before.y - 100, 6);
 	});
 });
@@ -1144,8 +1142,7 @@ describe("DialController tap rule", () => {
 		expect(controller.view().open).toBe(true);
 		expect(controller.view().armed).toBeNull();
 		expect(changes).toEqual(["armed"]);
-		expect(item(controller, "Close tab").size).toBe(Math.max(...controller.view().rings[1].items.map((bead) => bead.size)));
-		expect(item(controller, "Close tab").size).toBeGreaterThanOrEqual(TAP_FOCUS_BELOW);
+		expect(item(controller, "Close tab").size).toBe(66);
 		controller.pressAt(itemAt(controller, "Close tab"));
 		controller.release();
 		expect(calls.executed).toEqual(["workspace:close"]);

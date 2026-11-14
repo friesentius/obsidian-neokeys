@@ -1,11 +1,10 @@
-import { DEFAULT_SETTINGS, parseDialCorner, parseDialDescription, parseDialItemSize, parseDialLensPeak, parseDialMinItemSize, parseDialRadiusRule, parseDialRingAnimation, resolveSettings } from "../src/defaultSettings";
+import { DEFAULT_SETTINGS, parseDialCorner, parseDialDescription, parseDialItemSize, parseDialLensPeak, parseDialRadiusRule, parseDialRingAnimation, resolveSettings } from "../src/defaultSettings";
 
 /** The dial keys a fresh install gets. */
 const DIAL_DEFAULTS = {
 	mobileDialEnabled: true,
 	mobileDialCorner: "bottom-right",
 	mobileDialItemSize: 44,
-	mobileDialMinItemSize: 18,
 	mobileDialDescription: "none",
 	mobileDialRadiusRule: "fixed",
 	mobileDialLensPeak: 1.5,
@@ -46,6 +45,10 @@ describe("resolveSettings", () => {
 		});
 	});
 
+	it("loads a file that still holds a dial setting no longer offered, leaving the offered ones as stored", () => {
+		expect(resolveSettings({ mobileDialItemSize: 48, mobileDialMinItemSize: 18 })).toMatchObject({ ...DIAL_DEFAULTS, mobileDialItemSize: 48 });
+	});
+
 	it("falls back to the defaults for hand-edited values it does not understand", () => {
 		expect(
 			resolveSettings({ mobileDialEnabled: "yes", mobileDialCorner: "top-left", mobileDialItemSize: "big", mobileDialDescription: "everywhere", mobileDialRadiusRule: "loose", mobileDialLensPeak: "huge", mobileDialRingAnimation: "sure", mobileDialRingAnimationStyle: "spin" }),
@@ -80,32 +83,6 @@ describe("parseDialDescription", () => {
 		expect(parseDialDescription("none")).toBe("none");
 		expect(parseDialDescription("bubble")).toBe("none");
 		expect(parseDialDescription(undefined)).toBe("none");
-	});
-});
-
-describe("the minimum circle size", () => {
-	it("defaults to the legible size, so a crowded ring keeps its keys in view", () => {
-		expect(DEFAULT_SETTINGS.mobileDialMinItemSize).toBe(18);
-		expect(resolveSettings({}).mobileDialMinItemSize).toBe(18);
-	});
-
-	it("keeps whole pixels from the hard floor up to the item size, holds anything outside at the nearer end, and falls back to the default for a non-number", () => {
-		expect(parseDialMinItemSize(14, 44)).toBe(14);
-		expect(parseDialMinItemSize(10, 44)).toBe(10);
-		expect(parseDialMinItemSize(44, 44)).toBe(44);
-		expect(parseDialMinItemSize(20.6, 44)).toBe(21);
-		expect(parseDialMinItemSize(4, 44)).toBe(10);
-		expect(parseDialMinItemSize(50, 44)).toBe(44);
-		expect(parseDialMinItemSize("12", 44)).toBe(18);
-		expect(parseDialMinItemSize(Number.NaN, 44)).toBe(18);
-		expect(parseDialMinItemSize(undefined, 44)).toBe(18);
-	});
-
-	it("is held at or under the stored item size when loaded", () => {
-		expect(resolveSettings({ mobileDialItemSize: 40, mobileDialMinItemSize: 52 })).toMatchObject({ mobileDialItemSize: 40, mobileDialMinItemSize: 40 });
-		expect(resolveSettings({ mobileDialItemSize: 56, mobileDialMinItemSize: 52 })).toMatchObject({ mobileDialItemSize: 56, mobileDialMinItemSize: 52 });
-		expect(resolveSettings({ mobileDialMinItemSize: 2 }).mobileDialMinItemSize).toBe(10);
-		expect(resolveSettings({ mobileDialMinItemSize: "tiny" }).mobileDialMinItemSize).toBe(18);
 	});
 });
 
