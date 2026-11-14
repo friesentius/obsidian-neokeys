@@ -10,6 +10,7 @@ import {
 } from "../dial/controller";
 import { BUBBLE_MARGIN, cardFits, cardTop, placeBubble, type BubblePlacement, type CoveredCircle } from "../dial/description";
 import { ANCHOR_RADIUS, ringParamsFor, type DialArc, type DialGeometry, type DialLayoutMode } from "../dial/layout";
+import { diffRings } from "../dial/ringDiff";
 import { getCommandName, hasCommand } from "../obsidianCommands";
 import type { DialCorner, DialDescription, DialRadiusRule, DialRingAnimation, GroupEntry, GroupNode } from "../types";
 
@@ -92,10 +93,14 @@ export class MobileDial {
 	private readonly anchorEl: HTMLElement;
 	private readonly controller: DialController;
 	private rings: RingNodes[] = [];
+	/** Rings that were swapped for a sibling's and are still animating out, with the timers that remove them. */
+	private readonly leaving = new Map<HTMLElement, number>();
 	/** The one pointer the dial is tracking; any other pointer is ignored until it is released. */
 	private activePointerId: number | null = null;
 	/** The keyboard scope that owns every key while the dial is open; null while it is closed. */
 	private scope: Scope | null = null;
+	/** How long a ring's entrance and exit animations run, in ms, as of the dial's last opening; 0 when ring animation is off. */
+	private ringAnimationMs = 0;
 	/** A pending re-measure, so a burst of observer callbacks produces one relayout per frame. */
 	private frame: number | null = null;
 	private resizeObserver: ResizeObserver | null = null;
@@ -241,6 +246,7 @@ export class MobileDial {
 		// as a belt, since a leaked catch-all scope would swallow every key in the app.
 		this.controller.close();
 		this.controller.onChange(() => undefined);
+		this.clearLeaving();
 		this.popScope();
 		this.resizeObserver?.disconnect();
 		this.mutationObserver?.disconnect();
@@ -431,6 +437,7 @@ export class MobileDial {
 		this.layerEl.toggleClass("neokeys-dial-ring-fade", animation.ring === "fade");
 		this.layerEl.toggleClass("neokeys-dial-ring-fly", animation.ring === "fly");
 		this.layerEl.setCssProps({ "--neokeys-anim-duration": `${animation.durationMs}ms` });
+		this.ringAnimationMs = animation.ring !== null ? animation.durationMs : 0;
 	}
 
 	/**
@@ -507,12 +514,19 @@ export class MobileDial {
 	 * Keep each ring's nodes while it shows the same items of the same group, so a ring opening
 	 * outside the current ones appears on its own and the rings under the thumb do not replay
 	 * their entrance; a kept ring is re-placed, since a relayout or the lens may have moved its
-	 * items; a ring whose group changed is rebuilt in place, flying out from its own group.
+	 * items. A ring whose group changed (the thumb went from one group to its sibling, so the
+	 * ring outside them shows the sibling's items) is swapped: the new ring enters as any ring
+	 * does, flying out from its own group, and the old one leaves in step, fading out or flying
+	 * back into the group it belonged to, rather than vanishing in one frame.
 	 */
 	private reconcileRings(view: DialView): void {
+		const changes = diffRings(
+			this.rings.map((ring) => ({ group: ring.group, items: ring.items.map((item) => item.identity) })),
+			view.rings.map((ring) => ({ group: ring.group, items: ring.items.map((item) => item.identity) })),
+		);
 		view.rings.forEach((ring, index) => {
 			const existing = this.rings[index];
-			if (existing && existing.group === ring.group && sameItems(existing, ring)) {
+			if (changes[index] === "keep" && existing) {
 				ring.items.forEach((item, i) => this.placeItem(existing.items[i].el, item));
 				return;
 			}
@@ -523,7 +537,9 @@ export class MobileDial {
 			const from = ring.parent ?? { x: anchor.left + anchor.width / 2, y: anchor.top + anchor.height / 2 };
 			el.setCssProps({ "--neokeys-dial-from-x": `${from.x}px`, "--neokeys-dial-from-y": `${from.y}px` });
 			if (existing) {
-				existing.el.replaceWith(el);
+				// The new ring goes after the old one, so it stacks above it while the old one leaves.
+				this.retire(existing.el);
+				existing.el.after(el);
 			} else {
 				this.fanEl.appendChild(el);
 			}
@@ -534,6 +550,36 @@ export class MobileDial {
 			};
 		});
 		for (const extra of this.rings.splice(view.rings.length)) extra.el.remove();
+		if (!view.open) this.clearLeaving();
+	}
+
+	/**
+	 * Take a ring that has been swapped for another off the live rings: it animates out for as
+	 * long as a ring takes to enter (the style follows the setting) and is then removed, at once
+	 * when ring animation is off. Nothing on it is announced or hit: items never take pointer
+	 * events, and it is hidden from assistive technology.
+	 */
+	private retire(el: HTMLElement): void {
+		if (this.ringAnimationMs <= 0 || !this.layerEl.hasClass("neokeys-animate")) {
+			el.remove();
+			return;
+		}
+		// A few swaps in quick succession (a thumb sweeping along a ring) leave a few rings fading; never an unbounded pile.
+		for (const old of Array.from(this.leaving.keys()).slice(0, Math.max(0, this.leaving.size - 2))) this.dropLeaving(old);
+		el.addClass("neokeys-dial-ring-leaving");
+		el.setAttribute("aria-hidden", "true");
+		this.leaving.set(el, window.setTimeout(() => this.dropLeaving(el), this.ringAnimationMs + 60));
+	}
+
+	private dropLeaving(el: HTMLElement): void {
+		const timer = this.leaving.get(el);
+		if (timer !== undefined) window.clearTimeout(timer);
+		this.leaving.delete(el);
+		el.remove();
+	}
+
+	private clearLeaving(): void {
+		for (const el of Array.from(this.leaving.keys())) this.dropLeaving(el);
 	}
 
 	/** Re-place and restyle the items already on screen: the lens moved them, or the armed one changed. */

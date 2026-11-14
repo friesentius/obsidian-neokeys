@@ -570,13 +570,18 @@ body.theme-light .neokeys-dial {
 }
 
 /*
- * The pill's text: the path on the first line, a description on the second. The second line is
- * reserved at two lines' height whether or not it has text, so the pill's height, which the
- * rings are laid out under, never changes while the dial is open.
+ * The pill's text: the path on the first line, a description on the second. The block is as tall
+ * as the path line and two lines of description whether or not the description has text (so the
+ * pill's height, which the rings are laid out under, never changes while the dial is open), and
+ * whatever it holds, a path alone or with one or two lines of description, is centred in that
+ * height, so the text sits in the middle of the pill between its two buttons.
  */
 .neokeys-dial-pill-text {
-	display: grid;
+	display: flex;
+	flex-direction: column;
+	justify-content: center;
 	min-width: 0;
+	min-height: calc(1.3 * var(--font-ui-small) + 2 * 1.3 * var(--font-ui-smaller));
 	padding: 0 var(--size-2-1);
 }
 
@@ -621,7 +626,6 @@ body.theme-light .neokeys-dial {
 	-webkit-box-orient: vertical;
 	-webkit-line-clamp: 2;
 	overflow: hidden;
-	min-height: 2.6em;
 	max-width: 250px;
 	font-size: var(--font-ui-smaller);
 	line-height: 1.3;
@@ -722,8 +726,8 @@ body.theme-light .neokeys-dial {
 		var(--shadow-s);
 }
 
-/* On an inner ring, everything but the open group steps back; the outermost ring is the one in play. */
-.neokeys-dial-ring:not(:last-child) .neokeys-dial-item:not(.neokeys-dial-item-open):not(.neokeys-dial-item-armed) {
+/* On an inner ring, everything but the open group steps back; the outermost ring is the one in play. A ring that is leaving starts from full strength: it fades out from there rather than dimming first. */
+.neokeys-dial-ring:not(:last-child):not(.neokeys-dial-ring-leaving) .neokeys-dial-item:not(.neokeys-dial-item-open):not(.neokeys-dial-item-armed) {
 	opacity: 0.45;
 }
 
@@ -905,7 +909,7 @@ body.theme-light .neokeys-dial {
  * ring animation setting adds an entrance for a ring that opens (.neokeys-dial-ring-fade or
  * .neokeys-dial-ring-fly: the circles fly out from the group they belong to, whose centre the
  * plugin puts on the ring element); the rings already on screen keep their nodes and never
- * replay it. The entrance animates the same transform the position lives in, so it ends exactly
+ * replay it, and a ring swapped for a sibling's animates out as the new one animates in. The entrance animates the same transform the position lives in, so it ends exactly
  * where the circle belongs even if the lens moves it meanwhile.
  */
 .neokeys-dial.neokeys-animate .neokeys-dial-backdrop {
@@ -937,8 +941,31 @@ body.theme-light .neokeys-dial {
 	animation: neokeys-dial-fly var(--neokeys-anim-duration, 150ms) ease-out both;
 }
 
+/*
+ * A ring swapped for a sibling's (the thumb moved from one group to another on the ring inside)
+ * leaves while the new ring enters: it fades out, or flies back into the group it belonged to.
+ * The plugin removes it once the animation has run.
+ */
+.neokeys-dial-ring-leaving {
+	pointer-events: none;
+}
+
+.neokeys-dial.neokeys-animate.neokeys-dial-ring-fade .neokeys-dial-ring-leaving .neokeys-dial-item {
+	animation: neokeys-dial-fade-out var(--neokeys-anim-duration, 150ms) ease-in both;
+}
+
+.neokeys-dial.neokeys-animate.neokeys-dial-ring-fly .neokeys-dial-ring-leaving .neokeys-dial-item {
+	animation: neokeys-dial-fly-in var(--neokeys-anim-duration, 150ms) ease-in both;
+}
+
 @keyframes neokeys-dial-fade {
 	from {
+		opacity: 0;
+	}
+}
+
+@keyframes neokeys-dial-fade-out {
+	to {
 		opacity: 0;
 	}
 }
@@ -946,6 +973,13 @@ body.theme-light .neokeys-dial {
 @keyframes neokeys-dial-fly {
 	from {
 		opacity: 0.2;
+		transform: translate(calc(var(--neokeys-dial-from-x, var(--neokeys-dial-x)) - 50%), calc(var(--neokeys-dial-from-y, var(--neokeys-dial-y)) - 50%)) scale(0.5);
+	}
+}
+
+@keyframes neokeys-dial-fly-in {
+	to {
+		opacity: 0;
 		transform: translate(calc(var(--neokeys-dial-from-x, var(--neokeys-dial-x)) - 50%), calc(var(--neokeys-dial-from-y, var(--neokeys-dial-y)) - 50%)) scale(0.5);
 	}
 }
