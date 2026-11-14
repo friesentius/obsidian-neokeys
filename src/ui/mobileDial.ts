@@ -1,15 +1,14 @@
-import { App, Notice, Scope, setIcon } from "obsidian";
+import { App, getIcon, Notice, Scope, setIcon } from "obsidian";
 import {
 	DialController,
 	type DialArmedView,
 	type DialChange,
 	type DialHost,
 	type DialItemView,
-	type DialRingView,
 	type DialView,
 } from "../dial/controller";
 import { BUBBLE_MARGIN, cardFits, cardTop, placeBubble, type BubblePlacement, type CoveredCircle } from "../dial/description";
-import { ANCHOR_RADIUS, ringParamsFor, type DialArc, type DialGeometry, type DialLayoutMode } from "../dial/layout";
+import { ANCHOR_RADIUS, DIAL_LEGIBLE_SIZE, ringParamsFor, type DialArc, type DialGeometry, type DialLayoutMode } from "../dial/layout";
 import { diffRings } from "../dial/ringDiff";
 import { getCommandName, hasCommand } from "../obsidianCommands";
 import type { DialCorner, DialDescription, DialRadiusRule, DialRingAnimation, GroupEntry, GroupNode } from "../types";
@@ -599,8 +598,14 @@ export class MobileDial {
 			cls: `neokeys-dial-item neokeys-dial-item-${item.kind}`,
 			attr: { role: "button", "aria-label": itemAccessibleName(item) },
 		});
-		el.createSpan({ cls: "neokeys-dial-item-key", text: item.key, attr: { "aria-hidden": "true" } });
-		el.setCssProps({ "--neokeys-dial-key-scale": keyScale(item.key) });
+		// An item's icon stands in for its key on the circle; an icon Obsidian does not know (a typo, or a plugin that is off) leaves the key.
+		if (item.icon !== null && getIcon(item.icon) !== null) {
+			const iconEl = el.createSpan({ cls: "neokeys-dial-item-icon", attr: { "aria-hidden": "true" } });
+			setIcon(iconEl, item.icon);
+		} else {
+			el.createSpan({ cls: "neokeys-dial-item-key", text: item.key, attr: { "aria-hidden": "true" } });
+			el.setCssProps({ "--neokeys-dial-key-scale": keyScale(item.key) });
+		}
 		this.placeItem(el, item);
 		return el;
 	}
@@ -615,6 +620,8 @@ export class MobileDial {
 		});
 		el.toggleClass("neokeys-dial-item-armed", item.armed);
 		el.toggleClass("neokeys-dial-item-open", item.open);
+		// A circle shrunk below what a key or icon can be read at is only a dot until the lens grows it.
+		el.toggleClass("neokeys-dial-item-tiny", item.size < DIAL_LEGIBLE_SIZE);
 		el.setAttribute("aria-pressed", item.armed ? "true" : "false");
 	}
 
@@ -648,10 +655,17 @@ export class MobileDial {
 			trail.push(this.crumbsEl.createSpan({ cls: "neokeys-dial-crumb neokeys-dial-crumb-trail", text: label }));
 		});
 		let armedSepEl: HTMLElement | null = null;
+		// An item with an icon shows no key on its circle, so the pill says the key beside its name: the binding stays discoverable.
+		const keyChip = (): HTMLElement | null => (view.armed?.icon != null ? createSpan({ cls: "neokeys-dial-crumb-key", text: view.armed.key }) : null);
 		if (view.armed?.open) {
-			trail[trail.length - 1].addClass("neokeys-dial-crumb-armed");
+			const last = trail[trail.length - 1];
+			last.addClass("neokeys-dial-crumb-armed");
+			const chip = keyChip();
+			if (chip) last.before(chip);
 		} else if (view.armed) {
 			armedSepEl = this.crumbsEl.createSpan({ cls: "neokeys-dial-crumb-sep", text: "›" });
+			const chip = keyChip();
+			if (chip) this.crumbsEl.appendChild(chip);
 			this.crumbsEl.createSpan({ cls: "neokeys-dial-crumb neokeys-dial-crumb-armed", text: view.armed.label });
 		}
 		this.fitCrumbs(collapsedEl, trail, seps, armedSepEl);
@@ -755,11 +769,6 @@ export class MobileDial {
 		this.bubblePlacement = placed;
 		this.bubbleEl.setCssProps({ "--neokeys-dial-bubble-left": `${Math.round(placed.left)}px`, "--neokeys-dial-bubble-top": `${Math.round(placed.top)}px` });
 	}
-}
-
-/** The same items in the same order, by identity. */
-function sameItems(nodes: RingNodes, ring: DialRingView): boolean {
-	return nodes.items.length === ring.items.length && nodes.items.every((node, i) => node.identity === ring.items[i].identity);
 }
 
 /** A key glyph longer than a letter or two ("Esc", "Space", "Ctrl+B") is drawn smaller so it stays inside its circle. */

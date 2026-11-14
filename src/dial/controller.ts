@@ -42,8 +42,10 @@ export type DialItemKind = "group" | "command" | "file";
 
 export interface DialItemView {
 	kind: DialItemKind;
-	/** The key glyph shown on the item. */
+	/** The key glyph shown on the item (and in the pill, card and bubble when the item has an icon, which replaces it on the circle). */
 	key: string;
+	/** The item's icon id from the keymap, shown on the circle instead of the key; null when it has none. */
+	icon: string | null;
 	label: string;
 	/** What identifies the item across renders: its keymap entry. */
 	identity: GroupEntry;
@@ -72,6 +74,8 @@ export interface DialRingView {
 export interface DialArmedView {
 	kind: DialItemKind;
 	key: string;
+	/** The item's icon id from the keymap, which stands in for its key on its circle; null when it has none. The pill then shows the key itself. */
+	icon: string | null;
 	label: string;
 	/** A group that is in the path: its ring is open outside its own, or waiting for the release to open. Its crumb is the last of the trail. */
 	open: boolean;
@@ -661,6 +665,7 @@ export class DialController {
 		return {
 			kind: target.entry.node.kind,
 			key: keyGlyph(target.entry.key),
+			icon: target.entry.node.icon ?? null,
 			label: this.targetLabel(target),
 			identity: target.entry,
 			armed: sameKey(this.keyOf(index), this.armed),
@@ -681,6 +686,7 @@ export class DialController {
 		return {
 			kind: node.kind,
 			key: keyGlyph(target.entry.key),
+			icon: node.icon ?? null,
 			label: this.targetLabel(target),
 			open,
 			waiting,

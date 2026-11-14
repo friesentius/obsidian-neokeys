@@ -1043,14 +1043,20 @@ describe("DialController lens", () => {
 		controller.moveTo(itemAt(controller, "Window"));
 		const ring = controller.view().rings[1];
 		const sizes = ring.items.map((bead) => bead.size);
-		const grown = sizes.indexOf(Math.max(...sizes));
 		expect(Math.max(...sizes)).toBeGreaterThan(44);
-		expect(Math.abs(angleOf(ring.items[grown]) - angleOf(itemAt(controller, "Window")))).toBeLessThan(90 / 11);
+		// The finger's angle is within a circle's width of one of the two circles the lens grew most (the arc may shift a little to make room for them).
+		const finger = itemAt(controller, "Window");
+		const biggest = ring.items.map((bead) => bead).sort((a, b) => b.size - a.size).slice(0, 2);
+		const nearest = Math.min(...biggest.map((bead) => Math.abs(angleOf(bead) - angleOf(finger))));
+		expect(biggest[0].size).toBeGreaterThan(TAP_FOCUS_BELOW);
+		expect(nearest).toBeLessThan(90 / 11);
+		// The circles the lens does not reach, at the far end, shrink to the floor and no further: the farther from the finger, the smaller.
 		expect(sizes[11]).toBeLessThan(TAP_FOCUS_BELOW);
-		expect(sizes[11]).toBe(sizes[10]);
-		// Straight out from the finger, at its angle, is the grown bead.
-		controller.moveTo(polar(PHONE, 167, 30));
-		expect(controller.view().armed?.label).toBe(ring.items[grown].label);
+		expect(sizes[11]).toBeLessThanOrEqual(sizes[10]);
+		expect(sizes[11]).toBeGreaterThanOrEqual(BEAD_FLOOR);
+		// Straight out from the finger, at its angle, is one of the two grown beads.
+		controller.moveTo(polar(PHONE, 167, angleOf(finger)));
+		expect(biggest.map((bead) => bead.label)).toContain(controller.view().armed?.label);
 		expect(item(controller, "Window").size).toBeGreaterThan(56);
 		expect(item(controller, "Window").armed).toBe(false);
 	});
@@ -1090,7 +1096,7 @@ describe("DialController lens", () => {
 		const finger = itemAt(controller, "Window");
 		controller.moveTo(finger);
 		dragTo(controller, finger, "Split down");
-		expect(item(controller, "Split down").size).toBeGreaterThan(44);
+		expect(item(controller, "Split down").size).toBeGreaterThan(TAP_FOCUS_BELOW);
 		controller.moveTo(itemAt(controller, "File"));
 		expect(controller.view().rings[1].group.title).toBe("File");
 		controller.moveTo(itemAt(controller, "Window"));
@@ -1249,5 +1255,63 @@ describe("DialController descriptions", () => {
 		controller.release();
 		controller.pressAt(itemAt(controller, "Daily template"));
 		expect(controller.view().armed).toMatchObject({ kind: "file", label: "Daily template", description: "Templates/Daily" });
+	});
+});
+
+describe("DialController icons and bounds", () => {
+	const ICON_SOURCE = `
+items:
+  f:
+    title: File
+    icon: folder
+    items:
+      n:
+        command: file-explorer:new-file
+        icon: file-plus
+      o:
+        file: Inbox/Today
+        description: Today's inbox
+        icon: inbox
+  z: app:zoom Zoom
+`;
+
+	function iconSetup() {
+		const root = parseKeymapSource(ICON_SOURCE);
+		const { host } = makeHost();
+		host.resolveCommandName = (id) => (id === "file-explorer:new-file" ? "New file" : undefined);
+		const controller = new DialController(host, () => PHONE);
+		return { root, controller };
+	}
+
+	it("exposes each item's icon id, or null when it has none, so the dial can draw it instead of the key", () => {
+		const { root, controller } = iconSetup();
+		controller.open(root);
+		expect(item(controller, "File").icon).toBe("folder");
+		expect(item(controller, "Zoom").icon).toBeNull();
+		controller.pressAt(itemAt(controller, "File"));
+		controller.release();
+		expect(item(controller, "New file").icon).toBe("file-plus");
+		expect(item(controller, "Today's inbox").icon).toBe("inbox");
+		// The key stays on the item, which is what the pill shows beside an icon.
+		expect(item(controller, "New file").key).toBe("n");
+	});
+
+	it("exposes the armed item's icon, so the pill shows its key as a chip", () => {
+		const { root, controller } = iconSetup();
+		controller.open(root);
+		controller.pressAt(itemAt(controller, "File"));
+		controller.release();
+		controller.pressAt(itemAt(controller, "New file"));
+		expect(controller.view().armed).toMatchObject({ label: "New file", key: "n", icon: "file-plus" });
+		controller.cancelPress();
+		controller.pressAt(itemAt(controller, "Today's inbox"));
+		expect(controller.view().armed?.icon).toBe("inbox");
+	});
+
+	it("exposes the box the dial lays out in, so the description bubble can stay inside it", () => {
+		const { root, controller } = iconSetup();
+		expect(controller.view().bounds).toEqual({ left: 0, top: 0, right: 0, bottom: 0 });
+		controller.open(root);
+		expect(controller.view().bounds).toEqual(PHONE.bounds);
 	});
 });

@@ -535,10 +535,10 @@ function crowdedLayout(count: number, radius: number, peak: number, theta: numbe
 		const rested = theta - fraction * mid;
 		const needBefore = sum(least, 0, whole);
 		const needAfter = sum(least, whole + 1);
-		// Where the circle before the finger's gap sits when the finger keeps its exact place in the gap, and how far the arc may shift from there: by half the local pitch (so the finger stays inside the share of one of its gap's two circles, and a shift never puts a third circle under it), and while the circles at each end keep inside the sweep and its slack. The pitch is the average of the gaps beside a circle, blended between the gap's two circles, so the limit moves smoothly as the finger passes from one gap to the next.
+		// Where the circle before the finger's gap sits when the finger keeps its exact place in the gap, and how far the arc may shift from there: by half the local pitch (so the finger stays inside the share of one of its gap's two circles), and by no more than two thirds of the radius of the circle the lens grew (so the finger stays on it), and while the circles at each end keep inside the sweep and its slack. The pitch and the radius are blended between the gap's two circles, so the limit moves smoothly as the finger passes from one gap to the next.
 		const pitch = (i: number): number => (least[Math.max(0, i - 1)] + least[Math.min(count - 2, i)]) / 2;
-		const reach = ((1 - fraction) * pitch(whole) + fraction * pitch(whole + 1)) / 2;
-		const bound = Math.max(0, reach - Math.min(SHARE_MARGIN_DEG, reach / 2));
+		const blend = (at: (i: number) => number): number => (1 - fraction) * at(whole) + fraction * at(whole + 1);
+		const bound = Math.max(0, Math.min(blend(pitch) / 2 - SHARE_MARGIN_DEG, (blend((i) => radToDeg(sizes[i] / 2 / radius)) * 2) / 3));
 		const shiftLow = Math.max(-bound, needBefore - (rested - low));
 		const shiftHigh = Math.min(bound, high - rested - mid - needAfter);
 		if (shiftLow > shiftHigh + 1e-9) return null;

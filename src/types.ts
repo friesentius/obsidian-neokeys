@@ -10,12 +10,16 @@ export interface CommandNode {
 	kind: "command";
 	command: string;
 	description?: string;
+	/** A Lucide icon id (Obsidian's own icon set) shown on the mobile dial's circle in place of the key. */
+	icon?: string;
 }
 
 export interface FileNode {
 	kind: "file";
 	file: string;
 	description?: string;
+	/** A Lucide icon id (Obsidian's own icon set) shown on the mobile dial's circle in place of the key. */
+	icon?: string;
 }
 
 export interface GroupEntry {
@@ -28,6 +32,8 @@ export interface GroupNode {
 	kind: "group";
 	title?: string;
 	description?: string;
+	/** A Lucide icon id (Obsidian's own icon set) shown on the mobile dial's circle in place of the key. */
+	icon?: string;
 	entries: GroupEntry[];
 }
 

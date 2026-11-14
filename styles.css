@@ -359,6 +359,14 @@
 	flex-shrink: 0;
 }
 
+.neokeys-tree-icon {
+	--icon-size: var(--icon-s);
+	display: inline-flex;
+	align-items: center;
+	flex-shrink: 0;
+	color: var(--text-muted);
+}
+
 .neokeys-tree-label {
 	flex: 0 1 auto;
 	min-width: 0;
@@ -400,6 +408,27 @@
 .neokeys-entry-description-input {
 	width: 100%;
 	resize: vertical;
+}
+
+.neokeys-entry-icon-picture {
+	--icon-size: var(--icon-m);
+	display: inline-flex;
+	align-items: center;
+	margin-right: var(--size-4-2);
+	color: var(--text-muted);
+}
+
+.neokeys-icon-suggestion {
+	display: flex;
+	align-items: center;
+	gap: var(--size-4-2);
+}
+
+.neokeys-icon-suggestion-icon {
+	--icon-size: var(--icon-m);
+	display: inline-flex;
+	align-items: center;
+	color: var(--text-muted);
 }
 
 .neokeys-entry-editor-error {
@@ -615,6 +644,21 @@ body.theme-light .neokeys-dial {
 	margin: 0 var(--size-2-1);
 }
 
+/* The key of an armed item whose circle shows an icon instead, before its name: a small chip like the bubble's. */
+.neokeys-dial-crumb-key {
+	flex-shrink: 0;
+	align-self: center;
+	margin-right: var(--size-4-1);
+	padding: 0 var(--size-2-3);
+	border-radius: var(--radius-s);
+	background-color: var(--background-modifier-hover);
+	color: var(--text-accent);
+	font-family: var(--font-monospace);
+	font-weight: var(--font-bold);
+	font-size: var(--font-ui-smaller);
+	line-height: 1.3;
+}
+
 .neokeys-dial-crumb-armed {
 	min-width: 2.5em;
 	color: var(--text-accent);
@@ -705,6 +749,32 @@ body.theme-light .neokeys-dial {
 	font-weight: var(--font-semibold);
 	font-size: max(10px, calc(var(--neokeys-dial-size) * 0.36 * var(--neokeys-dial-key-scale, 1)));
 	line-height: 1;
+}
+
+/*
+ * An item's icon (the keymap's icon field) stands in for its key: a Lucide icon at about half the
+ * circle, sized from the same custom property the lens drives, so it grows and shrinks with the
+ * circle. Obsidian sizes an icon from --icon-size and --icon-stroke.
+ */
+.neokeys-dial-item-icon {
+	--icon-size: calc(var(--neokeys-dial-size) * 0.5);
+	--icon-stroke: 2px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	color: inherit;
+}
+
+.neokeys-dial-item-icon svg {
+	width: var(--icon-size);
+	height: var(--icon-size);
+	flex-shrink: 0;
+}
+
+/* A circle too small for its key or icon to be read (a far circle on a crowded ring) is a dot: it shows neither until the lens grows it. */
+.neokeys-dial-item-tiny .neokeys-dial-item-key,
+.neokeys-dial-item-tiny .neokeys-dial-item-icon {
+	visibility: hidden;
 }
 
 /* A group's circle is rimmed and lettered in the accent, so a ring reads at a glance as groups and commands. */
