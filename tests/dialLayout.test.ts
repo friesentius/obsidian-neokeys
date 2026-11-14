@@ -13,8 +13,10 @@ import {
 	fixedFirstRadius,
 	hitTest,
 	ITEM_GAP,
+	LEAST_DIAL_ITEM_SIZE,
 	lensFocus,
 	lensLayout,
+	type LensLayout,
 	MAX_DIAL_ITEM_SIZE,
 	MAX_LENS_PEAK,
 	MIN_DIAL_ITEM_SIZE,
@@ -26,6 +28,7 @@ import {
 	ringArcs,
 	ringCapacity,
 	ringParamsFor,
+	ringPitch,
 	ringSlots,
 	ringStep,
 	ringUnder,
@@ -75,13 +78,8 @@ function raised(geometry: DialGeometry): DialGeometry {
 	return { ...geometry, bounds: { ...geometry.bounds, top: geometry.bounds.top - HEADER } };
 }
 
-/** The same phone with the rings allowed up behind the pill, to its top edge. */
-function overlap(geometry: DialGeometry): DialGeometry {
-	return { ...geometry, bounds: { ...geometry.bounds, top: geometry.bounds.top - HEADER - PILL_HEIGHT + 8 } };
-}
-
 function measureFor(geometry: DialGeometry): (mode: DialLayoutMode) => DialGeometry {
-	return (mode) => (mode === "normal" ? geometry : mode === "raised" ? raised(geometry) : overlap(geometry));
+	return (mode) => (mode === "normal" ? geometry : raised(geometry));
 }
 
 /** Rings and slots for `counts`, with the lens of each ring at `focus[ring]` (or at rest). */
@@ -107,16 +105,41 @@ function expectInsideBounds(geometry: DialGeometry, params: DialRingParams, coun
 	});
 }
 
-/** No two circles on the same ring closer than their radii plus `gap`. */
-function expectApart(geometry: DialGeometry, params: DialRingParams, counts: number[], focus: (number | null)[], gap: number): void {
+/** No two circles on the same ring closer than their radii plus `gap`, nor on different rings closer than their radii plus `ringGap`. */
+function expectApart(geometry: DialGeometry, params: DialRingParams, counts: number[], focus: (number | null)[], gap: number, ringGap = gap): void {
 	const { slots, points } = placed(geometry, params, counts, focus);
 	for (let i = 0; i < points.length; i++) {
 		for (let j = i + 1; j < points.length; j++) {
-			if (slots[i].ring !== slots[j].ring) continue;
 			const distance = Math.hypot(points[i].x - points[j].x, points[i].y - points[j].y);
-			expect(distance).toBeGreaterThanOrEqual((slots[i].size + slots[j].size) / 2 + gap - 1e-6);
+			expect(distance).toBeGreaterThanOrEqual((slots[i].size + slots[j].size) / 2 + (slots[i].ring === slots[j].ring ? gap : ringGap) - 1e-6);
 		}
 	}
+}
+
+/** The circle whose share of the arc (half way to each neighbour) `theta` falls in. */
+function onShare(layout: LensLayout, theta: number): number {
+	const count = layout.angles.length;
+	for (let i = 0; i < count; i++) {
+		const high = i < count - 1 ? (layout.angles[i] + layout.angles[i + 1]) / 2 : Number.POSITIVE_INFINITY;
+		if (theta <= high + 1e-6) return i;
+	}
+	return count - 1;
+}
+
+/** The first pair of circles in `layout` (on a ring of `radius`) closer than their radii plus `gap`, described, or null. */
+function overlapIn(layout: LensLayout, radius: number, gap: number): string | null {
+	const count = layout.angles.length;
+	const describe = (i: number): string => `${i} (${layout.sizes[i].toFixed(1)}px at ${layout.angles[i].toFixed(1)}°${layout.offsets[i] ? ` ${layout.offsets[i].toFixed(1)}` : ""}, w ${layout.weights[i].toFixed(2)})`;
+	for (let i = 0; i < count; i++) {
+		for (let j = i + 1; j < count; j++) {
+			const a = { r: radius + layout.offsets[i], t: (layout.angles[i] * Math.PI) / 180 };
+			const b = { r: radius + layout.offsets[j], t: (layout.angles[j] * Math.PI) / 180 };
+			const distance = Math.hypot(a.r * Math.cos(a.t) - b.r * Math.cos(b.t), a.r * Math.sin(a.t) - b.r * Math.sin(b.t));
+			const needed = (layout.sizes[i] + layout.sizes[j]) / 2 + gap;
+			if (distance < needed - 1e-6) return `${describe(i)} and ${describe(j)} are ${distance.toFixed(2)} apart, need ${needed.toFixed(2)}`;
+		}
+	}
+	return null;
 }
 
 const PHONE = phone(390, 844, "bottom-right", 0, 47);
@@ -157,18 +180,31 @@ describe("the sizes and rules on offer", () => {
 		expect(ringParamsFor(52, { peak: 1.25, rule: "fit" })).toEqual({ itemSize: 52, gap: ITEM_GAP, ringGap: RING_GAP, peak: 1.25, rule: "fit" });
 	});
 
-	it("start the fit rule's first ring one ring gap and half an item outside the anchor's rim, and step one item plus one ring gap per ring", () => {
+	it("start the fit rule's first ring one ring gap and half an item outside the anchor's rim", () => {
 		expect(firstRadius(FIT)).toBe(ANCHOR_RADIUS + RING_GAP + 22);
-		expect(ringStep(FIT)).toBe(54);
 	});
 
-	it("put the fixed rule's first ring where a four-item root fits: 97px at 44px, then 151 and 205", () => {
+	it("step the rings one item plus one ring gap apart, or a lens peak plus a lens gap when that is more, so two grown circles on neighbouring rings never meet: 70 at 44px and 1.5", () => {
+		expect(ringStep(FIT)).toBe(70);
+		expect(ringStep(FIXED)).toBe(70);
+		expect(ringStep(ringParamsFor(44, { peak: 1 }))).toBe(54);
+		expect(ringStep(ringParamsFor(44, { peak: 1.1 }))).toBe(54);
+		expect(ringStep(ringParamsFor(44, { peak: 1.25 }))).toBeCloseTo(59);
+		expect(ringStep(ringParamsFor(40))).toBe(64);
+		expect(ringStep(ringParamsFor(56))).toBe(88);
+		for (const peak of [1, 1.1, 1.2, 1.25, 1.3, 1.4, 1.5]) {
+			const params = ringParamsFor(44, { peak });
+			expect(ringStep(params) - 44 * peak).toBeGreaterThanOrEqual(Math.min(RING_GAP, 4) - 1e-9);
+		}
+	});
+
+	it("put the fixed rule's first ring where a four-item root fits: 97px at 44px, then 167 and 237", () => {
 		expect(fixedFirstRadius(FIXED)).toBe(97);
 		expect(fixedFirstRadius(ringParamsFor(40))).toBe(89);
 		expect(fixedFirstRadius(ringParamsFor(56))).toBe(120);
 		expect(ringCapacity(120, 56, 6)).toBe(4);
 		expect(ringCapacity(119, 56, 6)).toBe(3);
-		expect(planRings(PHONE, FIXED, [4, 5, 9]).map((ring) => ring.radius)).toEqual([97, 151, 205]);
+		expect(planRings(PHONE, FIXED, [4, 5, 9]).map((ring) => ring.radius)).toEqual([97, 167, 237]);
 	});
 });
 
@@ -193,15 +229,15 @@ describe("the lens peak against the screen", () => {
 
 describe("planRings", () => {
 	it("under the fixed rule puts every ring at its fixed radius whatever its level holds", () => {
-		expect(planRings(PHONE, FIXED, [1, 1, 1]).map((ring) => ring.radius)).toEqual([97, 151, 205]);
-		expect(planRings(PHONE, FIXED, [12, 25, 2]).map((ring) => ring.radius)).toEqual([97, 151, 205]);
+		expect(planRings(PHONE, FIXED, [1, 1, 1]).map((ring) => ring.radius)).toEqual([97, 167, 237]);
+		expect(planRings(PHONE, FIXED, [12, 25, 2]).map((ring) => ring.radius)).toEqual([97, 167, 237]);
 		expect(planRings(PHONE, FIXED, [4]).map((ring) => ring.capacity)).toEqual([4]);
 	});
 
 	it("under the fit rule gives each level the smallest ring that holds it, at least a step outside the ring inside", () => {
 		const rings = planRings(PHONE, FIT, [4, 5, 9]);
-		expect(rings.map((ring) => ring.radius)).toEqual([97, 151, 256]);
-		expect(rings.map((ring) => ring.capacity)).toEqual([4, 5, 9]);
+		expect(rings.map((ring) => ring.radius)).toEqual([97, 167, 256]);
+		expect(rings.map((ring) => ring.capacity)).toEqual([4, 6, 9]);
 	});
 
 	it("keeps a ring's radius whatever opens outside it, so nothing moves when a deeper level opens", () => {
@@ -221,15 +257,15 @@ describe("planRings", () => {
 	});
 
 	it("stops at the first level whose ring would not fit at all", () => {
-		expect(planRings(PHONE, FIXED, [4, 5, 9, 9, 9, 9, 9])).toHaveLength(5);
+		expect(planRings(PHONE, FIXED, [4, 5, 9, 9, 9, 9, 9])).toHaveLength(4);
 		expect(planRings(PHONE, FIT, [4, 5, 9, 9, 9, 9, 9]).length).toBeLessThan(7);
 	});
 
 	it("is limited by whichever of width and height is tighter", () => {
 		const wide = planRings(phone(1000, 844, "bottom-right", 0, 47), FIXED, [4, 5, 9, 9, 9, 9, 9, 9]);
 		const tall = planRings(phone(390, 2000, "bottom-right", 0, 47), FIXED, [4, 5, 9, 9, 9, 9, 9, 9]);
-		expect(wide.length).toBeGreaterThan(5);
-		expect(tall).toHaveLength(5);
+		expect(wide.length).toBeGreaterThan(4);
+		expect(tall).toHaveLength(4);
 	});
 
 	it("gives a screen that cannot hold even one ring none", () => {
@@ -322,75 +358,104 @@ describe("lensLayout under the finger", () => {
 		expect(end.angles[2]).toBeLessThanOrEqual(90 + 1e-6);
 	});
 
-	it("lets a full innermost ring give a little all round rather than grow the lens less, keeping the arc inside the sweep", () => {
+	it("on a full innermost ring closes the other gap, runs the arc past the sweep's ends, and only then grows the lens less, never overlapping", () => {
 		const layout = lensLayout(4, 4, 97, FIXED, 66, 1 / 3);
-		expect(layout.sizes[1]).toBeCloseTo(66);
-		expect(layout.angles[0]).toBeGreaterThanOrEqual(0);
-		expect(layout.angles[3]).toBeLessThanOrEqual(90 + 1e-6);
-		expect(layout.angles[3] - layout.angles[0]).toBeCloseTo(90, 5);
+		expect(layout.growth).toBeGreaterThan(0.6);
+		expect(layout.growth).toBeLessThan(1);
+		expect(layout.sizes[1]).toBeCloseTo(44 + 22 * layout.growth);
+		expect(layout.sizes[0]).toBeCloseTo(44 + (22 * layout.growth) / 3);
+		expect(layout.angles[1]).toBeCloseTo(30, 0);
+		expect(layout.angles[0]).toBeCloseTo(-4, 3);
+		expect(layout.angles[3]).toBeCloseTo(94, 3);
+		expect(overlapIn(layout, 97, 2 - 1e-6)).toBeNull();
+		// At the end of the sweep the whole lens fits: the gaps after it close up and the arc runs a little past the far end.
+		const end = lensLayout(4, 4, 97, FIXED, 66, 0);
+		expect(end.growth).toBe(1);
+		expect(end.sizes[0]).toBe(66);
+		expect(end.angles[0]).toBeGreaterThanOrEqual(-2);
+		expect(end.angles[0]).toBeLessThanOrEqual(0);
+		expect(end.angles[3]).toBeLessThanOrEqual(94 + 1e-6);
+		expect(overlapIn(end, 97, 2 - 1e-6)).toBeNull();
+		// With a finger-sized room beside the anchor the end circles may not run past the ends as far, so the lens grows a little less.
+		const tight = lensLayout(4, 4, 97, FIXED, 60, 1 / 3, 30);
+		expect(tight.growth).toBeGreaterThan(0.6);
+		expect(tight.angles[0]).toBeGreaterThanOrEqual(-4 - 1e-6);
+		expect(overlapIn(tight, 97, 2 - 1e-6)).toBeNull();
 	});
 
-	it("anchors the circle under the finger under it on a crowded ring: the finger stays in the share of the circle it grew, and the arc stays on the sweep", () => {
+	it("anchors the circle under the finger under it on a crowded ring: the finger stays on one of the two circles it grew most, the beads it has passed pile two deep, and the arc stays on the sweep", () => {
 		for (const focus of SWEEP) {
-			const layout = lensLayout(12, 5, 151, FIXED, 66, focus, 36);
+			const layout = lensLayout(12, 6, 167, FIXED, 66, focus, 36);
 			const theta = focus * 90;
+			const position = theta / ringPitch(12, 6);
 			const nearest = layout.weights.indexOf(Math.max(...layout.weights));
-			const low = nearest > 0 ? (layout.angles[nearest - 1] + layout.angles[nearest]) / 2 : -90;
-			const high = nearest < 11 ? (layout.angles[nearest + 1] + layout.angles[nearest]) / 2 : 180;
-			// Right at an end, with the finger between the last two circles, the arc has to shift over the finger's place and the two, near enough the same size, may swap shares; elsewhere the circle the finger grew is the one it is on.
-			if (focus >= 0.1 && focus <= 0.9) {
-				expect(theta).toBeGreaterThanOrEqual(low - 1e-6);
-				expect(theta).toBeLessThanOrEqual(high + 1e-6);
-			}
+			const hit = onShare(layout, theta);
+			// The finger is on one of the two circles of the gap it is in (the two the lens grew most); mid-ring, where the beads on either side have room to pile, on the one it grew most.
+			expect(Math.abs(hit - position)).toBeLessThanOrEqual(1 + 1e-9);
+			if (focus >= 0.3 && focus <= 0.7) expect(hit).toBe(nearest);
 			if (focus >= 0.45 && focus <= 0.55) {
 				expect(layout.angles[0]).toBeCloseTo(0, 5);
 				expect(layout.angles[11]).toBeCloseTo(90, 5);
 			}
 			expect(layout.angles[0]).toBeGreaterThanOrEqual(-4 - 1e-6);
 			expect(layout.angles[11]).toBeLessThanOrEqual(94 + 1e-6);
-			// The lens never grows less for want of room: the beads the finger has passed give way instead.
+			// The lens grows the whole way: the beads the finger has passed give way instead, two deep.
+			expect(layout.growth).toBe(1);
 			layout.sizes.forEach((size, i) => expect(size).toBeCloseTo(layout.base + (66 - layout.base) * layout.weights[i]));
 			expect(Math.max(...layout.sizes)).toBeGreaterThan(48);
+			expect(overlapIn(layout, 167, 2 - 1e-6)).toBeNull();
 		}
 	});
 
-	it("never lets a ring at rest overlap, nor the circle under the finger overlap the circle beyond it, nor the lens overlap anything mid-ring", () => {
-		// On the root ring the lens at its peak is wider than half the sweep, so only the circle under the finger keeps the one beyond it clear; the wider rings keep the whole lens clear mid-ring.
-		const cases: { count: number; radius: number; mid: [number, number] | null }[] = [
-			{ count: 12, radius: 151, mid: [0.3, 0.7] },
-			{ count: 9, radius: 205, mid: [0.3, 0.7] },
-			{ count: 25, radius: 151, mid: [0.3, 0.7] },
-			{ count: 25, radius: 205, mid: [0.3, 0.7] },
-			{ count: 5, radius: 97, mid: null },
-			{ count: 8, radius: 97, mid: null },
-			{ count: 16, radius: 97, mid: null },
-		];
+	it("never lets two circles on a ring overlap, at rest or with the finger anywhere, for any level its ring holds two deep, at any size and peak, and keeps the finger on the circle it grew", () => {
 		const violations: string[] = [];
-		for (const { count, radius, mid } of cases) {
-			const capacity = ringCapacity(radius, 44, 6);
-			for (const focus of [null, ...SWEEP]) {
-				const layout = lensLayout(count, capacity, radius, FIXED, 66, focus, 36);
-				for (let i = 0; i < count; i++) {
-					for (let j = i + 1; j < count; j++) {
-						const a = { r: radius + layout.offsets[i], t: (layout.angles[i] * Math.PI) / 180 };
-						const b = { r: radius + layout.offsets[j], t: (layout.angles[j] * Math.PI) / 180 };
-						const distance = Math.hypot(a.r * Math.cos(a.t) - b.r * Math.cos(b.t), a.r * Math.sin(a.t) - b.r * Math.sin(b.t));
-						const needed = (layout.sizes[i] + layout.sizes[j]) / 2 + 2;
-						// Toward an end, the beads between the finger and that end give way, piling up or slipping under the grown circle; a bead at the lens's edge, grown less than halfway, may still sit in its pile; everything else stays apart.
-						if (focus !== null) {
-							const under = layout.weights.indexOf(Math.max(...layout.weights));
-							const away = focus < 0.5 ? under + 1 : under - 1;
-							const midRing = mid !== null && focus > mid[0] && focus < mid[1];
-							const lensPair = layout.weights[i] > 0 && layout.weights[j] > 0 && Math.max(layout.weights[i], layout.weights[j]) >= 0.5;
-							const keyPair = (i === under && j === away) || (j === under && i === away);
-							if (!keyPair && !(midRing && lensPair)) continue;
+		const grid = Array.from({ length: 41 }, (_, i) => i / 40);
+		for (const itemSize of [40, 44, 56]) {
+			for (const peakFactor of [1, 1.25, 1.5]) {
+				const params = ringParamsFor(itemSize, { peak: peakFactor });
+				const peak = peakSize(PHONE, params);
+				for (const { radius, capacity } of planRings(PHONE, params, [4, 5, 9])) {
+					// Up to what the ring holds two deep at the floor size, the inner row (stepped in as far as the band allows) being the tighter; more beads than that overlap by necessity.
+					const inner = radius - Math.max(0, Math.min(ringStep(params) / 2, peak / 2) - BEAD_FLOOR / 2);
+					const twoDeepPitch = (Math.asin((BEAD_FLOOR + 2) / (2 * inner)) * 180) / Math.PI;
+					const most = Math.min(25, 1 + Math.floor(90 / twoDeepPitch + 1e-9));
+					for (let count = 1; count <= most; count++) {
+						for (const focus of [null, ...grid]) {
+							const layout = lensLayout(count, capacity, radius, params, peak, focus, 36);
+							const bad = overlapIn(layout, radius, 2 - 0.01);
+							if (bad) violations.push(`${count} at ${itemSize}px, peak ${peakFactor}, on r${radius} at focus ${focus}: ${bad}`);
+							if (focus !== null && count > 1 && violations.length < 5) {
+								// Within the arc the finger is on one of the two circles of the gap it is in, the two the lens grew most: a shift toward an end never puts a third circle under it.
+								const theta = focus * 90;
+								const rest0 = layout.crowded ? 0 : slotAngle(0, count, capacity);
+								const position = (theta - rest0) / ringPitch(count, capacity);
+								if (position >= 0 && position <= count - 1) {
+									const hit = onShare(layout, theta);
+									if (Math.abs(hit - position) > 1 + 1e-9) violations.push(`${count} at ${itemSize}px, peak ${peakFactor}, on r${radius} at focus ${focus}: the finger at ${theta.toFixed(1)}° (position ${position.toFixed(2)}) is on circle ${hit} (w ${layout.weights[hit].toFixed(2)}), not one of the two it grew`);
+								}
+							}
 						}
-						if (distance < needed - 0.01) violations.push(`${count} on r${radius} at focus ${focus}: ${i} (${layout.sizes[i].toFixed(1)}px at ${layout.angles[i].toFixed(1)}°${layout.offsets[i] ? ` ${layout.offsets[i].toFixed(1)}` : ""}, w ${layout.weights[i].toFixed(2)}) and ${j} (${layout.sizes[j].toFixed(1)}px at ${layout.angles[j].toFixed(1)}°${layout.offsets[j] ? ` ${layout.offsets[j].toFixed(1)}` : ""}, w ${layout.weights[j].toFixed(2)}) are ${distance.toFixed(1)} apart, need ${needed.toFixed(1)}`);
 					}
 				}
 			}
 		}
 		expect(violations.slice(0, 5)).toEqual([]);
+	});
+
+	it("never lets a circle on one ring reach a circle on the next, whatever the lenses of the two rings do: the step keeps the lens gap between two grown circles", () => {
+		for (const params of [FIXED, ringParamsFor(56), ringParamsFor(40, { peak: 1.25 }), ringParamsFor(44, { peak: 1 })]) {
+			for (const counts of [
+				[4, 5, 9],
+				[4, 12, 9],
+				[12, 25, 25],
+			]) {
+				for (const inner of [null, 0, 0.3, 0.5, 0.7, 1]) {
+					for (const outer of [null, 0, 0.3, 0.5, 0.7, 1]) {
+						expectApart(PHONE, params, counts, [inner, outer, inner], 2 - 1e-6, 4 - 1e-6);
+					}
+				}
+			}
+		}
 	});
 
 	it("at a peak of 1 grows nothing on a ring that fits and only brings beads back to full size", () => {
@@ -438,7 +503,7 @@ describe("item placement on real phone sizes", () => {
 
 	it("walks the default keymap's deepest path (root, Text, Heading) on three fixed rings on a 390px phone, keyboard up or down", () => {
 		for (const geometry of [phone(390, 844, "bottom-right", 0, 47), phone(390, 844, "bottom-right", TOOLBAR + 300, 47)]) {
-			expect(planRings(geometry, FIXED, [4, 5, 9]).map((ring) => ring.radius)).toEqual([97, 151, 205]);
+			expect(planRings(geometry, FIXED, [4, 5, 9]).map((ring) => ring.radius)).toEqual([97, 167, 237]);
 			expect(fittingFrom(geometry, FIXED, [4, 5, 9])).toBe(0);
 		}
 	});
@@ -492,9 +557,32 @@ describe("chooseMode", () => {
 		expect(measured).toEqual(["normal", "raised", "normal"]);
 	});
 
-	it("lets the rings reach up behind the pill only when not even the root ring fits under the raised pill", () => {
+	it("shrinks the dial, never reaching behind the pill, when not even the root ring fits under the raised pill: the largest circles whose first ring fits between the pill and the anchor", () => {
 		const geometry = phone(390, 300, "bottom-right", TOOLBAR, 20);
-		expect(chooseMode(1000, measureFor(geometry), FIXED).mode).toBe("overlap");
+		const chosen = chooseMode(1000, measureFor(geometry), FIXED);
+		expect(chosen.mode).toBe("raised");
+		expect(chosen.geometry).toEqual(raised(geometry));
+		const { itemSize } = chosen.params;
+		expect(itemSize).toBeLessThan(44);
+		expect(itemSize).toBeGreaterThanOrEqual(LEAST_DIAL_ITEM_SIZE);
+		expect(chosen.params).toEqual({ ...FIXED, itemSize });
+		expect(fixedFirstRadius(chosen.params)).toBeLessThanOrEqual(fanReach(chosen.geometry, chosen.params));
+		const larger = { ...chosen.params, itemSize: itemSize + 1 };
+		expect(fixedFirstRadius(larger)).toBeGreaterThan(fanReach(chosen.geometry, larger));
+		expect(planRings(chosen.geometry, chosen.params, [4, 6, 9])).toHaveLength(1);
+		for (const focus of [null, 0, 0.5, 1]) {
+			expectInsideBounds(chosen.geometry, chosen.params, [9], [focus]);
+			expectApart(chosen.geometry, chosen.params, [9], [focus], 2 - 1e-6);
+		}
+		// Under the fit rule the first ring sits closer in and still fits here, so nothing shrinks.
+		expect(chooseMode(1000, measureFor(geometry), FIT)).toMatchObject({ mode: "raised", params: FIT });
+	});
+
+	it("gives a screen too short even for the smallest dial no ring at all, rather than one behind the pill", () => {
+		const geometry = phone(390, 200, "bottom-right", TOOLBAR, 20);
+		const chosen = chooseMode(1000, measureFor(geometry), FIXED);
+		expect(chosen.params.itemSize).toBe(LEAST_DIAL_ITEM_SIZE);
+		expect(planRings(chosen.geometry, chosen.params, [4])).toEqual([]);
 	});
 
 	it("measures the chosen mode last, so the mode in effect is the one measured", () => {
@@ -510,8 +598,8 @@ describe("chooseMode", () => {
 
 describe("naturalReach", () => {
 	it("under the fixed rule is the last ring's fixed radius, however many items the levels hold", () => {
-		expect(naturalReach(FIXED, [4, 5, 9])).toBe(205);
-		expect(naturalReach(FIXED, [25, 25, 25])).toBe(205);
+		expect(naturalReach(FIXED, [4, 5, 9])).toBe(237);
+		expect(naturalReach(FIXED, [25, 25, 25])).toBe(237);
 		expect(naturalReach(FIXED, [4])).toBe(97);
 		expect(naturalReach(FIXED, [])).toBe(0);
 	});
@@ -558,10 +646,10 @@ describe("ringUnder and lensFocus", () => {
 
 	it("picks the ring by radial band, none inside the dead zone or beyond the reach", () => {
 		expect(ringUnder(at(97, 45), PHONE, rings, slots)).toBe(0);
-		expect(ringUnder(at(123, 45), PHONE, rings, slots)).toBe(0);
-		expect(ringUnder(at(125, 45), PHONE, rings, slots)).toBe(1);
-		expect(ringUnder(at(190, 45), PHONE, rings, slots)).toBe(1);
-		expect(ringUnder(at(200, 45), PHONE, rings, slots)).toBeNull();
+		expect(ringUnder(at(131, 45), PHONE, rings, slots)).toBe(0);
+		expect(ringUnder(at(133, 45), PHONE, rings, slots)).toBe(1);
+		expect(ringUnder(at(210, 45), PHONE, rings, slots)).toBe(1);
+		expect(ringUnder(at(215, 45), PHONE, rings, slots)).toBeNull();
 		expect(ringUnder(at(20, 45), PHONE, rings, slots)).toBeNull();
 	});
 
@@ -596,8 +684,8 @@ describe("hitTest", () => {
 	});
 
 	it("still arms the outer ring when the pointer overshoots it a little, but not by a lot", () => {
-		expect(hitTest(at(151 + 40, 45), PHONE, rings, slots)).toBe(6);
-		expect(hitTest(at(151 + 50, 45), PHONE, rings, slots)).toBeNull();
+		expect(hitTest(at(167 + 40, 45), PHONE, rings, slots)).toBe(6);
+		expect(hitTest(at(167 + 50, 45), PHONE, rings, slots)).toBeNull();
 	});
 
 	it("arms nothing far from the rings, so a tap elsewhere can cancel", () => {
@@ -633,9 +721,9 @@ describe("hitTest", () => {
 
 	it("lets the end slots of a partly used ring own a little of the arc beside them, not all of it", () => {
 		const partial = placed(PHONE, FIXED, [4, 2]);
-		expect(partial.slots.filter((slot) => slot.ring === 1).map((slot) => slot.angleDeg)).toEqual([33.75, 56.25]);
-		expect(hitTest(at(151, 20), PHONE, partial.rings, partial.slots)).toBe(4);
-		expect(hitTest(at(151, 10), PHONE, partial.rings, partial.slots)).toBeNull();
+		expect(partial.slots.filter((slot) => slot.ring === 1).map((slot) => slot.angleDeg)).toEqual([36, 54]);
+		expect(hitTest(at(167, 22), PHONE, partial.rings, partial.slots)).toBe(4);
+		expect(hitTest(at(167, 16), PHONE, partial.rings, partial.slots)).toBeNull();
 	});
 
 	it("arms nothing more than half a slot pitch past a lone item, so a tap on blank space inside the fan cancels", () => {
@@ -680,12 +768,15 @@ describe("hitTest", () => {
 
 	it("measures the armed inner circle at its grown size, so the finger that grew it stays on it, but a grown sibling only at the item size, so a thumb heading out does not catch it", () => {
 		const grown = placed(PHONE, FIXED, [4, 5], [1 / 3, null]);
-		expect(grown.slots[1].size).toBeCloseTo(66);
-		expect(grown.slots[0].size).toBeCloseTo(44 + 22 / 3);
+		// The full root ring has room for most of the lens, not all of it (see the lens tests).
+		expect(grown.slots[1].size).toBeGreaterThan(56);
+		expect(grown.slots[0].size).toBeCloseTo(44 + (grown.slots[1].size - 44) / 3);
 		expect(hitTest(at(97 + 30, 30), PHONE, grown.rings, grown.slots, undefined, undefined, 1)).toBe(1);
 		expect(hitTest(at(97 + 30, 30), PHONE, grown.rings, grown.slots)).not.toBe(1);
-		expect(hitTest(at(97 + 26.5, 0), PHONE, grown.rings, grown.slots)).toBeNull();
-		expect(hitTest(at(97 + 25, 0), PHONE, grown.rings, grown.slots)).toBe(0);
+		const sibling = grown.points[0];
+		const outward = (distance: number) => ({ x: sibling.x + ((sibling.x - PHONE.anchor.x) / 97) * distance, y: sibling.y + ((sibling.y - PHONE.anchor.y) / 97) * distance });
+		expect(hitTest(outward(26.5), PHONE, grown.rings, grown.slots)).toBeNull();
+		expect(hitTest(outward(25), PHONE, grown.rings, grown.slots)).toBe(0);
 	});
 });
 

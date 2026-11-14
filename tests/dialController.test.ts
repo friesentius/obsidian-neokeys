@@ -1,5 +1,5 @@
 import { DialController, type DialHost } from "../src/dial/controller";
-import { BEAD_FLOOR, DEFAULT_RING_PARAMS, edgeRoom, peakSize, planRings, ringParamsFor, ringSlots, slotPosition, TAP_FOCUS_BELOW, type DialGeometry } from "../src/dial/layout";
+import { BEAD_FLOOR, DEFAULT_RING_PARAMS, edgeRoom, LEAST_DIAL_ITEM_SIZE, peakSize, planRings, ringParamsFor, ringSlots, ringStep, slotPosition, TAP_FOCUS_BELOW, type DialGeometry } from "../src/dial/layout";
 import { parseKeymapSource } from "../src/keymap";
 
 const SOURCE = `
@@ -111,14 +111,14 @@ function makeHost() {
 	return { host, calls };
 }
 
-function setup(geometry: DialGeometry = PHONE, raisedGeometry: DialGeometry = geometry, overlapGeometry: DialGeometry = raisedGeometry) {
+function setup(geometry: DialGeometry = PHONE, raisedGeometry: DialGeometry = geometry) {
 	const root = parseKeymapSource(SOURCE);
 	const { host, calls } = makeHost();
 	const changes: string[] = [];
 	const measured: string[] = [];
 	const controller = new DialController(host, (mode) => {
 		measured.push(mode);
-		return mode === "normal" ? geometry : mode === "raised" ? raisedGeometry : overlapGeometry;
+		return mode === "normal" ? geometry : raisedGeometry;
 	});
 	controller.onChange((change) => changes.push(change));
 	return { root, host, calls, changes, measured, controller };
@@ -347,7 +347,7 @@ describe("DialController dragging", () => {
 		controller.moveTo(itemAt(controller, "File"));
 		const view = controller.view();
 		expect(view.rings).toHaveLength(2);
-		expect(view.rings[1]).toMatchObject({ level: 1, radius: 151, parent: itemAt(controller, "File") });
+		expect(view.rings[1]).toMatchObject({ level: 1, radius: 167, parent: itemAt(controller, "File") });
 		expect(view.rings[1].items.map((item) => item.label)).toEqual(["Templates", "Today's inbox", "New file"]);
 		expect(view.rings[0].items.map((item) => item.open)).toEqual([true, false, false, false]);
 		expect(view.crumbs).toEqual(["File"]);
@@ -371,7 +371,7 @@ describe("DialController dragging", () => {
 		controller.moveTo(itemAt(controller, "File"));
 		controller.moveTo(itemAt(controller, "Templates"));
 		expect(controller.view().rings).toHaveLength(3);
-		expect(controller.view().rings.map((ring) => ring.radius)).toEqual([97, 151, 205]);
+		expect(controller.view().rings.map((ring) => ring.radius)).toEqual([97, 167, 237]);
 		expect(controller.view().rings[2].items.map((item) => item.label)).toEqual(["Daily template"]);
 		expect(controller.view().crumbs).toEqual(["File", "Templates"]);
 		controller.moveTo(itemAt(controller, "Daily template"));
@@ -408,7 +408,7 @@ describe("DialController dragging", () => {
 		controller.pressAnchor(root);
 		controller.moveTo(itemAt(controller, "Window"));
 		const radius = controller.view().rings[0].radius;
-		expect(controller.view().rings[1].radius).toBe(radius + 54);
+		expect(controller.view().rings[1].radius).toBe(radius + ringStep(DEFAULT_RING_PARAMS));
 		// Between File (at 0 degrees) and Window on the root ring, outside both circles even grown by the lens, nothing is armed and Window's ring stays.
 		controller.moveTo(inGap(PHONE, radius, 12));
 		expect(controller.view().armed).toBeNull();
@@ -622,7 +622,7 @@ describe("DialController committing", () => {
 		controller.pressAt(itemAt(controller, "Window"));
 		controller.release();
 		const ring = controller.view().rings[1];
-		expect(ring.radius).toBe(151);
+		expect(ring.radius).toBe(167);
 		expect(ring.items).toHaveLength(12);
 		const sizes = ring.items.map((bead) => bead.size);
 		expect(Math.max(...sizes)).toBeLessThan(TAP_FOCUS_BELOW);
@@ -751,10 +751,9 @@ describe("DialController on a screen with no room", () => {
 describe("DialController pill mode", () => {
 	const normal: DialGeometry = { corner: "bottom-right", anchor: { x: 350, y: 300 }, bounds: { left: 4, top: 100, right: 386, bottom: 336 } };
 	const raised: DialGeometry = { ...normal, bounds: { ...normal.bounds, top: 56 } };
-	const overlap: DialGeometry = { ...normal, bounds: { ...normal.bounds, top: 12 } };
 
 	it("raises the pill when the keymap's deepest path would not fit under it, and keeps it there while rings open", () => {
-		const { root, controller, measured } = setup(normal, raised, overlap);
+		const { root, controller, measured } = setup(normal, raised);
 		controller.pressAnchor(root);
 		expect(controller.view().mode).toBe("raised");
 		expect(measured).toEqual(["normal", "raised"]);
@@ -786,15 +785,33 @@ describe("DialController pill mode", () => {
 		expect(measured).toEqual(["normal", "raised", "normal"]);
 	});
 
-	it("lets the rings reach up behind the pill when not even the root ring fits under it raised", () => {
+	it("shrinks the dial, keeping the pill raised and nothing behind it, when not even the root ring fits under the raised pill", () => {
+		// 100px between the raised pill and the anchor's centre: room for a first ring of smaller circles, none for 44px ones.
 		const short: DialGeometry = { corner: "bottom-right", anchor: { x: 350, y: 160 }, bounds: { left: 4, top: 130, right: 386, bottom: 196 } };
-		const shortRaised: DialGeometry = { ...short, bounds: { ...short.bounds, top: 100 } };
-		const shortOverlap: DialGeometry = { ...short, bounds: { ...short.bounds, top: 20 } };
-		const { root, controller, measured } = setup(short, shortRaised, shortOverlap);
+		const shortRaised: DialGeometry = { ...short, bounds: { ...short.bounds, top: 60 } };
+		const { root, controller, measured } = setup(short, shortRaised);
+		controller.pressAnchor(root);
+		expect(controller.view().mode).toBe("raised");
+		expect(measured[measured.length - 1]).toBe("raised");
+		const view = controller.view();
+		expect(view.rings).toHaveLength(1);
+		const sizes = view.rings[0].items.map((item) => item.size);
+		expect(Math.max(...sizes)).toBeLessThan(44);
+		expect(Math.min(...sizes)).toBeGreaterThanOrEqual(LEAST_DIAL_ITEM_SIZE);
+		for (const item of view.rings[0].items) expect(item.y - item.size / 2).toBeGreaterThanOrEqual(shortRaised.bounds.top);
+		// A tap on a circle still selects it, and the whole dial is still in play.
+		controller.moveTo(itemAt(controller, "Window"));
+		expect(controller.view().armed?.label).toBe("Window");
+		controller.moveTo(polar(short, 20, 45));
+		expect(controller.view().armed).toBeNull();
+	});
+
+	it("gives a screen too short even for the smallest dial no ring, rather than one behind the pill", () => {
+		const tiny: DialGeometry = { corner: "bottom-right", anchor: { x: 350, y: 100 }, bounds: { left: 4, top: 90, right: 386, bottom: 136 } };
+		const { root, controller } = setup(tiny, tiny);
 		controller.open(root);
-		expect(controller.view().mode).toBe("overlap");
-		expect(measured[measured.length - 1]).toBe("overlap");
-		expect(controller.view().rings).toHaveLength(1);
+		expect(controller.view().rings).toEqual([]);
+		expect(controller.view().open).toBe(true);
 	});
 });
 
@@ -1002,10 +1019,13 @@ describe("DialController lens", () => {
 		const { root, controller, changes } = setup();
 		controller.pressAnchor(root);
 		controller.moveTo(itemAt(controller, "Zoom"));
-		expect(item(controller, "Zoom").size).toBe(66);
+		// The full root ring has room for most of the lens, not all of it, mid-ring: nothing overlaps.
+		const zoomSize = item(controller, "Zoom").size;
+		expect(zoomSize).toBeGreaterThan(56);
+		expect(zoomSize).toBeLessThan(66);
 		expect(item(controller, "Zoom").weight).toBeCloseTo(1);
-		expect(item(controller, "Window").size).toBeCloseTo(44 + 22 / 3);
-		expect(item(controller, "Help").size).toBeCloseTo(44 + 22 / 3);
+		expect(item(controller, "Window").size).toBeCloseTo(44 + (zoomSize - 44) / 3);
+		expect(item(controller, "Help").size).toBeCloseTo(44 + (zoomSize - 44) / 3);
 		expect(item(controller, "File").size).toBe(44);
 		expect(changes[changes.length - 1]).toBe("armed");
 		changes.length = 0;
@@ -1013,8 +1033,8 @@ describe("DialController lens", () => {
 		controller.moveTo(polar(PHONE, 97, angleOf(zoom) + 4));
 		expect(changes).toEqual(["lens"]);
 		expect(controller.view().armed?.label).toBe("Zoom");
-		expect(item(controller, "Help").size).toBeGreaterThan(44 + 22 / 3);
-		expect(item(controller, "Window").size).toBeLessThan(44 + 22 / 3);
+		expect(item(controller, "Help").size).toBeGreaterThan(48);
+		expect(item(controller, "Help").size).toBeGreaterThan(item(controller, "Window").size);
 	});
 
 	it("a ring a drag opens starts with its lens where the finger is, and a ring the finger has left keeps its lens", () => {
@@ -1029,9 +1049,9 @@ describe("DialController lens", () => {
 		expect(sizes[11]).toBeLessThan(TAP_FOCUS_BELOW);
 		expect(sizes[11]).toBe(sizes[10]);
 		// Straight out from the finger, at its angle, is the grown bead.
-		controller.moveTo(polar(PHONE, 151, 30));
+		controller.moveTo(polar(PHONE, 167, 30));
 		expect(controller.view().armed?.label).toBe(ring.items[grown].label);
-		expect(item(controller, "Window").size).toBe(66);
+		expect(item(controller, "Window").size).toBeGreaterThan(56);
 		expect(item(controller, "Window").armed).toBe(false);
 	});
 
@@ -1059,8 +1079,8 @@ describe("DialController lens", () => {
 		expect(item(controller, "Window").size).toBe(left);
 		expect(controller.view().rings[1].group.title).toBe("Window");
 		controller.moveTo(itemAt(controller, "File"));
-		expect(item(controller, "File").size).toBe(66);
-		expect(item(controller, "Window").size).toBeLessThan(66);
+		expect(item(controller, "File").size).toBeCloseTo(66, 0);
+		expect(item(controller, "Window").size).toBeLessThan(60);
 		expect(controller.view().rings[1].group.title).toBe("File");
 	});
 

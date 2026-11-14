@@ -36,10 +36,10 @@ export interface DialGeometry {
 /**
  * Where the breadcrumb pill sits, which decides how much of the screen the rings may use:
  * `normal` keeps it below the view header; `raised` moves it up over the header to win back
- * that strip; `overlap` is the last resort for a screen so short that no ring fits under the
- * raised pill, and lets the rings reach up behind it.
+ * that strip. The rings never reach behind the pill: a screen so short that not even the first
+ * ring fits under the raised pill gets a smaller dial instead (see `chooseMode`).
  */
-export type DialLayoutMode = "normal" | "raised" | "overlap";
+export type DialLayoutMode = "normal" | "raised";
 
 /** How the rings are laid out, from the settings: the circle size, the gaps, the lens peak and the radius rule. */
 export interface DialRingParams {
@@ -47,7 +47,7 @@ export interface DialRingParams {
 	itemSize: number;
 	/** Edge-to-edge gap kept between neighbours on a ring that fits them at full size. */
 	gap: number;
-	/** Edge-to-edge gap between a ring's items and the next ring's. */
+	/** Edge-to-edge gap between a ring's items and the next ring's, at the least (see `ringStep`). */
 	ringGap: number;
 	/** How large the circle under the finger grows, as a multiple of `itemSize` (the lens peak). */
 	peak: number;
@@ -97,6 +97,9 @@ export const MIN_DIAL_ITEM_SIZE = 40;
 export const MAX_DIAL_ITEM_SIZE = 56;
 export const DEFAULT_DIAL_ITEM_SIZE = 44;
 
+/** The smallest the dial shrinks its circles to, below the settings' range, so that a short screen still gets a ring: a key still reads at this size. */
+export const LEAST_DIAL_ITEM_SIZE = 28;
+
 /**
  * The lens peak the settings offer: how large the circle under the finger grows, as a multiple
  * of the item size. At 1 a ring that fits its level does not grow at all (only shrunk beads
@@ -127,11 +130,12 @@ const BEAD_GAP = 2;
 /** A tap on a circle smaller than this brings it into the lens first; a larger circle is selected by the tap itself. */
 export const TAP_FOCUS_BELOW = 32;
 
-/** How far past an end of the sweep a crowded ring's arc may be pushed so the circle under the finger stays under it. */
+/** How far past an end of the sweep a ring's arc may be pushed so the circle under the finger stays under it. */
 const END_SLACK_DEG = 4;
 
-/** The least two beads the finger has passed are apart when they pile up toward an end of the sweep: a fanned hand, not one bead on top of another. */
-const PILE_GAP_DEG = 1.5;
+/** How far inside a circle's share of the arc (half way to each neighbour) the finger is kept when the arc has to shift, so the share is never a toss-up. */
+const SHARE_MARGIN_DEG = 1;
+
 
 export function ringParamsFor(itemSize: number, options: Partial<Pick<DialRingParams, "peak" | "rule">> = {}): DialRingParams {
 	return { itemSize, gap: ITEM_GAP, ringGap: RING_GAP, peak: options.peak ?? DEFAULT_LENS_PEAK, rule: options.rule ?? DEFAULT_RADIUS_RULE };
@@ -163,12 +167,6 @@ function clamp(value: number, low: number, high: number): number {
 /** The straight-line distance between two points `angleDeg` apart on a ring of `radius`. */
 function chord(radius: number, angleDeg: number): number {
 	return 2 * radius * Math.sin(degToRad(angleDeg) / 2);
-}
-
-/** The angle two points on a ring of `radius` must be apart for their chord to be `distance`, or the whole sweep when the ring is too small. */
-function angleForChord(radius: number, distance: number): number {
-	if (2 * radius <= distance) return DIAL_SWEEP_DEG;
-	return radToDeg(2 * Math.asin(distance / (2 * radius)));
 }
 
 /**
@@ -218,9 +216,16 @@ export function firstRadius(params: DialRingParams): number {
 	return ANCHOR_RADIUS + params.ringGap + params.itemSize / 2;
 }
 
-/** How much farther out each ring sits than the one inside it, at the least. */
+/**
+ * How much farther out each ring sits than the one inside it, at the least: an item and a ring
+ * gap, or more when the lens peak asks for it, so that two circles grown to the peak on
+ * neighbouring rings at the same angle (the armed group keeps its lens, and the finger is on
+ * its child right outside it) still keep the lens gap between them, and so a circle the lens
+ * has grown never covers a circle on the next ring. At 44px the step is 54 up to a peak of
+ * about 1.14 and 70 at the default 1.5.
+ */
 export function ringStep(params: DialRingParams): number {
-	return params.itemSize + params.ringGap;
+	return Math.max(params.itemSize + params.ringGap, params.itemSize * params.peak + LENS_GAP);
 }
 
 /** The smallest radius at or beyond `from` whose quarter-ring holds `count` items at full size. */
@@ -303,6 +308,8 @@ export interface LensLayout {
 	crowded: boolean;
 	/** The diameter of a circle outside the lens. */
 	base: number;
+	/** How much of the way to the peak the lens grew: 1 unless the ring had no room for all of it. */
+	growth: number;
 }
 
 /**
@@ -312,19 +319,21 @@ export interface LensLayout {
  *
  * At rest a ring that fits its level keeps the full-size circles at their slot angles; a crowded
  * ring spreads its level evenly over the whole sweep with circles shrunk to the chord between
- * neighbours (never below BEAD_FLOOR), zigzagging radially when they would still overlap.
+ * neighbours (never below BEAD_FLOOR), zigzagging in and out of the ring, two deep, when they
+ * would still overlap.
  *
  * With a finger on the ring, the circle nearest it and its neighbours (LENS_WIDTH items either
- * way) grow toward `peak`, and the gaps next to the grown circles open just enough for them to
- * sit side by side. On a ring that fits, the other gaps keep their pitch and the whole arc shifts
- * only as far as the sweep's ends allow, so the item under the finger stays where it was; when
- * the grown circles need more than the sweep has (a full innermost ring), every gap gives a
- * little and the grown circle, drawn on top, covers its neighbours' edges rather than growing
- * less. On a crowded ring the circle under the finger stays exactly under it and the other
- * gaps give way so the arc stays the sweep: the beads between the lens and the nearer end pile
- * up two deep when there is no room for them, and only when the lens itself would leave the
- * sweep (past END_SLACK_DEG, and never with the end circle outside `edgeRoom` of the anchor)
- * does it grow less.
+ * way) grow toward `peak`, and no two circles on the ring ever overlap: the gaps beside the
+ * grown circles open to what they need, and the lens takes that room from the other gaps on
+ * the ring, which close up to what keeps their circles apart. The finger stays on the circle
+ * it grew: that circle sits where the finger keeps its place between it and the next, and the
+ * arc shifts only as far as leaves the finger inside that circle's share of the ring. In that
+ * order, when the room runs out: a crowded ring's other beads step off the ring and pile two
+ * deep; the arc runs past the ends of the sweep, by END_SLACK_DEG at most and never with an
+ * end circle outside `edgeRoom` of the anchor; the lens grows less. A ring that fits keeps its
+ * slot pitch wherever the lens leaves room for it; a crowded ring's other beads share the rest
+ * of the sweep, so its arc stays the sweep. A level with more beads than its ring holds even
+ * two deep at the floor size overlaps, as it must.
  */
 export function lensLayout(count: number, capacity: number, radius: number, params: DialRingParams, peak: number, focus: number | null, edgeRoom = Number.POSITIVE_INFINITY): LensLayout {
 	const full = params.itemSize;
@@ -332,112 +341,132 @@ export function lensLayout(count: number, capacity: number, radius: number, para
 	const pitch = ringPitch(count, capacity);
 	const restAngle = (index: number): number => (crowded ? pitch * index : slotAngle(index, count, capacity));
 	const base = crowded ? clamp(chord(radius, pitch) - BEAD_GAP, BEAD_FLOOR, full) : full;
-	/** How far a bead may step off its ring: it stays inside its ring's half of the step to the next ring, and inside what the lens may reach. */
-	const band = Math.min(ringStep(params) / 2, peak / 2);
-	if (focus === null || count <= 1) {
+	/** How far a bead on a crowded ring may step off it: it stays inside its ring's half of the step to the next ring, and inside what the lens may reach. */
+	const band = crowded ? Math.min(ringStep(params) / 2, peak / 2) : 0;
+	const theta = focus === null ? null : clamp(focus, 0, 1) * DIAL_SWEEP_DEG;
+	const position = theta === null ? null : (theta - restAngle(0)) / pitch;
+	const weights = Array.from({ length: count }, (_, i) => (position === null ? 0 : Math.max(0, 1 - Math.abs(i - position) / LENS_WIDTH)));
+	const sum = (values: readonly number[], from = 0, to = values.length): number => values.slice(from, to).reduce((total, value) => total + value, 0);
+	/** The sizes with the lens grown `growth` of the way to the peak, the beads' offsets with the zigzag `zigzag` of the way out, the least each gap may then be, and how far past the sweep's ends the arc may run. */
+	const squeeze = (growth: number, zigzag: number): { sizes: number[]; offsets: number[]; least: number[]; low: number; high: number } => {
+		const sizes = weights.map((weight) => base + (peak - base) * weight * growth);
+		const rooms = sizes.map((size, i) => stepRoom(band, size, weights[i]));
+		const offsets = rooms.map((room, i) => (room === 0 || zigzag === 0 ? 0 : (i % 2 === 0 ? -1 : 1) * zigzag * room));
+		const radii = offsets.map((offset) => radius + offset);
+		const clearance = (i: number, j: number): number => (sizes[i] + sizes[j]) / 2 + BEAD_GAP + (LENS_GAP - BEAD_GAP) * Math.max(weights[i], weights[j]);
+		const least = Array.from({ length: count - 1 }, (_, gap) => angleApart(radii[gap], radii[gap + 1], clearance(gap, gap + 1)));
+		// Beads two apart step off the ring the same way, so mostly the arc keeps them apart: each of the two gaps between them carries half of what they need.
+		for (let i = 0; i + 2 < count; i++) {
+			const half = angleApart(radii[i], radii[i + 2], clearance(i, i + 2)) / 2;
+			least[i] = Math.max(least[i], half);
+			least[i + 1] = Math.max(least[i + 1], half);
+		}
+		// How far past an end the arc may go: the end circle, stepped off the ring as far as it is, stays inside the room beside the anchor.
+		const slack = (i: number): number => Math.min(END_SLACK_DEG, radToDeg(Math.asin(clamp((edgeRoom - sizes[i] / 2 - BEAD_GAP / 2) / (radius + Math.abs(offsets[i])), 0, 1))));
+		return { sizes, offsets, least, low: -slack(0), high: DIAL_SWEEP_DEG + slack(count - 1) };
+	};
+	/** The least `zigzag` from 0 to 1 at which `fits` holds, if it holds at 1; bisection, since more zigzag never needs more room. */
+	const leastZigzag = (fits: (zigzag: number) => boolean): number | null => {
+		if (fits(0)) return 0;
+		if (!fits(1)) return null;
+		let cannot = 0;
+		let can = 1;
+		for (let step = 0; step < 20; step++) {
+			const mid = (cannot + can) / 2;
+			if (fits(mid)) can = mid;
+			else cannot = mid;
+		}
+		return can;
+	};
+	/** The most `growth` from 0 to 1 at which `fits` holds, if it holds at 0; bisection, since more growth never needs less room. */
+	const mostGrowth = (fits: (growth: number) => boolean): number | null => {
+		if (fits(1)) return 1;
+		if (!fits(0)) return null;
+		let can = 0;
+		let cannot = 1;
+		for (let step = 0; step < 20; step++) {
+			const mid = (can + cannot) / 2;
+			if (fits(mid)) can = mid;
+			else cannot = mid;
+		}
+		return can;
+	};
+
+	if (theta === null || position === null || count <= 1) {
+		// At rest: the slot angles, and on a crowded ring as much zigzag as keeps the beads apart.
 		const angles = Array.from({ length: count }, (_, i) => restAngle(i));
-		const sizes = angles.map(() => base);
-		const weights = angles.map(() => 0);
-		return { angles, sizes, weights, offsets: crowded ? zigzag(radius, angles, sizes, weights, band) : angles.map(() => 0), crowded, base };
+		const zigzag = count <= 1 ? 0 : (leastZigzag((z) => sum(squeeze(0, z).least) <= DIAL_SWEEP_DEG + 1e-9) ?? 1);
+		const { sizes, offsets } = squeeze(0, zigzag);
+		return { angles, sizes, weights, offsets, crowded, base, growth: 1 };
 	}
 
-	const theta = clamp(focus, 0, 1) * DIAL_SWEEP_DEG;
-	const position = (theta - restAngle(0)) / pitch;
-	const weights = Array.from({ length: count }, (_, i) => Math.max(0, 1 - Math.abs(i - position) / LENS_WIDTH));
-	const sizesAt = (growth: number): number[] => weights.map((weight) => base + (peak - base) * weight * growth);
-	const sideBySide = (sizes: number[], gap: number): number => angleForChord(radius, (sizes[gap] + sizes[gap + 1]) / 2 + LENS_GAP);
 	const f = clamp(position, 0, count - 1);
-	let sizes: number[];
-	let gaps: number[];
-	let start: number;
-	if (crowded) {
-		// The gaps either side of the circle under the finger, and any gap beside a circle grown
-		// at least halfway, are what the two circles need side by side, and the finger keeps its
-		// place in the gap it is in. A gap at the lens's edge, beside a circle grown less, holds
-		// only that much of its room and shares the rest like the gaps outside the lens, so a
-		// bead eases out of the pile as the lens reaches it and back in as it leaves. The beads
-		// outside the lens share what is left of the sweep: those before the finger get the room
-		// that puts the arc's first bead at the sweep's start, those after the room that puts its
-		// last at the end. Toward an end of the sweep the beads on that side pile up like a fanned
-		// hand of cards (the zigzag keeps them two deep); when even the pile would not fit, the
-		// lens's edge on that side slips under the circles it grew, then the circle beside the
-		// finger's under the finger's own; and only then does the whole arc shift over the
-		// finger's place in its gap. The lens itself never grows less.
-		sizes = sizesAt(1);
-		const whole = Math.floor(f);
-		const fraction = f - whole;
-		const nearest = fraction <= 0.5 ? whole : Math.min(whole + 1, count - 1);
-		const core = (gap: number): boolean => gap === whole || gap === nearest - 1 || gap === nearest;
-		const hold = Array.from({ length: count - 1 }, (_, gap) => (core(gap) ? 1 : clamp(2 * Math.max(weights[gap], weights[gap + 1]), 0, 1)));
-		const need = hold.map((share, gap) => share * sideBySide(sizes, gap));
-		const sum = (values: readonly number[], from: number, to: number): number => values.slice(from, to).reduce((total, value) => total + value, 0);
-		const straddle = whole < count - 1 ? need[whole] : 0;
-		const restBefore = sum(hold.map((share) => 1 - share), 0, whole);
-		const restAfter = sum(hold.map((share) => 1 - share), whole + 1, count - 1);
-		// The gap between the circle under the finger and its neighbour away from the finger's gap, on whichever side it lies.
-		const coreBefore = nearest === whole && whole > 0 ? need[whole - 1] : 0;
-		const coreAfter = nearest === whole + 1 && whole + 1 < count - 1 ? need[whole + 1] : 0;
-		const edgeBefore = sum(need, 0, whole) - coreBefore;
-		const edgeAfter = sum(need, whole + 1, count - 1) - coreAfter;
-		// How far past an end the arc may go: the end circle, even stepped out by the zigzag as far as a bead outside the lens may be, stays inside the room beside the anchor.
-		const slack = (index: number): number => {
-			const excursion = sizes[index] / 2 + ((1 - weights[index]) * sizes[index]) / 2 + BEAD_GAP / 2;
-			return Math.min(END_SLACK_DEG, radToDeg(Math.asin(clamp((edgeRoom - excursion) / radius, 0, 1))));
-		};
-		const low = -slack(0);
-		const high = DIAL_SWEEP_DEG + slack(count - 1);
-		/** What a side gives when `room` is less than its held gaps need: the lens's edge first, then the core, and how far it is still short. */
-		const give = (room: number, edge: number, coreNeed: number): { edge: number; core: number; short: number } => {
-			if (edge + coreNeed <= room) return { edge: 1, core: 1, short: 0 };
-			const edgeScale = edge > 0 ? clamp((room - coreNeed) / edge, 0, 1) : 1;
-			if (coreNeed <= room) return { edge: edgeScale, core: 1, short: 0 };
-			return { edge: edgeScale, core: coreNeed > 0 ? clamp(room / coreNeed, 0, 1) : 1, short: Math.max(0, -room) };
-		};
-		let under = theta - straddle * fraction;
-		let scaleBefore = { edge: 1, core: 1 };
-		const pressBefore = (): void => {
-			const gave = give(under - low - PILE_GAP_DEG * restBefore, edgeBefore, coreBefore);
-			scaleBefore = gave;
-			under += gave.short;
-		};
-		pressBefore();
-		const scaleAfter = give(high - under - straddle - PILE_GAP_DEG * restAfter, edgeAfter, coreAfter);
-		if (scaleAfter.short > 0) {
-			under -= scaleAfter.short;
-			pressBefore();
+	/** The gap the finger is in, how far along it the finger is, and which of its two circles the finger is nearer (the one grown the more); past either end of the arc, how many pitches beyond. */
+	const whole = Math.min(Math.floor(f), count - 2);
+	const fraction = f - whole;
+	const nearest = fraction <= 0.5 ? whole : whole + 1;
+	const beyond = position - f;
+	/**
+	 * Where the circle before the finger's gap may sit at this squeeze: where the finger keeps
+	 * its place in the gap (past the arc's end, where the rest mapping puts it), or as near that
+	 * as leaves the circles on each side room to the sweep's end (past it by the slack, with
+	 * `slack`) and keeps the finger inside the share of the circle it is nearest (`strict`) or
+	 * of either of its gap's two circles, the two the lens grew most, so that a shift never puts
+	 * a third circle under it.
+	 */
+	const place = (squeezed: ReturnType<typeof squeeze>, strict: boolean, slack: boolean): { under: number; mid: number; feasible: boolean } => {
+		const { least } = squeezed;
+		const low = slack ? squeezed.low : 0;
+		const high = slack ? squeezed.high : DIAL_SWEEP_DEG;
+		const mid = Math.max(least[whole], pitch);
+		const before = sum(least, 0, whole);
+		const after = sum(least, whole + 1);
+		const wanted = theta - mid * fraction - beyond * pitch;
+		const inArc = beyond === 0;
+		const shareLow = !inArc ? Number.NEGATIVE_INFINITY : strict && nearest === whole ? theta - mid / 2 + SHARE_MARGIN_DEG : whole + 2 < count ? theta - mid - least[whole + 1] / 2 + SHARE_MARGIN_DEG : Number.NEGATIVE_INFINITY;
+		const shareHigh = !inArc ? Number.POSITIVE_INFINITY : strict && nearest === whole + 1 ? theta - mid / 2 - SHARE_MARGIN_DEG : whole > 0 ? theta + least[whole - 1] / 2 - SHARE_MARGIN_DEG : Number.POSITIVE_INFINITY;
+		const underLow = Math.max(shareLow, low + before);
+		const underHigh = Math.min(shareHigh, high - mid - after);
+		if (underLow <= underHigh + 1e-9) return { under: clamp(wanted, underLow, underHigh), mid, feasible: true };
+		// Not even with the arc shifted: the finger's circle keeps the circles on each side inside the slack, on the finger or not.
+		return { under: Math.max(low + before, Math.min(wanted, high - mid - after)), mid, feasible: false };
+	};
+	const feasible = (growth: number, zigzag: number, strict: boolean, slack: boolean): boolean => place(squeeze(growth, zigzag), strict, slack).feasible;
+	// In order, as the room runs out: the beads outside the lens pile up, as far as keeps the finger on the circle it grew most; the arc runs past the sweep's ends; it shifts the finger onto the other circle of its gap; the lens grows less.
+	let growth = 1;
+	let strict = true;
+	let slack = false;
+	let zigzag = leastZigzag((z) => feasible(1, z, true, false));
+	if (zigzag === null) {
+		zigzag = 1;
+		slack = true;
+		if (!feasible(1, 1, true, true)) {
+			strict = false;
+			if (!feasible(1, 1, false, true)) growth = mostGrowth((g) => feasible(g, 1, false, true)) ?? 0;
 		}
-		const scaleOf = (gap: number): number => {
-			if (gap === whole) return 1;
-			if (gap < whole) return gap === whole - 1 && coreBefore > 0 ? scaleBefore.core : scaleBefore.edge;
-			return gap === whole + 1 && coreAfter > 0 ? scaleAfter.core : scaleAfter.edge;
-		};
-		const held = need.map((room, gap) => room * scaleOf(gap));
-		const before = restBefore > 0 ? Math.max(PILE_GAP_DEG, (under - sum(held, 0, whole)) / restBefore) : 0;
-		const after = restAfter > 0 ? Math.max(PILE_GAP_DEG, (DIAL_SWEEP_DEG - under - straddle - sum(held, whole + 1, count - 1)) / restAfter) : 0;
-		gaps = held.map((room, gap) => room + (1 - hold[gap]) * (gap < whole ? before : gap > whole ? after : 0));
-		start = under - sum(gaps, 0, whole);
-		if (start < low - 1e-6) {
-			// Not even the piles fit between the ends: everything but the finger's own gap gives, alike.
-			const total = sum(gaps, 0, count - 1);
-			const scale = Math.max(0, (high - low - straddle) / Math.max(1e-6, total - straddle));
-			gaps = gaps.map((gap, i) => (i === whole ? gap : gap * scale));
-			start = low;
-		}
-	} else {
-		// The gaps beside the grown circles open to what they need, the rest keep the pitch, and
-		// the circle under the finger stays where it rests, the arc shifting only as far as the
-		// sweep's ends allow. A full ring that cannot give the lens the room gives a little all
-		// round instead, and the grown circle, drawn on top, covers its neighbours' edges.
-		sizes = sizesAt(1);
-		gaps = Array.from({ length: count - 1 }, (_, gap) => Math.max(pitch, sideBySide(sizes, gap)));
-		let total = gaps.reduce((sum, gap) => sum + gap, 0);
-		if (total > DIAL_SWEEP_DEG + 1e-6) {
-			gaps = gaps.map((gap) => (gap * DIAL_SWEEP_DEG) / total);
-			total = DIAL_SWEEP_DEG;
-		}
-		const whole = Math.floor(f);
-		const atFocus = gaps.slice(0, whole).reduce((sum, gap) => sum + gap, 0) + (whole < count - 1 ? gaps[whole] * (f - whole) : 0);
-		start = clamp(restAngle(0) + f * pitch - atFocus, 0, Math.max(0, DIAL_SWEEP_DEG - total));
+	}
+	const squeezed = squeeze(growth, zigzag);
+	const { sizes, offsets, least } = squeezed;
+	const { under, mid } = place(squeezed, strict, slack);
+	// The other gaps open from their least toward what they want (the pitch), as far as the room between the finger's circle and the sweep's end on their side allows.
+	const want = least.map((gap) => Math.max(gap, pitch));
+	const leastBefore = sum(least, 0, whole);
+	const leastAfter = sum(least, whole + 1);
+	const lo = Math.min(0, under - leastBefore);
+	const hi = Math.max(DIAL_SWEEP_DEG, under + mid + leastAfter);
+	const share = (from: number, to: number, room: number): number => {
+		const give = sum(want, from, to) - sum(least, from, to);
+		return give > 1e-9 ? clamp((room - sum(least, from, to)) / give, 0, 1) : 0;
+	};
+	const before = share(0, whole, under - lo);
+	const after = share(whole + 1, count - 1, hi - under - mid);
+	let gaps = least.map((gap, g) => (g === whole ? mid : gap + (want[g] - gap) * (g < whole ? before : after)));
+	let start = under - sum(gaps, 0, whole);
+	const total = sum(gaps);
+	if (total > hi - lo + 1e-6) {
+		// More beads than the ring holds even two deep: every gap gives alike, and the beads overlap as they must.
+		gaps = gaps.map((gap) => (gap * (hi - lo)) / total);
+		start = lo;
 	}
 	const angles: number[] = [];
 	let at = start;
@@ -445,32 +474,17 @@ export function lensLayout(count: number, capacity: number, radius: number, para
 		angles.push(at);
 		at += gaps[i] ?? 0;
 	}
-	return { angles, sizes, weights, offsets: crowded ? zigzag(radius, angles, sizes, weights, band) : angles.map(() => 0), crowded, base };
+	return { angles, sizes, weights, offsets, crowded, base, growth };
 }
 
-/**
- * Radial offsets that keep neighbouring beads on a crowded ring apart: where the chord between
- * two beads is shorter than they need side by side, they step in and out of the ring
- * alternately, by just enough (two circles `delta` apart on the ring, one stepped in and one out
- * by `offset`, are sqrt(chord² + 2 offset² (1 + cos delta)) apart) and never farther than keeps
- * them within `band` of the ring. Only beads outside the lens step off the ring in full: a bead
- * the lens has reached eases back onto it as it grows, and is on it by the time it is grown
- * halfway, when its gaps hold all the room it needs.
- */
-function zigzag(radius: number, angles: readonly number[], sizes: readonly number[], weights: readonly number[], band: number): number[] {
-	const lift = (index: number): number => 1 - clamp(2 * weights[index], 0, 1);
-	return angles.map((angle, i) => {
-		if (lift(i) === 0) return 0;
-		let offset = 0;
-		for (const j of [i - 1, i + 1]) {
-			if (j < 0 || j >= angles.length || lift(j) === 0) continue;
-			const needed = (sizes[i] + sizes[j]) / 2 + BEAD_GAP;
-			const delta = Math.abs(angles[j] - angle);
-			const apart = chord(radius, delta);
-			if (apart < needed) offset = Math.max(offset, Math.sqrt((needed * needed - apart * apart) / (2 * (1 + Math.cos(degToRad(delta))))));
-		}
-		return Math.min(offset, Math.max(0, band - sizes[i] / 2)) * lift(i) * (i % 2 === 0 ? -1 : 1);
-	});
+/** How far off its ring a circle of `size` may step within `band` of it: to the band's edge outside the lens, less as the lens reaches it, not at all once it is grown halfway. */
+function stepRoom(band: number, size: number, weight: number): number {
+	return Math.max(0, band - size / 2) * (1 - clamp(2 * weight, 0, 1));
+}
+
+/** The least angle around the anchor between two circles at `radiusA` and `radiusB` from it whose centres must be `distance` apart; 0 when the radii alone part them. */
+function angleApart(radiusA: number, radiusB: number, distance: number): number {
+	return radToDeg(Math.acos(clamp((radiusA * radiusA + radiusB * radiusB - distance * distance) / (2 * radiusA * radiusB), -1, 1)));
 }
 
 /** The slots of a level of `count` items on ring `ring` (`geometry` is that ring), with the lens at `focus`. */
@@ -665,26 +679,37 @@ export function naturalReach(params: DialRingParams, counts: readonly number[]):
 }
 
 /**
- * The pill mode for one opening of the dial, chosen once so that nothing moves under a finger
- * while rings open: the normal placement when its reach covers `need` (the radius the deepest
- * or widest path in the keymap would naturally take); else the raised pill, which wins back the
- * header's strip, when that actually reaches farther (it does not when the width is the limit)
- * and at least the first ring fits under it; else the normal placement if the first ring fits
- * there; else the overlap placement, so a short screen still gets whatever ring it can. The
- * chosen mode is measured last, so it is the one in effect.
+ * The pill mode and the ring layout for one opening of the dial, chosen once so that nothing
+ * moves under a finger while rings open: the normal placement when its reach covers `need`
+ * (the radius the deepest or widest path in the keymap would naturally take); else the raised
+ * pill, which wins back the header's strip, when that actually reaches farther (it does not
+ * when the width is the limit) and at least the first ring fits under it; else the normal
+ * placement if the first ring fits there. When not even the first ring fits under the raised
+ * pill, the dial shrinks instead of reaching behind it: in whichever placement has the more
+ * room, the circles (and with them the rings) are the largest size, down to
+ * LEAST_DIAL_ITEM_SIZE, at which the first ring fits between the pill and the anchor; a screen
+ * too short even for that gets no ring. The chosen mode is measured last, so it is the one in
+ * effect, and the params returned are the ones to lay the rings out with.
  */
 export function chooseMode(
 	need: number,
 	measure: (mode: DialLayoutMode) => DialGeometry,
 	params: DialRingParams = DEFAULT_RING_PARAMS,
-): { mode: DialLayoutMode; geometry: DialGeometry } {
-	const first = params.rule === "fixed" ? fixedFirstRadius(params) : firstRadius(params);
+): { mode: DialLayoutMode; geometry: DialGeometry; params: DialRingParams } {
+	const first = (candidate: DialRingParams): number => (candidate.rule === "fixed" ? fixedFirstRadius(candidate) : firstRadius(candidate));
 	const normal = measure("normal");
 	const normalReach = fanReach(normal, params);
-	if (need <= normalReach) return { mode: "normal", geometry: normal };
+	if (need <= normalReach) return { mode: "normal", geometry: normal, params };
 	const raised = measure("raised");
 	const raisedReach = fanReach(raised, params);
-	if (raisedReach > normalReach && raisedReach >= first) return { mode: "raised", geometry: raised };
-	if (normalReach >= first) return { mode: "normal", geometry: measure("normal") };
-	return { mode: "overlap", geometry: measure("overlap") };
+	if (raisedReach > normalReach && raisedReach >= first(params)) return { mode: "raised", geometry: raised, params };
+	if (normalReach >= first(params)) return { mode: "normal", geometry: measure("normal"), params };
+	const mode: DialLayoutMode = raisedReach > normalReach ? "raised" : "normal";
+	const geometry = mode === "raised" ? raised : measure("normal");
+	let shrunk = params;
+	for (let itemSize = params.itemSize - 1; itemSize >= LEAST_DIAL_ITEM_SIZE; itemSize--) {
+		shrunk = { ...params, itemSize };
+		if (first(shrunk) <= fanReach(geometry, shrunk)) break;
+	}
+	return { mode, geometry, params: shrunk };
 }

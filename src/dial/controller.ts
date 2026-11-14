@@ -174,6 +174,8 @@ export class DialController {
 	private armed: ArmedKey | null = null;
 	private geometry: DialGeometry | null = null;
 	private mode: DialLayoutMode = "normal";
+	/** The ring layout for this opening: the settings' params, or the same shrunk to fit a screen too short for the first ring (see `chooseMode`). */
+	private params: DialRingParams;
 	private rings: DialRing[] = [];
 	private slots: DialSlot[] = [];
 	private targets: DialTarget[] = [];
@@ -188,9 +190,11 @@ export class DialController {
 		 */
 		private readonly measure: (mode: DialLayoutMode) => DialGeometry,
 		/** The ring layout: item size, lens peak and radius rule, from the settings. */
-		private readonly params: DialRingParams = DEFAULT_RING_PARAMS,
+		private readonly settings: DialRingParams = DEFAULT_RING_PARAMS,
 		private readonly deadZone: number = DEFAULT_DEAD_ZONE,
-	) {}
+	) {
+		this.params = settings;
+	}
 
 	onChange(listener: (change: DialChange) => void): void {
 		this.listener = listener;
@@ -402,18 +406,19 @@ export class DialController {
 		this.listener?.(change);
 	}
 
-	/** The pill mode for this opening: once per open and per relayout, never while a ring opens, with room for the keymap's widest path in mind. */
+	/** The pill mode and ring params for this opening: once per open and per relayout, never while a ring opens, with room for the keymap's widest path in mind. */
 	private chooseGeometry(): void {
-		const chosen = chooseMode(this.chainReach(this.path[0]), this.measure, this.params);
+		const chosen = chooseMode(this.chainReach(this.path[0]), this.measure, this.settings);
 		this.mode = chosen.mode;
 		this.geometry = chosen.geometry;
+		this.params = chosen.params;
 	}
 
 	/** The radius the outermost ring would naturally take along the widest or deepest chain of groups from `group`, below the levels of `counts` above it. */
 	private chainReach(group: GroupNode, counts: readonly number[] = []): number {
 		const entries = this.visibleEntries(group);
 		const chain = [...counts, entries.length];
-		let reach = naturalReach(this.params, chain);
+		let reach = naturalReach(this.settings, chain);
 		for (const entry of entries) {
 			if (entry.node.kind === "group") reach = Math.max(reach, this.chainReach(entry.node, chain));
 		}

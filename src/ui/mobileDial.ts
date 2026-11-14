@@ -435,11 +435,10 @@ export class MobileDial {
 	 * The anchor and the screen as they are right now, with the pill placed for `mode` first so
 	 * its extent can be measured: the pill is always laid out (hidden, not removed) and always
 	 * two lines tall (the stylesheet reserves the description line whether or not it has text),
-	 * so what is measured here holds for the whole opening. Normal keeps the whole pill clear;
-	 * raised moves it up over the view header and keeps it clear there; overlap keeps only its
-	 * top edge clear and lets the rings reach up behind it. Items may reach a little below the
-	 * anchor (they are bigger than it) but stay a margin above the toolbar, keyboard or safe
-	 * area the anchor itself keeps clear of.
+	 * so what is measured here holds for the whole opening. Normal keeps the whole pill clear
+	 * below the view header; raised moves it up over the header and keeps it clear there. Items
+	 * may reach a little below the anchor (they are bigger than it) but stay a margin above the
+	 * toolbar, keyboard or safe area the anchor itself keeps clear of.
 	 */
 	private measure(mode: DialLayoutMode): DialGeometry {
 		this.updateHeaderOffsets();
@@ -451,7 +450,7 @@ export class MobileDial {
 			anchor: { x: anchor.left + anchor.width / 2, y: anchor.top + anchor.height / 2 },
 			bounds: {
 				left: EDGE_MARGIN,
-				top: (mode === "overlap" ? pill.top : pill.bottom) + EDGE_MARGIN,
+				top: pill.bottom + EDGE_MARGIN,
 				right: activeWindow.innerWidth - EDGE_MARGIN,
 				bottom: anchor.bottom + (ANCHOR_EDGE - EDGE_MARGIN),
 			},
