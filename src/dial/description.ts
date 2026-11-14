@@ -32,6 +32,10 @@ export interface BubblePlacement {
 	top: number;
 	/** How many circles' keys the bubble hides at this spot (it comes within a key's reach of their centres); the DOM layer drops to a shorter bubble when this is not zero. */
 	hidden: number;
+	/** What the spot cost: the DOM layer compares the full bubble's with the short form's. */
+	cost: number;
+	/** How far past the thumb's keep-out circle and gap the bubble is, in pixels: beyond `BESIDE_REACH` it is no longer beside the thumb. */
+	away: number;
 }
 
 /** Margin the bubble keeps from the edges of the area it is placed in. */
@@ -68,7 +72,7 @@ export function cardTop(pillBottom: number, ringTop: number, height: number): nu
 /** How the placement scores the spots it tries: a point of cost per this many pixels the bubble is from the thumb, per circle covered (times its weight), for the hand, and per pixel moved from where it was. */
 const COST_PER_NEAR_PX = 1.6 / 100;
 /** Past this far from the thumb's keep-out circle the bubble is no longer beside it, and each further pixel costs this much more. */
-const BESIDE_REACH = 60;
+export const BESIDE_REACH = 60;
 const COST_PER_FAR_PX = 5 / 100;
 const COST_COVER = 2;
 const COST_HAND = 2.5;
@@ -150,7 +154,7 @@ export function placeBubble(
 		right: Math.max(area.left, area.right - box.width),
 		bottom: Math.max(area.top, area.bottom - box.height),
 	};
-	let best: BubblePlacement & { cost: number } = { left: room.left, top: room.top, cost: Number.POSITIVE_INFINITY, hidden: 0 };
+	let best: BubblePlacement = { left: room.left, top: room.top, cost: Number.POSITIVE_INFINITY, away: 0, hidden: 0 };
 	/** Scores the spot, giving up as soon as it cannot beat the best so far (every cost term is at least 0). */
 	const consider = (left: number, top: number, direction: DialPoint | null): void => {
 		const rim = distanceToBox(thumb, left, top, box);
@@ -168,7 +172,7 @@ export function placeBubble(
 			if (cost >= best.cost) return;
 		}
 		if (segmentDistanceToBox(thumb, hand, left, top, box) < HAND_PAD) cost += COST_HAND;
-		if (cost < best.cost - 1e-9) best = { left, top, cost, hidden: circles.filter((circle) => distanceToBox(circle, left, top, box) < KEY_CLEARANCE).length };
+		if (cost < best.cost - 1e-9) best = { left, top, cost, away, hidden: circles.filter((circle) => distanceToBox(circle, left, top, box) < KEY_CLEARANCE).length };
 	};
 	// First the spots snug against the thumb, in every direction and a few distances out: where the bubble belongs when there is room.
 	for (const extra of [0, 22, 48, 80]) {
@@ -191,5 +195,22 @@ export function placeBubble(
 		}
 		if (top >= room.bottom) break;
 	}
-	return { left: best.left, top: best.top, hidden: best.hidden };
+	return best;
+}
+
+/** What the short form costs the reader: it drops the description, so it must be clearly better placed to be worth it. */
+const COST_SHORT_FORM = 1;
+
+/**
+ * Whether to show the short bubble (key and label alone) rather than the full one. It is tried
+ * when the full bubble hides circles' keys or cannot sit beside the thumb, and taken when it
+ * does better by more than what it gives up.
+ */
+export function preferShortBubble(full: BubblePlacement, short: BubblePlacement): boolean {
+	return short.cost + COST_SHORT_FORM < full.cost;
+}
+
+/** Whether the full bubble is worth trying a short one against: it hides a key, or it landed away from the thumb. */
+export function bubbleNeedsShortForm(full: BubblePlacement): boolean {
+	return full.hidden > 0 || full.away > BESIDE_REACH;
 }

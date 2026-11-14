@@ -1,4 +1,4 @@
-import { BUBBLE_MARGIN, cardFits, cardTop, placeBubble, type BubbleArea, type CoveredCircle } from "../src/dial/description";
+import { BESIDE_REACH, BUBBLE_MARGIN, bubbleNeedsShortForm, cardFits, cardTop, placeBubble, preferShortBubble, type BubbleArea, type CoveredCircle } from "../src/dial/description";
 import { ANCHOR_RADIUS, DEFAULT_RING_PARAMS, edgeRoom, peakSize, planRings, ringParamsFor, ringSlots, slotPosition, type DialGeometry } from "../src/dial/layout";
 
 const AREA: BubbleArea = { left: 8, top: 166, right: 382, bottom: 836 };
@@ -75,6 +75,17 @@ describe("the bubble beside the thumb", () => {
 		const placed = placeBubble(thumb, 33, BOX, AREA, crowd, ANCHOR);
 		expect(placed.hidden).toBe(crowd.filter((circle) => distanceFrom(circle, placed) < 12).length);
 		expect(placed.hidden).toBeGreaterThan(0);
+	});
+
+	it("asks for a short bubble only when the full one hides a key or is not beside the thumb, and takes it only when it clearly does better", () => {
+		const at = { left: 0, top: 0 };
+		expect(bubbleNeedsShortForm({ ...at, cost: 1, away: 10, hidden: 0 })).toBe(false);
+		expect(bubbleNeedsShortForm({ ...at, cost: 1, away: BESIDE_REACH, hidden: 0 })).toBe(false);
+		expect(bubbleNeedsShortForm({ ...at, cost: 1, away: BESIDE_REACH + 1, hidden: 0 })).toBe(true);
+		expect(bubbleNeedsShortForm({ ...at, cost: 1, away: 0, hidden: 1 })).toBe(true);
+		const full = { ...at, cost: 5, away: 90, hidden: 0 };
+		expect(preferShortBubble(full, { ...at, cost: 1, away: 5, hidden: 0 })).toBe(true);
+		expect(preferShortBubble(full, { ...at, cost: 4.5, away: 80, hidden: 0 })).toBe(false);
 	});
 
 	it("keeps clear of the thumb's own circle whatever else is around, even with no room beside it", () => {

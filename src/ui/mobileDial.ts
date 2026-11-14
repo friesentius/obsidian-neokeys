@@ -7,7 +7,7 @@ import {
 	type DialItemView,
 	type DialView,
 } from "../dial/controller";
-import { BUBBLE_MARGIN, cardFits, cardTop, placeBubble, type BubblePlacement, type CoveredCircle } from "../dial/description";
+import { BUBBLE_MARGIN, bubbleNeedsShortForm, cardFits, cardTop, placeBubble, preferShortBubble, type BubblePlacement, type CoveredCircle } from "../dial/description";
 import { ANCHOR_RADIUS, DIAL_LEGIBLE_SIZE, ringParamsFor, type DialArc, type DialGeometry, type DialLayoutMode } from "../dial/layout";
 import { diffRings } from "../dial/ringDiff";
 import { getCommandName, hasCommand } from "../obsidianCommands";
@@ -767,13 +767,13 @@ export class MobileDial {
 				anchor,
 				this.bubblePlacement,
 			);
-		// The full bubble first; where it can only go over the keys of circles, the shorter one (key and label, without the description the pill already shows) if that hides fewer.
+		// The full bubble first; where it can only go over the keys of circles or far from the thumb, the shorter one (key and label, without the description the pill already shows) if that does clearly better.
 		this.bubbleEl.removeClass("neokeys-dial-bubble-compact");
 		let placed = place();
-		if (placed.hidden > 0 && armed.description !== "") {
+		if (armed.description !== "" && bubbleNeedsShortForm(placed)) {
 			this.bubbleEl.addClass("neokeys-dial-bubble-compact");
 			const shorter = place();
-			if (shorter.hidden < placed.hidden) placed = shorter;
+			if (preferShortBubble(placed, shorter)) placed = shorter;
 			else this.bubbleEl.removeClass("neokeys-dial-bubble-compact");
 		}
 		this.bubblePlacement = placed;
