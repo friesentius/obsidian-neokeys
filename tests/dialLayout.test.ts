@@ -333,6 +333,17 @@ describe("lensLayout at rest", () => {
 });
 
 describe("lensLayout under the finger", () => {
+	it("grows the lone circle on a one-item ring under the finger and leaves it at the base size with no finger on the ring", () => {
+		const geometry = { radius: 151, capacity: 5 };
+		const [under] = ringSlots(1, geometry, 1, FIXED, 66, 0.5);
+		expect(under.angleDeg).toBe(45);
+		expect(under.weight).toBe(1);
+		expect(under.size).toBeCloseTo(66);
+		const [rest] = ringSlots(1, geometry, 1, FIXED, 66, null);
+		expect(rest.size).toBe(44);
+		expect(rest.weight).toBe(0);
+	});
+
 	it("grows the circle under the finger to the peak and its neighbours part way, on a ring that fits as much as on a crowded one", () => {
 		const text = lensLayout(5, 5, 151, FIXED, 66, 0.25);
 		[1 / 3, 1, 1 / 3, 0, 0].forEach((weight, i) => expect(text.weights[i]).toBeCloseTo(weight));

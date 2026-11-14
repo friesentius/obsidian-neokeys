@@ -393,10 +393,10 @@ export function lensLayout(count: number, capacity: number, radius: number, para
 	};
 
 	if (theta === null || position === null || count <= 1) {
-		// At rest: the slot angles, and on a crowded ring as much zigzag as keeps the beads apart.
+		// At rest: the slot angles, and on a crowded ring as much zigzag as keeps the beads apart; a lone circle mid-sweep has room for the whole lens.
 		const angles = Array.from({ length: count }, (_, i) => restAngle(i));
 		const zigzag = count <= 1 ? 0 : (leastZigzag((z) => sum(squeeze(0, z).least) <= DIAL_SWEEP_DEG + 1e-9) ?? 1);
-		const { sizes, offsets } = squeeze(0, zigzag);
+		const { sizes, offsets } = squeeze(1, zigzag);
 		return { angles, sizes, weights, offsets, crowded, base, growth: 1 };
 	}
 
