@@ -6,15 +6,13 @@ import {
 	chooseMode,
 	DEFAULT_DEAD_ZONE,
 	DEFAULT_RING_PARAMS,
-	firstRadius,
 	fittingFrom,
 	hitTest,
+	naturalReach,
 	paging,
 	planRings,
-	radiusFor,
 	ringArcs,
 	ringSlots,
-	ringStep,
 	slotPosition,
 	type DialArc,
 	type DialGeometry,
@@ -382,18 +380,18 @@ export class DialController {
 
 	/** The pill mode for this opening: once per open and per relayout, never while a ring opens, with room for the keymap's widest path in mind. */
 	private chooseGeometry(): void {
-		const chosen = chooseMode(this.chainReach(this.path[0], firstRadius(this.params)), this.measure, this.params);
+		const chosen = chooseMode(this.chainReach(this.path[0]), this.measure, this.params);
 		this.mode = chosen.mode;
 		this.geometry = chosen.geometry;
 	}
 
-	/** The radius the outermost ring would naturally take along the longest path of groups below `group`, whose own ring starts at `min`. */
-	private chainReach(group: GroupNode, min: number): number {
+	/** The radius the outermost ring would naturally take along the widest chain of groups from `group`, below the levels of `counts` above it. */
+	private chainReach(group: GroupNode, counts: readonly number[] = []): number {
 		const entries = this.visibleEntries(group);
-		const radius = radiusFor(entries.length, this.params, min);
-		let reach = radius;
+		const chain = [...counts, entries.length];
+		let reach = naturalReach(this.params, chain);
 		for (const entry of entries) {
-			if (entry.node.kind === "group") reach = Math.max(reach, this.chainReach(entry.node, radius + ringStep(this.params)));
+			if (entry.node.kind === "group") reach = Math.max(reach, this.chainReach(entry.node, chain));
 		}
 		return reach;
 	}
@@ -483,9 +481,16 @@ export class DialController {
 	private setPath(next: GroupNode[]): boolean {
 		if (next.length === this.path.length && next.every((group, i) => group === this.path[i])) return false;
 		const before = this.targets;
-		this.path = next;
+		this.usePath(next);
 		this.plan();
 		return !sameTargets(before, this.targets);
+	}
+
+	/** Take `next` as the path; a level whose group changed, and every level below it, starts again at page 0. */
+	private usePath(next: GroupNode[]): void {
+		const changed = next.findIndex((group, i) => group !== this.path[i]);
+		if (changed !== -1) this.pages.length = Math.min(this.pages.length, changed);
+		this.path = next;
 	}
 
 	/**
@@ -517,8 +522,7 @@ export class DialController {
 		const { node } = target.entry;
 		if (node.kind === "group") {
 			const before = this.targets;
-			this.path.length = target.level + 1;
-			this.path.push(node);
+			this.usePath([...this.path.slice(0, target.level + 1), node]);
 			this.plan();
 			this.emit(sameTargets(before, this.targets) ? "armed" : "structure");
 			return;

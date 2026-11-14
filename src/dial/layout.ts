@@ -41,8 +41,6 @@ export interface DialGeometry {
  */
 export type DialLayoutMode = "normal" | "raised" | "overlap";
 
-export const DIAL_LAYOUT_MODES: readonly DialLayoutMode[] = ["normal", "raised", "overlap"];
-
 export interface DialRingParams {
 	/** Diameter of one item target. */
 	itemSize: number;

@@ -712,6 +712,35 @@ describe("DialController paging", () => {
 		expect(controller.view().page).toBe(0);
 	});
 
+	it("a sibling group armed in place of a paged group starts at its own page 0, and so does the paged group again", () => {
+		const group = (title: string, letters: string) =>
+			`  ${letters[0]}:\n    title: ${title}\n    items:\n` + [...letters].map((k) => `      ${k}: app:${title}-${k} ${title} ${k}\n`).join("");
+		const root = parseKeymapSource(`title: Big\nitems:\n${group("Alpha", "abcdefghijklmn")}${group("Omega", "opqrstuvwxyzAB")}`);
+		const { host } = makeHost();
+		host.isCommandKnown = () => true;
+		const controller = new DialController(host, () => PHONE);
+		controller.open(root);
+		controller.pressAt(itemAt(controller, "Alpha"));
+		controller.release();
+		expect(controller.view().pages).toBeGreaterThan(1);
+		controller.pressAt(itemAt(controller, "More"));
+		controller.release();
+		expect(controller.view().page).toBe(1);
+		controller.pressAt(itemAt(controller, "Omega"));
+		controller.release();
+		let view = controller.view();
+		expect(view.rings[1].group.title).toBe("Omega");
+		expect(view.pages).toBeGreaterThan(1);
+		expect(view.page).toBe(0);
+		expect(view.rings[1].items[0].label).toBe("Omega o");
+		controller.pressAt(itemAt(controller, "Alpha"));
+		controller.release();
+		view = controller.view();
+		expect(view.rings[1].group.title).toBe("Alpha");
+		expect(view.page).toBe(0);
+		expect(view.rings[1].items[0].label).toBe("Alpha a");
+	});
+
 	it("shows nothing but stays usable when no ring fits at all", () => {
 		const nothing: DialGeometry = { corner: "bottom-right", anchor: { x: 350, y: 100 }, bounds: { left: 4, top: 60, right: 386, bottom: 136 } };
 		const { root, controller } = setup(nothing);
