@@ -846,6 +846,8 @@ body.theme-light .neokeys-dial {
 	position: absolute;
 	left: var(--neokeys-dial-bubble-left, 0px);
 	top: var(--neokeys-dial-bubble-top, 0px);
+	/* Sized by its text alone, whatever room its current spot leaves: a box that shrank toward the screen's edge would be measured wider than it is laid out, and the plugin places it by that measure. */
+	width: max-content;
 	max-width: 220px;
 	padding: var(--size-4-2) var(--size-4-3);
 	border-radius: var(--radius-m);

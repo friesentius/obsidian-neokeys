@@ -18,6 +18,7 @@ import {
 	ringUnder,
 	slotPosition,
 	type DialArc,
+	type DialBounds,
 	type DialGeometry,
 	type DialLayoutMode,
 	type DialPoint,
@@ -103,6 +104,8 @@ export interface DialView {
 	arcs: DialArc[];
 	/** Where the breadcrumb pill sits for this opening. */
 	mode: DialLayoutMode;
+	/** The rectangle every circle stays inside: the screen less the breadcrumb pill, and above whatever the anchor keeps clear of. Anything else drawn beside the rings stays inside it too. */
+	bounds: DialBounds;
 }
 
 /**
@@ -381,6 +384,7 @@ export class DialController {
 			rings: this.opened ? this.rings.map((ring, index) => this.ringView(ring, index)) : [],
 			arcs: this.opened && this.geometry ? ringArcs(this.geometry, this.rings, this.slots) : [],
 			mode: this.mode,
+			bounds: this.geometry?.bounds ?? { left: 0, top: 0, right: 0, bottom: 0 },
 		};
 	}
 

@@ -8,7 +8,7 @@ import {
 	type DialRingView,
 	type DialView,
 } from "../dial/controller";
-import { cardFits, cardTop, placeBubble, type CoveredCircle } from "../dial/description";
+import { BUBBLE_MARGIN, cardFits, cardTop, placeBubble, type BubblePlacement, type CoveredCircle } from "../dial/description";
 import { ANCHOR_RADIUS, ringParamsFor, type DialArc, type DialGeometry, type DialLayoutMode } from "../dial/layout";
 import { getCommandName, hasCommand } from "../obsidianCommands";
 import type { DialCorner, DialDescription, DialRadiusRule, DialRingAnimation, GroupEntry, GroupNode } from "../types";
@@ -101,6 +101,8 @@ export class MobileDial {
 	private resizeObserver: ResizeObserver | null = null;
 	private mutationObserver: MutationObserver | null = null;
 	private classObserver: MutationObserver | null = null;
+	/** Where the bubble beside the thumb was last placed, so a finger sliding along a ring does not make it jump between sides; null while it is hidden. */
+	private bubblePlacement: BubblePlacement | null = null;
 	private readonly teardown: (() => void)[] = [];
 
 	constructor(
@@ -645,6 +647,7 @@ export class MobileDial {
 		const bubble = placement === "thumb" && armed !== null;
 		this.cardEl.toggleClass("neokeys-dial-card-shown", card);
 		this.bubbleEl.toggleClass("neokeys-dial-bubble-shown", bubble);
+		if (!bubble) this.bubblePlacement = null;
 		if (card && armed) this.renderCard(view, armed, rebuild);
 		if (bubble && armed) this.renderBubble(view, armed, rebuild);
 	}
@@ -673,7 +676,12 @@ export class MobileDial {
 		this.cardEl.setCssProps({ "--neokeys-dial-card-top": `${Math.round(cardTop(pillBottom, ringTop, this.cardEl.offsetHeight))}px` });
 	}
 
-	/** The bubble sits beside the armed circle wherever it covers the fewest other circles. */
+	/**
+	 * The bubble sits beside the thumb (the armed circle) wherever that covers the least: the
+	 * area it may use is the screen below the pill and above the chrome the anchor keeps clear
+	 * of, which is where the rings themselves are kept (a keyboard or toolbar below that is
+	 * never covered). It is re-placed on every move of the lens, so it follows the finger.
+	 */
 	private renderBubble(view: DialView, armed: DialArmedView, rebuild: boolean): void {
 		if (rebuild) {
 			this.bubbleEl.empty();
@@ -684,11 +692,7 @@ export class MobileDial {
 		}
 		const anchorRect = this.anchorEl.getBoundingClientRect();
 		const anchor = { x: anchorRect.left + anchorRect.width / 2, y: anchorRect.top + anchorRect.height / 2 };
-		// The armed circle itself weighs most: a spot that would cover it once kept on screen is the last choice.
-		const circles: CoveredCircle[] = [
-			{ x: anchor.x, y: anchor.y, radius: ANCHOR_RADIUS, weight: 2 },
-			{ x: armed.x, y: armed.y, radius: armed.size / 2, weight: 3 },
-		];
+		const circles: CoveredCircle[] = [{ x: anchor.x, y: anchor.y, radius: ANCHOR_RADIUS, weight: 2 }];
 		view.rings.forEach((ring, index) => {
 			const weight = index === view.rings.length - 1 ? 2 : 1;
 			for (const item of ring.items) if (!item.armed) circles.push({ x: item.x, y: item.y, radius: item.size / 2, weight });
@@ -697,11 +701,12 @@ export class MobileDial {
 			{ x: armed.x, y: armed.y },
 			armed.size / 2,
 			{ width: this.bubbleEl.offsetWidth, height: this.bubbleEl.offsetHeight },
-			{ width: activeWindow.innerWidth, height: activeWindow.innerHeight, top: this.pillEl.getBoundingClientRect().bottom },
+			{ left: BUBBLE_MARGIN, top: this.pillEl.getBoundingClientRect().bottom + BUBBLE_MARGIN, right: activeWindow.innerWidth - BUBBLE_MARGIN, bottom: view.bounds.bottom },
 			circles,
 			anchor,
-			this.options.corner === "bottom-right" ? -1 : 1,
+			this.bubblePlacement,
 		);
+		this.bubblePlacement = placed;
 		this.bubbleEl.setCssProps({ "--neokeys-dial-bubble-left": `${Math.round(placed.left)}px`, "--neokeys-dial-bubble-top": `${Math.round(placed.top)}px` });
 	}
 }
