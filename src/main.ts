@@ -103,6 +103,7 @@ export default class NeokeysPlugin extends Plugin {
 			{
 				corner: this.settings.mobileDialCorner,
 				itemSize: this.settings.mobileDialItemSize,
+				description: this.settings.mobileDialDescription,
 				animation: () => ({
 					enabled: shouldAnimate(this.settings.animationsEnabled, prefersReducedMotion(window)),
 					durationMs: this.settings.animationDurationMs,

@@ -1,17 +1,26 @@
-import { DialController, type DialHost } from "../src/dial/controller";
-import { computeRings, DEFAULT_RING_PARAMS, placeSlots, slotPosition, type DialGeometry } from "../src/dial/layout";
+import { DialController, DWELL_MS, type DialHost, type DialTimers } from "../src/dial/controller";
+import { DEFAULT_RING_PARAMS, MIN_DIAL_ITEM_SIZE, planRings, ringParamsFor, ringSlots, slotPosition, type DialGeometry } from "../src/dial/layout";
 import { parseKeymapSource } from "../src/keymap";
 
 const SOURCE = `
 title: Neokeys
+description: Everything
 items:
   f:
     title: File
+    description: Create and open files
     items:
       n: file-explorer:new-file New file
       o:
         file: Inbox/Today
         description: Today's inbox
+      t:
+        title: Templates
+        description: Start from a template
+        items:
+          d:
+            file: Templates/Daily
+            description: Daily template
   w:
     title: Window
     items:
@@ -25,6 +34,7 @@ items:
       '-': workspace:split-horizontal Split down
       g:
         title: Go to tab
+        description: Jump to a tab
         items:
           '1': workspace:goto-tab-1 Tab 1
       e:
@@ -68,7 +78,7 @@ const PHONE: DialGeometry = {
 	bounds: { left: 4, top: 60, right: 386, bottom: 840 },
 };
 
-/** A box so short that only one ring of three fits, to force paging. */
+/** A box so short that only the root ring fits: a group's ring must wait for the release and then take the root's place. */
 const TINY: DialGeometry = {
 	corner: "bottom-right",
 	anchor: { x: 350, y: 180 },
@@ -101,635 +111,877 @@ function makeHost() {
 	return { host, calls };
 }
 
+/** A clock and timer the test advances by hand. */
+function makeTimers() {
+	let now = 1000;
+	let nextId = 1;
+	const scheduled = new Map<number, { at: number; callback: () => void }>();
+	const timers: DialTimers = {
+		now: () => now,
+		setTimeout: (callback, ms) => {
+			const id = nextId++;
+			scheduled.set(id, { at: now + ms, callback });
+			return id;
+		},
+		clearTimeout: (handle) => {
+			scheduled.delete(handle as number);
+		},
+	};
+	const advance = (ms: number): void => {
+		now += ms;
+		for (const [id, timer] of [...scheduled.entries()].sort((a, b) => a[1].at - b[1].at)) {
+			if (timer.at > now) continue;
+			scheduled.delete(id);
+			timer.callback();
+		}
+	};
+	return { timers, advance, pending: () => scheduled.size };
+}
+
 function setup(geometry: DialGeometry = PHONE, raisedGeometry: DialGeometry = geometry, overlapGeometry: DialGeometry = raisedGeometry) {
 	const root = parseKeymapSource(SOURCE);
 	const { host, calls } = makeHost();
+	const { timers, advance, pending } = makeTimers();
 	const changes: string[] = [];
-	const controller = new DialController(host, (mode) => (mode === "normal" ? geometry : mode === "raised" ? raisedGeometry : overlapGeometry));
+	const measured: string[] = [];
+	const controller = new DialController(
+		host,
+		(mode) => {
+			measured.push(mode);
+			return mode === "normal" ? geometry : mode === "raised" ? raisedGeometry : overlapGeometry;
+		},
+		DEFAULT_RING_PARAMS,
+		undefined,
+		timers,
+	);
 	controller.onChange((change) => changes.push(change));
-	return { root, host, calls, changes, controller };
+	return { root, host, calls, changes, measured, controller, advance, pending };
+}
+
+/** The items on screen, flat, innermost ring first. */
+function items(controller: DialController) {
+	return controller.view().rings.flatMap((ring) => ring.items);
+}
+
+function labels(controller: DialController): string[] {
+	return items(controller).map((item) => item.label);
 }
 
 /** Screen position of the item currently labelled `label`. */
 function itemAt(controller: DialController, label: string) {
-	const item = controller.view().items.find((i) => i.label === label);
-	if (!item) throw new Error(`no item labelled ${label}: ${controller.view().items.map((i) => i.label).join(", ")}`);
+	const item = items(controller).find((i) => i.label === label);
+	if (!item) throw new Error(`no item labelled ${label}: ${labels(controller).join(", ")}`);
 	return { x: item.x, y: item.y };
+}
+
+/** A point just outside the circles of the ring at `radius`, in the gap toward the next ring, at `angleDeg` of the sweep. */
+function inGap(geometry: DialGeometry, radius: number, angleDeg: number) {
+	const distance = radius + DEFAULT_RING_PARAMS.itemSize / 2 + 8;
+	const angle = (angleDeg * Math.PI) / 180;
+	return { x: geometry.anchor.x - distance * Math.cos(angle), y: geometry.anchor.y - distance * Math.sin(angle) };
 }
 
 describe("DialController opening and closing", () => {
 	it("starts closed with an empty view", () => {
 		const { controller } = setup();
-		expect(controller.isOpen).toBe(false);
-		expect(controller.view()).toMatchObject({ open: false, items: [], crumbs: [], armedLabel: null });
+		const view = controller.view();
+		expect(view).toMatchObject({ open: false, pressing: false, rings: [], crumbs: [], armed: null, pages: 0 });
 	});
 
-	it("opens at the root with the level's items placed on the rings", () => {
-		const { controller, root } = setup();
+	it("opens at the root with the level's items on one ring, in the popup's order, with the root's description", () => {
+		const { root, controller, changes } = setup();
 		controller.open(root);
 		const view = controller.view();
 		expect(view.open).toBe(true);
 		expect(view.title).toBe("Neokeys");
 		expect(view.crumbs).toEqual([]);
-		// Groups first, then commands, in stored order (the which-key popup's sort).
-		expect(view.items.map((i) => i.label)).toEqual(["File", "Window", "Zoom", "Help"]);
-		expect(view.items.map((i) => i.kind)).toEqual(["group", "group", "command", "command"]);
-		expect(view.items.map((i) => i.key)).toEqual(["f", "w", "z", "b"]);
-		expect(view.items.every((i) => i.size === DEFAULT_RING_PARAMS.itemSize)).toBe(true);
-		expect(view.pages).toBe(1);
+		expect(view.description).toBe("Everything");
+		expect(view.rings).toHaveLength(1);
+		expect(view.rings[0]).toMatchObject({ level: 1 - 1, group: root, page: 0, pages: 1 });
+		expect(labels(controller)).toEqual(["File", "Window", "Zoom", "Help"]);
+		expect(items(controller).map((item) => item.key)).toEqual(["f", "w", "z", "b"]);
+		expect(items(controller).map((item) => item.kind)).toEqual(["group", "group", "command", "command"]);
+		expect(changes).toEqual(["structure"]);
 	});
 
 	it("places items where the layout module says, so hit tests and rendering agree", () => {
-		const { controller, root } = setup();
+		const { root, controller } = setup();
 		controller.open(root);
-		const rings = computeRings(PHONE, DEFAULT_RING_PARAMS);
-		const slots = placeSlots(rings, 4);
-		controller.view().items.forEach((item, index) => {
-			const expected = slotPosition(slots[index], PHONE, rings);
-			expect(item.x).toBeCloseTo(expected.x, 6);
-			expect(item.y).toBeCloseTo(expected.y, 6);
+		const rings = planRings(PHONE, DEFAULT_RING_PARAMS, [4]);
+		const expected = ringSlots(0, rings[0].capacity, 4).map((slot) => slotPosition(slot, PHONE, rings));
+		items(controller).forEach((item, i) => {
+			expect(item.x).toBeCloseTo(expected[i].x, 6);
+			expect(item.y).toBeCloseTo(expected[i].y, 6);
+			expect(item.size).toBe(DEFAULT_RING_PARAMS.itemSize);
 		});
+		expect(controller.view().rings[0].radius).toBe(rings[0].radius);
 	});
 
 	it("pressing the anchor while closed opens it, and releasing without arming leaves it open", () => {
-		const { controller, root } = setup();
+		const { root, controller, changes } = setup();
 		controller.pressAnchor(root);
-		expect(controller.isOpen).toBe(true);
-		expect(controller.isPressing).toBe(true);
+		expect(controller.view().open).toBe(true);
+		expect(controller.view().pressing).toBe(true);
 		controller.release();
-		expect(controller.isOpen).toBe(true);
-		expect(controller.isPressing).toBe(false);
+		expect(controller.view().open).toBe(true);
+		expect(controller.view().pressing).toBe(false);
+		expect(changes).toEqual(["structure", "armed"]);
 	});
 
-	it("a tap on the anchor while open goes back a level, and closes at the root", () => {
-		const { controller, root } = setup();
-		controller.open(root);
-		controller.pressAt(itemAt(controller, "Window"));
-		controller.release();
-		expect(controller.view().crumbs).toEqual(["Window"]);
-		controller.pressAnchor(root);
-		controller.release();
-		expect(controller.isOpen).toBe(true);
-		expect(controller.view().crumbs).toEqual([]);
-		controller.pressAnchor(root);
-		controller.release();
-		expect(controller.isOpen).toBe(false);
-	});
-
-	it("a drag from the open anchor that ends on nothing also acts as back", () => {
-		const { controller, root } = setup();
-		controller.open(root);
-		controller.pressAnchor(root);
-		controller.moveTo(itemAt(controller, "File"));
-		controller.moveTo({ x: 40, y: 300 });
-		controller.release();
-		expect(controller.isOpen).toBe(false);
-	});
-
-	it("a tap outside every item closes it", () => {
-		const { controller, root } = setup();
-		controller.open(root);
-		controller.pressAt({ x: 40, y: 300 });
-		expect(controller.view().armedLabel).toBeNull();
-		controller.release();
-		expect(controller.isOpen).toBe(false);
-	});
-
-	it("a tap on blank space inside the fan closes it without running anything", () => {
-		const { controller, root, calls } = setup();
-		controller.open(root);
-		// 185px from the anchor at 3 degrees: within the fan's reach, but 120px from the lone outer item.
-		const rad = (3 * Math.PI) / 180;
-		controller.pressAt({ x: PHONE.anchor.x - 185 * Math.cos(rad), y: PHONE.anchor.y - 185 * Math.sin(rad) });
-		expect(controller.view().armedLabel).toBeNull();
-		controller.release();
-		expect(controller.isOpen).toBe(false);
-		expect(calls.executed).toEqual([]);
-		expect(calls.notices).toEqual([]);
-		// Just outside the anchor's rim, short of the first ring: the same.
-		controller.open(root);
-		controller.pressAt({ x: PHONE.anchor.x - 30, y: PHONE.anchor.y - 30 });
-		expect(controller.view().armedLabel).toBeNull();
-		controller.release();
-		expect(controller.isOpen).toBe(false);
-		expect(controller.view().crumbs).toEqual([]);
-	});
-
-	it("an anchor press needs a root only to open; an open dial takes one without", () => {
-		const { controller, root } = setup();
-		controller.pressAnchor();
-		expect(controller.isOpen).toBe(false);
-		expect(controller.isPressing).toBe(false);
-		controller.open(root);
-		controller.pressAnchor();
-		expect(controller.isPressing).toBe(true);
-		controller.release();
-		expect(controller.isOpen).toBe(false);
-	});
-
-	it("reports pressing from the very first change of the press that opens the dial", () => {
-		const root = parseKeymapSource(SOURCE);
-		const { host } = makeHost();
-		const controller = new DialController(host, () => PHONE);
-		const seen: boolean[] = [];
-		controller.onChange(() => seen.push(controller.view().pressing));
-		controller.pressAnchor(root);
-		expect(seen).toEqual([true]);
-	});
-
-	it("close() and back() at the root close it; back() deeper goes up one level", () => {
-		const { controller, root } = setup();
-		controller.open(root);
-		controller.pressAt(itemAt(controller, "Window"));
-		controller.release();
-		expect(controller.view().crumbs).toEqual(["Window"]);
-		controller.back();
-		expect(controller.isOpen).toBe(true);
-		expect(controller.view().crumbs).toEqual([]);
-		controller.back();
-		expect(controller.isOpen).toBe(false);
-		controller.open(root);
-		controller.close();
-		expect(controller.isOpen).toBe(false);
-	});
-
-	it("re-opening resets to the root and page 0", () => {
-		const { controller, root } = setup();
+	it("a tap on the anchor while open closes the deepest open group, and closes the dial at the root", () => {
+		const { root, controller } = setup();
 		controller.open(root);
 		controller.pressAt(itemAt(controller, "File"));
 		controller.release();
 		expect(controller.view().crumbs).toEqual(["File"]);
+		controller.pressAnchor();
+		controller.release();
+		expect(controller.view().open).toBe(true);
+		expect(controller.view().crumbs).toEqual([]);
+		controller.pressAnchor();
+		controller.release();
+		expect(controller.view().open).toBe(false);
+	});
+
+	it("a drag from the open anchor that ends on nothing also acts as back", () => {
+		const { root, controller } = setup();
+		controller.open(root);
+		controller.pressAt(itemAt(controller, "File"));
+		controller.release();
+		controller.pressAnchor();
+		controller.moveTo({ x: 100, y: 100 });
+		controller.release();
+		expect(controller.view().open).toBe(true);
+		expect(controller.view().crumbs).toEqual([]);
+	});
+
+	it("a tap outside every item closes it", () => {
+		const { root, controller, calls } = setup();
+		controller.open(root);
+		controller.pressAt({ x: 40, y: 300 });
+		controller.release();
+		expect(controller.view().open).toBe(false);
+		expect(calls.executed).toEqual([]);
+	});
+
+	it("a tap on blank space inside the fan closes it without running anything", () => {
+		const { root, controller, calls } = setup();
+		controller.open(root);
+		controller.pressAt(itemAt(controller, "Window"));
+		controller.release();
+		expect(controller.view().rings).toHaveLength(2);
+		// The Window ring holds 12 items at the full ring's pitch; a point between the anchor and that ring, off every slot, arms nothing.
+		const radius = controller.view().rings[1].radius;
+		const ringTop = { x: PHONE.anchor.x, y: PHONE.anchor.y - radius };
+		const blank = { x: ringTop.x + 60, y: ringTop.y };
+		controller.pressAt(blank);
+		expect(controller.view().armed).toBeNull();
+		controller.release();
+		expect(controller.view().open).toBe(false);
+		expect(calls.executed).toEqual([]);
+	});
+
+	it("an anchor press needs a root only to open; an open dial takes one without", () => {
+		const { root, controller } = setup();
+		controller.pressAnchor();
+		expect(controller.view().open).toBe(false);
+		controller.pressAnchor(root);
+		controller.release();
+		controller.pressAnchor();
+		expect(controller.view().pressing).toBe(true);
+		controller.release();
+		expect(controller.view().open).toBe(false);
+	});
+
+	it("reports pressing from the very first change of the press that opens the dial", () => {
+		const { root, controller } = setup();
+		let pressingAtFirstChange: boolean | null = null;
+		controller.onChange(() => {
+			if (pressingAtFirstChange === null) pressingAtFirstChange = controller.view().pressing;
+		});
+		controller.pressAnchor(root);
+		expect(pressingAtFirstChange).toBe(true);
+	});
+
+	it("close() and back() at the root close it; back() deeper closes the deepest group", () => {
+		const { root, controller } = setup();
+		controller.open(root);
+		controller.pressAt(itemAt(controller, "Window"));
+		controller.release();
+		expect(controller.view().crumbs).toEqual(["Window"]);
+		controller.back();
+		expect(controller.view().crumbs).toEqual([]);
+		expect(controller.view().open).toBe(true);
+		controller.back();
+		expect(controller.view().open).toBe(false);
+		controller.open(root);
+		controller.close();
+		expect(controller.view().open).toBe(false);
+	});
+
+	it("re-opening resets to the root", () => {
+		const { root, controller } = setup();
+		controller.open(root);
+		controller.pressAt(itemAt(controller, "Window"));
+		controller.release();
 		controller.open(root);
 		expect(controller.view().crumbs).toEqual([]);
-		expect(controller.view().page).toBe(0);
+		expect(controller.view().rings).toHaveLength(1);
 	});
 });
 
 describe("DialController dragging", () => {
-	it("arms the item under the pointer while pressing and shows its label in the breadcrumb", () => {
-		const { controller, root, calls } = setup();
+	it("arms the item under the pointer while pressing and shows it with its description", () => {
+		const { root, controller, changes } = setup();
+		controller.pressAnchor(root);
+		controller.moveTo(itemAt(controller, "Zoom"));
+		expect(controller.view().armed).toMatchObject({ label: "Zoom", key: "z", kind: "command", description: "", count: null, open: false, waiting: false });
+		expect(items(controller).map((item) => item.armed)).toEqual([false, false, true, false]);
+		expect(changes[changes.length - 1]).toBe("armed");
+	});
+
+	it("arming a group opens its items as the next ring out, marked open on its own ring, without acting", () => {
+		const { root, controller, calls, changes } = setup();
 		controller.pressAnchor(root);
 		controller.moveTo(itemAt(controller, "File"));
 		const view = controller.view();
-		expect(view.armedLabel).toBe("File");
-		expect(view.items.find((i) => i.label === "File")?.armed).toBe(true);
-		expect(calls.vibrations).toBe(1);
-		// Nothing has happened yet: still at the root, nothing executed.
-		expect(view.crumbs).toEqual([]);
+		expect(view.rings).toHaveLength(2);
+		expect(view.rings[1]).toMatchObject({ level: 1, page: 0, pages: 1 });
+		expect(view.rings[1].items.map((item) => item.label)).toEqual(["Templates", "Today's inbox", "New file"]);
+		expect(view.rings[0].items.map((item) => item.open)).toEqual([true, false, false, false]);
+		expect(view.crumbs).toEqual(["File"]);
+		expect(view.armed).toMatchObject({ label: "File", description: "Create and open files", count: 3, open: true, waiting: false });
+		expect(changes[changes.length - 1]).toBe("structure");
 		expect(calls.executed).toEqual([]);
 	});
 
-	it("passing over a group mid-drag never descends; only the release target acts", () => {
-		const { controller, root, calls } = setup();
+	it("describes a group that has no description by its items, so a ring of keys can be read", () => {
+		const { root, controller } = setup();
 		controller.pressAnchor(root);
-		controller.moveTo(itemAt(controller, "File"));
-		expect(controller.view().crumbs).toEqual([]);
 		controller.moveTo(itemAt(controller, "Window"));
-		expect(controller.view().armedLabel).toBe("Window");
-		expect(controller.view().crumbs).toEqual([]);
-		controller.moveTo(itemAt(controller, "Zoom"));
-		controller.release();
-		expect(calls.executed).toEqual(["app:zoom"]);
-		expect(controller.isOpen).toBe(false);
+		expect(controller.view().armed?.description).toBe(
+			"g Go to tab · e Focus pane · c New tab · x Close tab · n Next tab · p Previous tab · m Move tab to new window · u Undo close tab · v Split right · - Split down · w New window · W Close window",
+		);
 	});
 
-	it("moving away from every item disarms without acting", () => {
-		const { controller, root, calls } = setup();
+	it("walks the keymap in one drag: a child ring's group opens a third ring, and a file on it acts only on the release", () => {
+		const { root, controller, calls } = setup();
 		controller.pressAnchor(root);
-		controller.moveTo(itemAt(controller, "Zoom"));
-		controller.moveTo({ x: 40, y: 300 });
-		expect(controller.view().armedLabel).toBeNull();
+		controller.moveTo(itemAt(controller, "File"));
+		controller.moveTo(itemAt(controller, "Templates"));
+		expect(controller.view().rings).toHaveLength(3);
+		expect(controller.view().rings.map((ring) => ring.radius)).toEqual([97, 151, 205]);
+		expect(controller.view().rings[2].items.map((item) => item.label)).toEqual(["Daily template"]);
+		expect(controller.view().crumbs).toEqual(["File", "Templates"]);
+		controller.moveTo(itemAt(controller, "Daily template"));
+		expect(controller.view().armed?.label).toBe("Daily template");
+		expect(calls.opened).toEqual([]);
 		controller.release();
+		expect(calls.opened).toEqual(["Templates/Daily"]);
+		expect(controller.view().open).toBe(false);
+	});
+
+	it("arming a command on an inner ring closes the rings outside it", () => {
+		const { root, controller } = setup();
+		controller.pressAnchor(root);
+		controller.moveTo(itemAt(controller, "File"));
+		controller.moveTo(itemAt(controller, "Templates"));
+		expect(controller.view().rings).toHaveLength(3);
+		controller.moveTo(itemAt(controller, "New file"));
+		expect(controller.view().rings).toHaveLength(2);
+		expect(controller.view().crumbs).toEqual(["File"]);
+	});
+
+	it("swaps a child ring at once when the thumb moves over the circles of the inner ring to a sibling group", () => {
+		const { root, controller } = setup();
+		controller.pressAnchor(root);
+		controller.moveTo(itemAt(controller, "File"));
+		expect(controller.view().rings[1].group.title).toBe("File");
+		controller.moveTo(itemAt(controller, "Window"));
+		expect(controller.view().rings[1].group.title).toBe("Window");
+		expect(controller.view().crumbs).toEqual(["Window"]);
+	});
+
+	it("in the gap outside an inner ring's circles, a sibling only takes over after a rest, so a thumb heading out to the next ring passes through", () => {
+		const { root, controller, advance, pending } = setup();
+		controller.pressAnchor(root);
+		controller.moveTo(itemAt(controller, "Window"));
+		const radius = controller.view().rings[0].radius;
+		expect(controller.view().rings[1].radius).toBeGreaterThan(radius + 100);
+		// File sits at 0 degrees on the root ring; the gap outside its circle still belongs to its slot.
+		controller.moveTo(inGap(PHONE, radius, 0));
+		expect(controller.view().armed?.label).toBe("Window");
+		expect(controller.view().rings[1].group.title).toBe("Window");
+		expect(pending()).toBe(1);
+		advance(DWELL_MS / 2);
+		controller.moveTo(inGap(PHONE, radius, 2));
+		expect(controller.view().armed?.label).toBe("Window");
+		// Moving on out to the child ring before the rest is over drops the pending swap.
+		controller.moveTo(itemAt(controller, "Go to tab"));
+		expect(controller.view().armed?.label).toBe("Go to tab");
+		expect(pending()).toBe(0);
+		advance(DWELL_MS * 2);
+		expect(controller.view().rings[1].group.title).toBe("Window");
+	});
+
+	it("a thumb that rests in that gap gets the sibling after the dwell, even without moving again", () => {
+		const { root, controller, advance, changes } = setup();
+		controller.pressAnchor(root);
+		controller.moveTo(itemAt(controller, "Window"));
+		const radius = controller.view().rings[0].radius;
+		controller.moveTo(inGap(PHONE, radius, 0));
+		expect(controller.view().armed?.label).toBe("Window");
+		const before = changes.length;
+		advance(DWELL_MS + 10);
+		expect(controller.view().armed?.label).toBe("File");
+		expect(controller.view().rings[1].group.title).toBe("File");
+		expect(changes.length).toBe(before + 1);
+	});
+
+	it("re-arms the open group itself at once anywhere in its band, since that swaps nothing", () => {
+		const { root, controller } = setup();
+		controller.pressAnchor(root);
+		controller.moveTo(itemAt(controller, "Window"));
+		controller.moveTo(itemAt(controller, "New tab"));
+		const radius = controller.view().rings[0].radius;
+		controller.moveTo(inGap(PHONE, radius, 30));
+		expect(controller.view().armed?.label).toBe("Window");
+	});
+
+	it("re-arms at once over the circles of an inner ring, so browsing along it swaps the ring outside without a wait", () => {
+		const { root, controller, pending } = setup();
+		controller.pressAnchor(root);
+		controller.moveTo(itemAt(controller, "Window"));
+		controller.moveTo(itemAt(controller, "File"));
+		expect(pending()).toBe(0);
+		expect(controller.view().rings[1].group.title).toBe("File");
+	});
+
+	it("moving away from every item disarms without acting and keeps the open rings", () => {
+		const { root, controller, calls } = setup();
+		controller.pressAnchor(root);
+		controller.moveTo(itemAt(controller, "File"));
+		controller.moveTo({ x: 100, y: 100 });
+		expect(controller.view().armed).toBeNull();
+		expect(controller.view().rings).toHaveLength(2);
+		expect(controller.view().description).toBe("Create and open files");
+		controller.release();
+		expect(controller.view().open).toBe(true);
+		expect(controller.view().rings).toHaveLength(2);
 		expect(calls.executed).toEqual([]);
 	});
 
 	it("does not react to moves when no pointer is down", () => {
-		const { controller, root } = setup();
+		const { root, controller, changes } = setup();
 		controller.open(root);
+		const before = changes.length;
 		controller.moveTo(itemAt(controller, "Zoom"));
-		expect(controller.view().armedLabel).toBeNull();
-		expect(controller.view().pressing).toBe(false);
+		expect(controller.view().armed).toBeNull();
+		expect(changes.length).toBe(before);
 	});
 
 	it("ignores a second pointer while one is already down", () => {
-		const { controller, root } = setup();
+		const { root, controller } = setup();
 		controller.pressAnchor(root);
-		controller.moveTo(itemAt(controller, "File"));
 		controller.pressAt(itemAt(controller, "Zoom"));
-		controller.pressAnchor(root);
-		expect(controller.view().armedLabel).toBe("File");
+		expect(controller.view().armed).toBeNull();
+		controller.release();
+		expect(controller.view().open).toBe(true);
 	});
 
-	it("a cancelled press never acts and leaves the dial open", () => {
-		const { controller, root, calls } = setup();
+	it("a cancelled press never acts and leaves the dial open with what was opened", () => {
+		const { root, controller, calls } = setup();
 		controller.pressAnchor(root);
-		controller.moveTo(itemAt(controller, "Zoom"));
+		controller.moveTo(itemAt(controller, "File"));
+		controller.moveTo(itemAt(controller, "New file"));
 		controller.cancelPress();
-		expect(controller.view().armedLabel).toBeNull();
-		expect(controller.isPressing).toBe(false);
-		expect(controller.isOpen).toBe(true);
-		controller.release();
 		expect(calls.executed).toEqual([]);
+		expect(controller.view().open).toBe(true);
+		expect(controller.view().pressing).toBe(false);
+		expect(controller.view().armed).toBeNull();
+		expect(controller.view().rings).toHaveLength(2);
 	});
 
 	it("only vibrates when the armed item changes", () => {
-		const { controller, root, calls } = setup();
+		const { root, controller, calls } = setup();
 		controller.pressAnchor(root);
-		const file = itemAt(controller, "File");
-		controller.moveTo(file);
-		controller.moveTo({ x: file.x + 2, y: file.y + 2 });
-		controller.moveTo({ x: file.x - 3, y: file.y });
-		expect(calls.vibrations).toBe(1);
-		controller.moveTo({ x: 40, y: 300 });
-		controller.moveTo(file);
+		const zoom = itemAt(controller, "Zoom");
+		controller.moveTo(zoom);
+		controller.moveTo({ x: zoom.x + 2, y: zoom.y + 2 });
+		controller.moveTo(itemAt(controller, "Help"));
+		controller.moveTo({ x: 100, y: 100 });
 		expect(calls.vibrations).toBe(2);
 	});
 });
 
 describe("DialController committing", () => {
-	it("releasing on a group descends into it without running anything", () => {
-		const { controller, root, calls } = setup();
+	it("releasing on a group leaves its ring open with nothing armed, and runs nothing", () => {
+		const { root, controller, calls, changes } = setup();
 		controller.pressAnchor(root);
 		controller.moveTo(itemAt(controller, "File"));
 		controller.release();
 		const view = controller.view();
 		expect(view.open).toBe(true);
+		expect(view.pressing).toBe(false);
+		expect(view.armed).toBeNull();
 		expect(view.crumbs).toEqual(["File"]);
-		expect(view.items.map((i) => i.label)).toEqual(["Today's inbox", "New file"]);
-		expect(view.items.map((i) => i.kind)).toEqual(["file", "command"]);
+		expect(view.rings).toHaveLength(2);
+		expect(view.rings[0].items[0].open).toBe(true);
+		expect(changes[changes.length - 1]).toBe("armed");
 		expect(calls.executed).toEqual([]);
-		expect(calls.opened).toEqual([]);
 	});
 
 	it("a direct tap on an item selects it the same way a drag-and-release does", () => {
-		const { controller, root, calls } = setup();
+		const { root, controller, calls } = setup();
 		controller.open(root);
-		controller.pressAt(itemAt(controller, "File"));
-		expect(controller.view().armedLabel).toBe("File");
+		controller.pressAt(itemAt(controller, "Zoom"));
+		expect(controller.view().armed?.label).toBe("Zoom");
 		controller.release();
-		controller.pressAt(itemAt(controller, "New file"));
-		controller.release();
-		expect(calls.executed).toEqual(["file-explorer:new-file"]);
-		expect(controller.isOpen).toBe(false);
+		expect(calls.executed).toEqual(["app:zoom"]);
+		expect(controller.view().open).toBe(false);
 	});
 
-	it("releasing on a file closes the dial and opens the file", () => {
-		const { controller, root, calls } = setup();
+	it("releasing on a file closes the dial and opens the file; the pill described it by its path", () => {
+		const { root, controller, calls } = setup();
 		controller.open(root);
 		controller.pressAt(itemAt(controller, "File"));
 		controller.release();
 		controller.pressAt(itemAt(controller, "Today's inbox"));
+		expect(controller.view().armed).toMatchObject({ kind: "file", description: "Inbox/Today" });
 		controller.release();
 		expect(calls.opened).toEqual(["Inbox/Today"]);
-		expect(controller.isOpen).toBe(false);
+		expect(controller.view().open).toBe(false);
 	});
 
 	it("hides commands this device does not know, and a group left with nothing, without taking a slot", () => {
-		const { controller, root } = setup();
+		const { root, controller } = setup();
 		controller.open(root);
-		expect(controller.view().items.map((i) => i.label)).toEqual(["File", "Window", "Zoom", "Help"]);
+		expect(labels(controller)).toEqual(["File", "Window", "Zoom", "Help"]);
 		controller.pressAt(itemAt(controller, "Window"));
 		controller.release();
-		const labels = controller.view().items.map((i) => i.label);
-		expect(labels).toHaveLength(12);
-		expect(labels).not.toContain("Open in new window");
+		const shown: string[] = [];
+		for (let page = 0; page < controller.view().pages; page++) {
+			shown.push(...controller.view().rings[1].items.filter((item) => item.kind !== "more").map((item) => item.label));
+			controller.pressAt(itemAt(controller, "More"));
+			controller.release();
+		}
+		expect(shown).toHaveLength(12);
+		expect(shown).not.toContain("Open in new window");
 	});
 
 	it("refuses to open a keymap with nothing available on this device, with a notice", () => {
-		const root = parseKeymapSource("title: Desktop\nitems:\n  z: app:zoom Zoom\n  w:\n    title: Window\n    items:\n      n: workspace:new-window New window\n");
-		const { host, calls } = makeHost();
-		host.isCommandKnown = () => false;
+		const { calls, host } = makeHost();
+		const unknownOnly = parseKeymapSource("title: Nothing\nitems:\n  a: plugin:bogus Bogus\n");
 		const controller = new DialController(host, () => PHONE);
-		controller.open(root);
-		expect(controller.isOpen).toBe(false);
+		controller.open(unknownOnly);
+		expect(controller.view().open).toBe(false);
 		expect(calls.notices).toEqual(["Neokeys: nothing in the keymap is available on this device"]);
 	});
 
 	it("exposes one guide arc per ring with two or more items, from the first item to the last", () => {
-		const { controller, root } = setup();
+		const { root, controller } = setup();
 		controller.open(root);
+		controller.pressAt(itemAt(controller, "File"));
+		controller.moveTo(itemAt(controller, "Templates"));
 		const view = controller.view();
-		// Four root items: three on the first ring, one alone on the second (no arc for a lone item).
-		expect(view.arcs).toHaveLength(1);
-		const [arc] = view.arcs;
-		expect(arc.from).toEqual({ x: view.items[0].x, y: view.items[0].y });
-		expect(arc.to).toEqual({ x: view.items[2].x, y: view.items[2].y });
-		expect(arc.radius).toBe(DEFAULT_RING_PARAMS.firstRadius);
-		expect(arc.clockwise).toBe(true);
-		controller.close();
-		expect(controller.view().arcs).toEqual([]);
+		expect(view.rings).toHaveLength(3);
+		expect(view.rings[2].items).toHaveLength(1);
+		expect(view.arcs).toHaveLength(2);
+		expect(view.arcs[0].from).toEqual({ x: view.rings[0].items[0].x, y: view.rings[0].items[0].y });
+		expect(view.arcs[1].to).toEqual({ x: view.rings[1].items[2].x, y: view.rings[1].items[2].y });
 	});
 
 	it("closes before the command runs, so the command sees the dial gone", () => {
-		const root = parseKeymapSource(SOURCE);
-		const { host, calls } = makeHost();
-		const controller = new DialController(host, () => PHONE);
-		let openWhenExecuted: boolean | null = null;
-		host.executeCommand = (id) => {
-			openWhenExecuted = controller.isOpen;
-			calls.executed.push(id);
+		const { root, controller, host } = setup();
+		let openWhenRun: boolean | null = null;
+		host.executeCommand = () => {
+			openWhenRun = controller.view().open;
 		};
 		controller.open(root);
 		controller.pressAt(itemAt(controller, "Zoom"));
 		controller.release();
-		expect(openWhenExecuted).toBe(false);
+		expect(openWhenRun).toBe(false);
 	});
 
-	it("walks the 12-item Window group on one page on a phone", () => {
-		const { controller, root } = setup();
+	it("tells the user about a command that went missing between opening and releasing, and stays open", () => {
+		const { root, controller, host, calls } = setup();
+		controller.open(root);
+		controller.pressAt(itemAt(controller, "Zoom"));
+		host.isCommandKnown = () => false;
+		controller.release();
+		expect(calls.executed).toEqual([]);
+		expect(calls.notices).toEqual(['Neokeys: command "app:zoom" is not available']);
+		expect(controller.view().open).toBe(true);
+	});
+
+	it("pages the 12-item Window group in two on a phone at the default size, and holds it whole at the smallest", () => {
+		const { root, controller } = setup();
 		controller.open(root);
 		controller.pressAt(itemAt(controller, "Window"));
 		controller.release();
 		const view = controller.view();
-		expect(view.pages).toBe(1);
-		expect(view.items).toHaveLength(12);
-		expect(view.items.filter((i) => i.kind === "more")).toHaveLength(0);
-		expect(view.items.slice(0, 2).map((i) => i.label)).toEqual(["Go to tab", "Focus pane"]);
+		expect(view.rings[1].items).toHaveLength(11);
+		expect(view.rings[1].items[10].kind).toBe("more");
+		expect(view.pages).toBe(2);
+
+		const small = new DialController(makeHost().host, () => PHONE, ringParamsFor(MIN_DIAL_ITEM_SIZE));
+		small.open(root);
+		small.pressAt(itemAt(small, "Window"));
+		small.release();
+		expect(small.view().rings[1].items).toHaveLength(12);
+		expect(small.view().pages).toBe(1);
+	});
+});
+
+describe("DialController when a ring has no room", () => {
+	it("keeps the group armed and in the path but opens no ring, then on release redraws from the levels that fit", () => {
+		const { root, controller, changes } = setup(TINY);
+		controller.pressAnchor(root);
+		expect(controller.view().rings).toHaveLength(1);
+		controller.moveTo(itemAt(controller, "Window"));
+		let view = controller.view();
+		expect(view.armed?.label).toBe("Window");
+		expect(view.crumbs).toEqual(["Window"]);
+		expect(view.rings).toHaveLength(1);
+		expect(view.rings[0].level).toBe(0);
+		expect(view.rings[0].items[1].open).toBe(true);
+		controller.release();
+		view = controller.view();
+		expect(changes[changes.length - 1]).toBe("structure");
+		expect(view.rings).toHaveLength(1);
+		expect(view.rings[0].level).toBe(1);
+		expect(view.rings[0].group.title).toBe("Window");
+		expect(view.crumbs).toEqual(["Window"]);
+		expect(view.pages).toBeGreaterThan(1);
+	});
+
+	it("lets a group with no room go when the thumb moves off it", () => {
+		const { root, controller } = setup(TINY);
+		controller.pressAnchor(root);
+		controller.moveTo(itemAt(controller, "Window"));
+		controller.moveTo({ x: 100, y: 10 });
+		expect(controller.view().crumbs).toEqual([]);
+		controller.release();
+		expect(controller.view().rings[0].level).toBe(0);
+	});
+
+	it("shows the root ring at once on a press that opens the dial after a deep session", () => {
+		const { root, controller } = setup(TINY);
+		controller.open(root);
+		controller.pressAt(itemAt(controller, "Window"));
+		controller.release();
+		expect(controller.view().rings[0].level).toBe(1);
+		controller.close();
+		controller.pressAnchor(root);
+		expect(controller.view().rings).toHaveLength(1);
+		expect(controller.view().rings[0].level).toBe(0);
+		expect(labels(controller)).toEqual(["File", "Window", "Zoom", "Help"]);
+	});
+
+	it("tells the user to let go when the armed group's ring has no room, and marks it as the path's last crumb", () => {
+		const { root, controller } = setup(TINY);
+		controller.pressAnchor(root);
+		controller.moveTo(itemAt(controller, "Window"));
+		expect(controller.view().armed).toMatchObject({ label: "Window", open: true, waiting: true });
+		expect(controller.view().armed?.description).toMatch(/^Let go to open · g Go to tab/);
+		controller.moveTo(itemAt(controller, "File"));
+		expect(controller.view().armed).toMatchObject({ label: "File", open: true, waiting: true, description: "Let go to open · Create and open files" });
+	});
+
+	it("brings the outer levels back on back()", () => {
+		const { root, controller } = setup(TINY);
+		controller.open(root);
+		controller.pressAt(itemAt(controller, "Window"));
+		controller.release();
+		expect(controller.view().rings[0].level).toBe(1);
+		controller.back();
+		expect(controller.view().rings[0].level).toBe(0);
+		expect(controller.view().crumbs).toEqual([]);
+		expect(labels(controller)).toEqual(["File", "Window", "Zoom", "Help"]);
 	});
 });
 
 describe("DialController paging", () => {
-	it("pages a level the rings cannot hold, with a More item that turns the page and wraps", () => {
-		const { controller, root } = setup(TINY);
+	it("pages a level the ring cannot hold, with a More item that turns the page and wraps", () => {
+		const { root, controller, changes } = setup(TINY);
 		controller.open(root);
-		// One ring of three: 4 root items -> 2 pages of 2 plus More.
-		let view = controller.view();
-		expect(view.pages).toBe(2);
-		expect(view.items.map((i) => i.label)).toEqual(["File", "Window", "More"]);
-		expect(view.items[2]).toMatchObject({ kind: "more", key: "…" });
-
-		controller.pressAt(itemAt(controller, "More"));
-		expect(controller.view().armedLabel).toBe("More");
+		controller.pressAt(itemAt(controller, "Window"));
 		controller.release();
-		view = controller.view();
-		expect(view.page).toBe(1);
-		expect(view.items.map((i) => i.label)).toEqual(["Zoom", "Help", "More"]);
-		expect(controller.isOpen).toBe(true);
-
+		const first = controller.view();
+		expect(first.page).toBe(0);
+		expect(first.pages).toBe(4);
+		expect(first.rings[0].items.map((item) => item.kind)).toEqual(["group", "group", "command", "more"]);
+		expect(first.rings[0].items[3]).toMatchObject({ key: "…", label: "More" });
 		controller.pressAt(itemAt(controller, "More"));
+		expect(controller.view().armed?.description).toBe("Next page");
 		controller.release();
+		expect(controller.view().page).toBe(1);
+		expect(labels(controller)).toEqual(["Close tab", "Next tab", "Previous tab", "More"]);
+		expect(changes[changes.length - 1]).toBe("structure");
+		for (let i = 0; i < 3; i++) {
+			controller.pressAt(itemAt(controller, "More"));
+			controller.release();
+		}
 		expect(controller.view().page).toBe(0);
 	});
 
-	it("descending into a group starts that group at page 0, and back returns to page 0 of the parent", () => {
-		const { controller, root } = setup(TINY);
+	it("a group opened later starts at page 0, and back returns to page 0 of the parent", () => {
+		const { root, controller } = setup(TINY);
 		controller.open(root);
+		controller.pressAt(itemAt(controller, "Window"));
+		controller.release();
 		controller.pressAt(itemAt(controller, "More"));
 		controller.release();
 		expect(controller.view().page).toBe(1);
-		controller.pressAt(itemAt(controller, "More"));
-		controller.release();
+		controller.back();
 		controller.pressAt(itemAt(controller, "Window"));
 		controller.release();
-		expect(controller.view().crumbs).toEqual(["Window"]);
 		expect(controller.view().page).toBe(0);
-		expect(controller.view().pages).toBe(6); // 12 items, 2 per page
-		controller.back();
-		expect(controller.view().page).toBe(0);
-	});
-
-	it("raises the pill over the header when that lets a level fit without paging", () => {
-		// An iPhone SE with its keyboard up: 193px of fan under a pill below the header, 237px with it raised.
-		const normal: DialGeometry = { corner: "bottom-right", anchor: { x: 335, y: 315 }, bounds: { left: 4, top: 122, right: 371, bottom: 343 } };
-		const raised: DialGeometry = { ...normal, bounds: { ...normal.bounds, top: 78 } };
-		const { controller, root } = setup(normal, raised);
-		controller.open(root);
-		expect(controller.view().mode).toBe("normal");
-		controller.pressAt(itemAt(controller, "Window"));
-		controller.release();
-		const view = controller.view();
-		expect(view.mode).toBe("raised");
-		expect(view.pages).toBe(1);
-		expect(view.items).toHaveLength(12);
-		expect(view.items.every((i) => i.y - i.size / 2 >= 78)).toBe(true);
-		controller.back();
-		expect(controller.view().mode).toBe("normal");
-	});
-
-	it("keeps the pill in place when raising it would not hold more", () => {
-		const { controller, root } = setup(TINY, { ...TINY, bounds: { ...TINY.bounds, top: 55 } });
-		controller.open(root);
-		expect(controller.view().mode).toBe("normal");
-		expect(controller.view().pages).toBe(2);
-	});
-
-	it("re-applies the kept mode last, so the pill is not left raised when raising would not hold more", () => {
-		const raised: DialGeometry = { ...TINY, bounds: { ...TINY.bounds, top: 55 } };
-		const root = parseKeymapSource(SOURCE);
-		const { host } = makeHost();
-		const measured: string[] = [];
-		const controller = new DialController(host, (mode) => {
-			measured.push(mode);
-			return mode === "normal" ? TINY : raised;
-		});
-		controller.open(root);
-		expect(measured).toContain("raised");
-		expect(controller.view().mode).toBe("normal");
-		expect(measured[measured.length - 1]).toBe("normal");
-		expect(measured[measured.length - 1]).toBe(controller.view().mode);
-	});
-
-	it("lets the rings reach up behind the pill when nothing fits under it even raised, so a short screen still gets a ring", () => {
-		// A 320x568 phone with a tall keyboard up: 91px of fan under the raised pill, not enough for
-		// even the compact first ring (74 + 22), but 145px to the pill's top edge.
-		const normal: DialGeometry = { corner: "bottom-right", anchor: { x: 280, y: 216 }, bounds: { left: 4, top: 165, right: 316, bottom: 244 } };
-		const raised: DialGeometry = { ...normal, bounds: { ...normal.bounds, top: 125 } };
-		const overlap: DialGeometry = { ...normal, bounds: { ...normal.bounds, top: 71 } };
-		const { controller, root } = setup(normal, raised, overlap);
-		controller.open(root);
-		const view = controller.view();
-		expect(view.mode).toBe("overlap");
-		expect(view.items.length).toBeGreaterThan(0);
-		expect(view.items.every((i) => i.y - i.size / 2 >= 71)).toBe(true);
 	});
 
 	it("shows nothing but stays usable when no ring fits at all", () => {
-		const noRoom: DialGeometry = { corner: "bottom-left", anchor: { x: 40, y: 60 }, bounds: { left: 4, top: 50, right: 386, bottom: 88 } };
-		const { controller, root } = setup(noRoom);
+		const nothing: DialGeometry = { corner: "bottom-right", anchor: { x: 350, y: 100 }, bounds: { left: 4, top: 60, right: 386, bottom: 136 } };
+		const { root, controller } = setup(nothing);
 		controller.open(root);
-		expect(controller.view().items).toEqual([]);
+		expect(controller.view().open).toBe(true);
+		expect(controller.view().rings).toEqual([]);
 		expect(controller.view().pages).toBe(0);
-		controller.pressAt({ x: 200, y: 20 });
+		controller.pressAt({ x: 200, y: 80 });
 		controller.release();
-		expect(controller.isOpen).toBe(false);
+		expect(controller.view().open).toBe(false);
+	});
+});
+
+describe("DialController pill mode", () => {
+	const normal: DialGeometry = { corner: "bottom-right", anchor: { x: 350, y: 300 }, bounds: { left: 4, top: 100, right: 386, bottom: 336 } };
+	const raised: DialGeometry = { ...normal, bounds: { ...normal.bounds, top: 56 } };
+	const overlap: DialGeometry = { ...normal, bounds: { ...normal.bounds, top: 12 } };
+
+	it("raises the pill when the keymap's deepest path would not fit under it, and keeps it there while rings open", () => {
+		const { root, controller, measured } = setup(normal, raised, overlap);
+		controller.pressAnchor(root);
+		expect(controller.view().mode).toBe("raised");
+		expect(measured).toEqual(["normal", "raised"]);
+		controller.moveTo(itemAt(controller, "Window"));
+		controller.moveTo(itemAt(controller, "Go to tab"));
+		expect(measured).toEqual(["normal", "raised"]);
+		expect(controller.view().mode).toBe("raised");
+	});
+
+	it("keeps the pill in place when raising it would not reach farther (the fixture's 12-item Window is wider than the phone either way)", () => {
+		const { root, controller, measured } = setup();
+		controller.open(root);
+		expect(controller.view().mode).toBe("normal");
+		expect(measured).toEqual(["normal", "raised", "normal"]);
+	});
+
+	it("lets the rings reach up behind the pill when not even the root ring fits under it raised", () => {
+		const short: DialGeometry = { corner: "bottom-right", anchor: { x: 350, y: 160 }, bounds: { left: 4, top: 130, right: 386, bottom: 196 } };
+		const shortRaised: DialGeometry = { ...short, bounds: { ...short.bounds, top: 100 } };
+		const shortOverlap: DialGeometry = { ...short, bounds: { ...short.bounds, top: 40 } };
+		const { root, controller, measured } = setup(short, shortRaised, shortOverlap);
+		controller.open(root);
+		expect(controller.view().mode).toBe("overlap");
+		expect(measured[measured.length - 1]).toBe("overlap");
+		expect(controller.view().rings).toHaveLength(1);
 	});
 });
 
 describe("DialController keyboard", () => {
-	it("a bound key picks its entry exactly as a release on it would", () => {
-		const { controller, root, calls } = setup();
+	it("a bound key picks its entry in the deepest open group exactly as a release on it would", () => {
+		const { root, controller, calls } = setup();
 		controller.open(root);
 		controller.typeKey(key("w"));
 		expect(controller.view().crumbs).toEqual(["Window"]);
-		expect(calls.executed).toEqual([]);
+		expect(controller.view().rings).toHaveLength(2);
 		controller.typeKey(key("c"));
 		expect(calls.executed).toEqual(["workspace:new-tab"]);
-		expect(controller.isOpen).toBe(false);
+		expect(controller.view().open).toBe(false);
 	});
 
 	it("shift on a letter selects the uppercase binding", () => {
-		const { controller, root, calls } = setup();
+		const { root, controller, calls } = setup();
 		controller.open(root);
 		controller.typeKey(key("w"));
 		controller.typeKey(key("W", { shiftKey: true }));
 		expect(calls.executed).toEqual(["workspace:close-window"]);
 	});
 
-	it("Backspace goes back and closes at the root; Escape closes from anywhere", () => {
-		const { controller, root } = setup();
+	it("Backspace closes the deepest group and closes the dial at the root; Escape closes from anywhere", () => {
+		const { root, controller } = setup();
 		controller.open(root);
 		controller.typeKey(key("w"));
 		controller.typeKey(key("Backspace"));
-		expect(controller.isOpen).toBe(true);
+		expect(controller.view().open).toBe(true);
 		expect(controller.view().crumbs).toEqual([]);
 		controller.typeKey(key("Backspace"));
-		expect(controller.isOpen).toBe(false);
+		expect(controller.view().open).toBe(false);
 		controller.open(root);
 		controller.typeKey(key("w"));
 		controller.typeKey(key("Escape"));
-		expect(controller.isOpen).toBe(false);
+		expect(controller.view().open).toBe(false);
 	});
 
 	it("an unbound key does nothing and leaves the dial where it was", () => {
-		const { controller, root, calls } = setup();
+		const { root, controller, calls, changes } = setup();
 		controller.open(root);
-		controller.typeKey(key("q"));
-		controller.typeKey(key("w", { ctrlKey: true }));
-		expect(controller.isOpen).toBe(true);
-		expect(controller.view().crumbs).toEqual([]);
+		const before = changes.length;
+		controller.typeKey(key("y"));
+		expect(controller.view().open).toBe(true);
 		expect(calls.executed).toEqual([]);
+		expect(changes.length).toBe(before);
 	});
 
 	it("a key bound to a hidden command or group does nothing and keeps the dial open", () => {
-		const { controller, root, calls } = setup();
+		const { root, controller, calls } = setup();
 		controller.open(root);
 		controller.typeKey(key("q"));
 		controller.typeKey(key("d"));
-		expect(calls.notices).toEqual([]);
-		expect(calls.executed).toEqual([]);
+		expect(controller.view().open).toBe(true);
 		expect(controller.view().crumbs).toEqual([]);
-		expect(controller.isOpen).toBe(true);
+		expect(calls.executed).toEqual([]);
+		expect(calls.notices).toEqual([]);
 	});
 
 	it("keys do nothing while the dial is closed", () => {
 		const { controller, calls } = setup();
 		controller.typeKey(key("z"));
-		expect(controller.isOpen).toBe(false);
 		expect(calls.executed).toEqual([]);
 	});
 
 	it("a key during a held press drops the press, so the finger cannot act as well", () => {
-		const { controller, root, calls } = setup();
+		const { root, controller, calls } = setup();
 		controller.pressAnchor(root);
 		controller.moveTo(itemAt(controller, "Zoom"));
-		expect(controller.view().armedLabel).toBe("Zoom");
-		controller.typeKey(key("f"));
-		expect(controller.view().crumbs).toEqual(["File"]);
-		expect(controller.isPressing).toBe(false);
+		controller.typeKey(key("b"));
+		expect(calls.executed).toEqual(["app:open-help"]);
 		controller.release();
-		expect(calls.executed).toEqual([]);
-		expect(controller.view().crumbs).toEqual(["File"]);
+		expect(calls.executed).toEqual(["app:open-help"]);
 	});
 });
 
 describe("DialController relayout during a press", () => {
-	/** Open TINY paged, turn to page 2 and hold "Zoom" (ring 0, slot 0); returns the held point. */
-	function holdZoomOnPageTwo(controller: DialController, root: ReturnType<typeof parseKeymapSource>) {
-		controller.open(root);
-		controller.pressAt(itemAt(controller, "More"));
-		controller.release();
-		const zoom = itemAt(controller, "Zoom");
-		controller.pressAt(zoom);
-		expect(controller.view().armedLabel).toBe("Zoom");
-		return zoom;
-	}
+	const KEYBOARD_UP: DialGeometry = {
+		corner: "bottom-right",
+		anchor: { x: 350, y: 504 },
+		bounds: { left: 4, top: 60, right: 386, bottom: 540 },
+	};
 
 	it("re-arms what is under the finger; a release on nothing then leaves the dial open", () => {
-		let geometry = TINY;
 		const root = parseKeymapSource(SOURCE);
-		const { host, calls } = makeHost();
+		const { host } = makeHost();
+		let geometry = PHONE;
 		const controller = new DialController(host, () => geometry);
-		holdZoomOnPageTwo(controller, root);
-		// The keyboard went away: the anchor dropped 220px and the whole level now fits on one page.
-		geometry = { ...TINY, anchor: { x: 350, y: 400 }, bounds: { ...TINY.bounds, bottom: 436 } };
+		controller.open(root);
+		controller.pressAt(itemAt(controller, "Zoom"));
+		expect(controller.view().armed?.label).toBe("Zoom");
+		geometry = KEYBOARD_UP;
 		controller.relayout();
-		expect(controller.view().pages).toBe(1);
-		expect(controller.view().armedLabel).toBeNull();
-		expect(controller.isPressing).toBe(true);
+		expect(controller.view().rings[0].items[0].y).toBeLessThan(PHONE.anchor.y - 200);
+		expect(controller.view().armed).toBeNull();
 		controller.release();
-		expect(calls.executed).toEqual([]);
-		expect(calls.opened).toEqual([]);
-		expect(controller.isOpen).toBe(true);
-		expect(controller.view().crumbs).toEqual([]);
+		expect(controller.view().open).toBe(true);
 	});
 
 	it("arms the item that moved under the finger, never the stale index", () => {
-		let geometry = TINY;
 		const root = parseKeymapSource(SOURCE);
 		const { host, calls } = makeHost();
+		let geometry = PHONE;
 		const controller = new DialController(host, () => geometry);
-		const held = holdZoomOnPageTwo(controller, root);
-		// Room opens up and the anchor moves: the whole level fits one page, and the held point (where
-		// Zoom was, 68px along the horizontal ray) now lies on Window, 93px along the 45-degree ray.
-		geometry = { corner: "bottom-right", anchor: { x: 348, y: 246 }, bounds: { left: 4, top: 40, right: 386, bottom: 282 } };
+		controller.open(root);
+		controller.pressAt(itemAt(controller, "Zoom"));
+		geometry = KEYBOARD_UP;
 		controller.relayout();
-		const view = controller.view();
-		expect(view.pages).toBe(1);
-		const armed = view.items.find((i) => i.armed);
-		expect(armed?.label).toBe("Window");
-		expect(Math.hypot((armed?.x ?? 0) - held.x, (armed?.y ?? 0) - held.y)).toBeLessThanOrEqual(armed!.size / 2);
+		controller.moveTo(itemAt(controller, "Help"));
+		expect(controller.view().armed?.label).toBe("Help");
 		controller.release();
-		expect(calls.executed).toEqual([]);
+		expect(calls.executed).toEqual(["app:open-help"]);
+	});
+
+	it("redraws from the levels that fit the new screen, even mid-press, since the screen itself moved", () => {
+		const root = parseKeymapSource(SOURCE);
+		const { host } = makeHost();
+		let geometry = PHONE;
+		const controller = new DialController(host, () => geometry);
+		controller.open(root);
+		controller.pressAt(itemAt(controller, "Window"));
+		expect(controller.view().rings).toHaveLength(2);
+		geometry = TINY;
+		controller.relayout();
+		expect(controller.view().rings).toHaveLength(1);
+		expect(controller.view().rings[0].level).toBe(1);
 		expect(controller.view().crumbs).toEqual(["Window"]);
-		expect(controller.isOpen).toBe(true);
+	});
+
+	it("keeps the open rings and re-chooses the pill mode for the new screen", () => {
+		const root = parseKeymapSource(SOURCE);
+		const { host } = makeHost();
+		let geometry = PHONE;
+		const measured: string[] = [];
+		const controller = new DialController(host, (mode) => {
+			measured.push(mode);
+			return geometry;
+		});
+		controller.open(root);
+		controller.pressAt(itemAt(controller, "Window"));
+		expect(controller.view().rings).toHaveLength(2);
+		geometry = KEYBOARD_UP;
+		measured.length = 0;
+		controller.relayout();
+		expect(measured[0]).toBe("normal");
+		expect(controller.view().rings).toHaveLength(2);
+		expect(controller.view().crumbs).toEqual(["Window"]);
 	});
 });
 
 describe("DialController relayout", () => {
-	it("re-measures and re-places the current level on relayout", () => {
-		let geometry = PHONE;
+	it("re-measures and re-places the open rings on relayout", () => {
 		const root = parseKeymapSource(SOURCE);
 		const { host } = makeHost();
+		let geometry = PHONE;
 		const controller = new DialController(host, () => geometry);
 		controller.open(root);
-		const before = controller.view().items[0];
-		geometry = { ...PHONE, anchor: { x: 350, y: 500 }, bounds: { ...PHONE.bounds, bottom: 528 } };
+		const before = itemAt(controller, "Zoom");
+		geometry = { ...PHONE, anchor: { x: 350, y: 704 } };
 		controller.relayout();
-		const after = controller.view().items[0];
-		expect(after.y).toBeCloseTo(before.y - 304, 6);
+		const after = itemAt(controller, "Zoom");
+		expect(after.y).toBeCloseTo(before.y - 100, 6);
 		expect(after.x).toBeCloseTo(before.x, 6);
 	});
 
 	it("reports a relayout of the same items as 'layout' and a different set of items as 'structure'", () => {
-		let geometry = PHONE;
 		const root = parseKeymapSource(SOURCE);
 		const { host } = makeHost();
+		let geometry = PHONE;
 		const changes: string[] = [];
 		const controller = new DialController(host, () => geometry);
 		controller.onChange((change) => changes.push(change));
 		controller.open(root);
-		expect(changes).toEqual(["structure"]);
-		geometry = { ...PHONE, anchor: { x: 350, y: 500 }, bounds: { ...PHONE.bounds, bottom: 536 } };
-		controller.relayout();
-		expect(changes.at(-1)).toBe("layout");
 		controller.pressAt(itemAt(controller, "Window"));
 		controller.release();
-		expect(changes.at(-1)).toBe("structure");
+		changes.length = 0;
+		geometry = { ...PHONE, anchor: { x: 350, y: 704 } };
 		controller.relayout();
-		expect(changes.at(-1)).toBe("layout");
-		controller.back();
-		expect(changes.at(-1)).toBe("structure");
+		expect(changes).toEqual(["layout"]);
+		geometry = TINY;
+		controller.relayout();
+		expect(changes).toEqual(["layout", "structure"]);
+		expect(controller.view().rings).toHaveLength(1);
+		expect(controller.view().rings[0].level).toBe(1);
 	});
 
-	it("notifies listeners of structure changes on open, descend and page turn, and of armed changes on moves", () => {
-		const { controller, root, changes } = setup();
-		controller.pressAnchor(root);
+	it("notifies listeners of structure changes on open, ring opening and page turn, and of armed changes on moves", () => {
+		const { root, controller, changes } = setup(TINY);
+		controller.open(root);
 		expect(changes).toEqual(["structure"]);
-		controller.moveTo(itemAt(controller, "File"));
-		expect(changes.at(-1)).toBe("armed");
+		controller.pressAt(itemAt(controller, "Zoom"));
+		expect(changes).toEqual(["structure", "armed"]);
+		controller.moveTo(itemAt(controller, "Window"));
+		expect(changes).toEqual(["structure", "armed", "armed"]);
 		controller.release();
-		expect(changes.at(-1)).toBe("structure");
-		controller.close();
-		expect(changes.at(-1)).toBe("structure");
+		expect(changes).toEqual(["structure", "armed", "armed", "structure"]);
+		controller.pressAt(itemAt(controller, "More"));
+		controller.release();
+		expect(changes[changes.length - 1]).toBe("structure");
 	});
 });

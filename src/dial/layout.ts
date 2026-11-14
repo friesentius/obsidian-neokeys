@@ -1,11 +1,12 @@
 import type { DialCorner } from "../types";
 
 /**
- * Pure geometry for the mobile dial: items sit on concentric quarter-rings around an anchor
- * button pinned in a bottom corner, inner rings filled first, every ring one item plus one gap
- * farther out than the one inside it, so the bands are evenly spaced and each holds more than
- * the last. Nothing here touches the DOM, so it is unit-tested directly; the DOM layer only
- * measures the anchor and the screen, then renders what this returns.
+ * Pure geometry for the mobile dial: concentric quarter-rings around an anchor button pinned in
+ * a bottom corner, one ring per open level of the keymap. The root's items sit on the innermost
+ * ring; arming a group opens its items as the next ring out, so the rings a thumb sees are the
+ * path it has taken, innermost first. Nothing here touches the DOM, so it is unit-tested
+ * directly; the DOM layer only measures the anchor and the screen, then renders what this
+ * returns.
  *
  * Coordinates are screen pixels with y growing downward. Angles are measured from the ray that
  * points horizontally into the screen (left for a bottom-right anchor, right for a bottom-left
@@ -40,13 +41,15 @@ export interface DialGeometry {
  */
 export type DialLayoutMode = "normal" | "raised" | "overlap";
 
+export const DIAL_LAYOUT_MODES: readonly DialLayoutMode[] = ["normal", "raised", "overlap"];
+
 export interface DialRingParams {
 	/** Diameter of one item target. */
 	itemSize: number;
-	/** Edge-to-edge gap: the minimum between neighbours on a ring, and exactly the gap between rings. */
+	/** Edge-to-edge gap kept between neighbours on a ring. */
 	gap: number;
-	/** Radius of the innermost ring, anchor centre to item centre. */
-	firstRadius: number;
+	/** Edge-to-edge gap between a ring's items and the next ring's. */
+	ringGap: number;
 }
 
 export interface DialRing {
@@ -68,53 +71,32 @@ export interface DialPaging {
 	perPage: number;
 }
 
-export interface DialLayout {
-	mode: DialLayoutMode;
-	geometry: DialGeometry;
-	params: DialRingParams;
-	rings: DialRing[];
-}
-
 /** The fan spans one quarter turn: from pointing sideways into the screen to pointing straight up. */
 export const DIAL_SWEEP_DEG = 90;
 
-/** Thumb-sized targets: Obsidian's own --touch-size-m. */
-export const MIN_ITEM_SIZE = 44;
+/** Half the anchor button (the stylesheet's --neokeys-dial-anchor-size), which the innermost ring keeps clear of. */
+export const ANCHOR_RADIUS = 28;
 
-/** Edge-to-edge gap between neighbours on a ring and between rings, at the chosen item size. */
-export const RING_GAP = 5;
+/** Edge-to-edge gap between neighbours on a ring. */
+export const ITEM_GAP = 6;
 
-/**
- * The item diameters the settings offer. 72px is the largest that stays inside the bounds the
- * DOM layer measures: an item at the horizontal end of a ring reaches half its size below the
- * anchor's centre, one at the top of the sweep half its size past it sideways, and the 56px
- * anchor sits 12px from the screen's edge with items allowed 4px closer, so 28 + 12 - 4 = 36px
- * of reach either way.
- */
-export const MIN_DIAL_ITEM_SIZE = 56;
-export const MAX_DIAL_ITEM_SIZE = 72;
-export const DEFAULT_DIAL_ITEM_SIZE = 66;
+/** Edge-to-edge gap between one ring's items and the next ring's, and between the anchor and the first ring. */
+export const RING_GAP = 10;
 
 /**
- * Comfortable spacing for items of `itemSize`, used whenever the screen has room for it: the
- * innermost ring is the smallest that holds three items, so at the default size a 390px phone
- * with its keyboard up keeps 3 + 4 + 6 = 13 targets, one more than the default keymap's Window
- * group.
+ * The item diameters the settings offer. A circle shows only its item's key, so it can be
+ * small: 44px is Obsidian's own touch size (--touch-size-m) and the default. A thumb hits a
+ * whole slot (the ring's band by its share of the arc), which is larger than the circle.
  */
+export const MIN_DIAL_ITEM_SIZE = 40;
+export const MAX_DIAL_ITEM_SIZE = 56;
+export const DEFAULT_DIAL_ITEM_SIZE = 44;
+
 export function ringParamsFor(itemSize: number): DialRingParams {
-	let firstRadius = Math.ceil((itemSize + RING_GAP) / (2 * Math.sin(degToRad(DIAL_SWEEP_DEG / 4))));
-	while (ringCapacity(firstRadius, itemSize, RING_GAP) < 3) firstRadius++;
-	return { itemSize, gap: RING_GAP, firstRadius };
+	return { itemSize, gap: ITEM_GAP, ringGap: RING_GAP };
 }
 
 export const DEFAULT_RING_PARAMS: DialRingParams = ringParamsFor(DEFAULT_DIAL_ITEM_SIZE);
-
-/** Tighter spacing at a small thumb size, tried when the chosen spacing cannot hold a level. */
-export const COMPACT_RING_PARAMS: DialRingParams = {
-	itemSize: 48,
-	gap: 4,
-	firstRadius: 68,
-};
 
 /** A pointer this close to the anchor centre arms nothing, so a resting thumb never selects. */
 export const DEFAULT_DEAD_ZONE = 36;
@@ -153,22 +135,63 @@ export function fanRoom(geometry: DialGeometry): { horizontal: number; vertical:
 	return { horizontal, vertical };
 }
 
-/**
- * Every ring that fits inside the bounds, innermost first. A ring fits when its farthest item
- * edge stays inside the bounds both sideways and upward; rings are one item plus one gap apart.
- */
-export function computeRings(geometry: DialGeometry, params: DialRingParams): DialRing[] {
+/** The largest radius a ring may have and keep its items inside the bounds, in whole pixels. */
+export function fanReach(geometry: DialGeometry, params: DialRingParams): number {
 	const room = fanRoom(geometry);
-	const limit = Math.min(room.horizontal, room.vertical);
+	return Math.floor(Math.min(room.horizontal, room.vertical) - params.itemSize / 2);
+}
+
+/** The radius of the innermost ring: one ring gap and half an item outside the anchor's rim. */
+export function firstRadius(params: DialRingParams): number {
+	return ANCHOR_RADIUS + params.ringGap + params.itemSize / 2;
+}
+
+/** How much farther out each ring sits than the one inside it, at the least. */
+export function ringStep(params: DialRingParams): number {
+	return params.itemSize + params.ringGap;
+}
+
+/** The smallest radius at or beyond `from` whose quarter-ring holds `count` items. */
+export function radiusFor(count: number, params: DialRingParams, from: number): number {
+	let radius = Math.ceil(from);
+	while (ringCapacity(radius, params.itemSize, params.gap) < count) radius++;
+	return radius;
+}
+
+/**
+ * One ring per level, innermost first, for levels of `counts` items. A ring is the smallest
+ * that holds its level, at least one item and one ring gap outside the ring it opens from,
+ * capped at the reach of the bounds (a level that needs more than that pages on the ring it
+ * gets). A ring's radius depends only on the rings inside it and its own count, never on what
+ * opens outside it, so a ring never moves when a deeper level opens. The rings stop at the
+ * first level whose ring would not fit at all, so the result may be shorter than `counts`; a
+ * screen that cannot hold even one ring gets none.
+ */
+export function planRings(geometry: DialGeometry, params: DialRingParams, counts: readonly number[]): DialRing[] {
+	const reach = fanReach(geometry, params);
+	const step = ringStep(params);
 	const rings: DialRing[] = [];
-	for (let radius = params.firstRadius; radius + params.itemSize / 2 <= limit; radius += params.itemSize + params.gap) {
+	for (const count of counts) {
+		const previous = rings[rings.length - 1];
+		const min = previous ? previous.radius + step : firstRadius(params);
+		if (min > reach) break;
+		const radius = Math.min(reach, radiusFor(count, params, min));
 		rings.push({ radius, capacity: ringCapacity(radius, params.itemSize, params.gap) });
 	}
 	return rings;
 }
 
-export function totalCapacity(rings: DialRing[]): number {
-	return rings.reduce((sum, ring) => sum + ring.capacity, 0);
+/**
+ * The first level of `counts` to draw so that every level from it on gets a ring: 0 when the
+ * whole chain fits, more when the screen is too short for it (the innermost levels give up their
+ * rings first; they stay open and in the breadcrumb, just not on screen), `counts.length` when
+ * not even the last level alone fits.
+ */
+export function fittingFrom(geometry: DialGeometry, params: DialRingParams, counts: readonly number[]): number {
+	for (let from = 0; from < counts.length; from++) {
+		if (planRings(geometry, params, counts.slice(from)).length === counts.length - from) return from;
+	}
+	return counts.length;
 }
 
 /**
@@ -184,25 +207,17 @@ export function slotAngle(index: number, used: number, capacity: number): number
 	return start + index * pitch;
 }
 
-/**
- * Lay out `count` items over the rings, filling the innermost ring to capacity before starting
- * the next. Returns fewer slots than `count` when the rings cannot hold them all; see `paging`.
- */
-export function placeSlots(rings: DialRing[], count: number): DialSlot[] {
+/** The slots for `used` items on ring `ring`, which holds `capacity`, in order along the sweep. */
+export function ringSlots(ring: number, capacity: number, used: number): DialSlot[] {
 	const slots: DialSlot[] = [];
-	let remaining = count;
-	for (let ring = 0; ring < rings.length && remaining > 0; ring++) {
-		const n = Math.min(rings[ring].capacity, remaining);
-		for (let index = 0; index < n; index++) {
-			slots.push({ ring, index, angleDeg: slotAngle(index, n, rings[ring].capacity) });
-		}
-		remaining -= n;
+	for (let index = 0; index < used; index++) {
+		slots.push({ ring, index, angleDeg: slotAngle(index, used, capacity) });
 	}
 	return slots;
 }
 
 /** Screen position of a slot's centre. */
-export function slotPosition(slot: DialSlot, geometry: DialGeometry, rings: DialRing[]): DialPoint {
+export function slotPosition(slot: DialSlot, geometry: DialGeometry, rings: readonly DialRing[]): DialPoint {
 	const radius = rings[slot.ring].radius;
 	const angle = degToRad(slot.angleDeg);
 	const sideways = geometry.corner === "bottom-right" ? -1 : 1;
@@ -225,7 +240,7 @@ export interface DialArc {
  * to the last, so the renderer can draw the ring the items sit on: hidden behind the items
  * themselves, it shows only between them. A lone item gets no arc.
  */
-export function ringArcs(geometry: DialGeometry, rings: DialRing[], slots: DialSlot[]): DialArc[] {
+export function ringArcs(geometry: DialGeometry, rings: readonly DialRing[], slots: readonly DialSlot[]): DialArc[] {
 	const arcs: DialArc[] = [];
 	rings.forEach((ring, index) => {
 		const own = slots.filter((slot) => slot.ring === index);
@@ -243,9 +258,9 @@ export function ringArcs(geometry: DialGeometry, rings: DialRing[], slots: DialS
 }
 
 /**
- * How a level of `count` items splits across pages of a dial that holds `capacity` at once. A level
- * that fits is a single page; otherwise each page gives up one slot to a "More" item that turns
- * to the next page, so every page keeps the same shape.
+ * How a level of `count` items splits across pages of a ring that holds `capacity` at once. A
+ * level that fits is a single page; otherwise each page gives up one slot to a "More" item that
+ * turns to the next page, so every page keeps the same shape.
  */
 export function paging(count: number, capacity: number): DialPaging {
 	if (capacity <= 0) return { pages: 0, perPage: 0 };
@@ -257,23 +272,22 @@ export function paging(count: number, capacity: number): DialPaging {
 /**
  * Which slot a pointer at `point` arms, or null when it arms nothing. The pointer picks a ring by
  * radial distance (bands meet halfway between neighbouring rings, the outermost band reaches
- * `outerReach` past the outermost ring so a slight overshoot still counts, and the innermost
- * band starts just inside that ring's inner edge), then the slot on that ring nearest in angle,
- * as long as the pointer is within half a slot pitch plus a little slack of that slot, or anywhere
- * inside that slot's own item circle (`outerReach` is the item size). Between
- * two neighbours the band is still split at the midpoint, so a drag is as forgiving as before,
- * but blank space past the end of a short arc, or far from a lone item, arms nothing. Only rings
- * that actually hold a slot take part, so a half-empty dial stays as forgiving as a full one;
- * beyond the reach, outside the sweep, or inside the dead zone around the anchor, nothing is
- * armed, which is what lets a tap elsewhere on the screen cancel.
+ * `itemSize` past the outermost ring so a slight overshoot still counts, and the innermost band
+ * starts just inside that ring's inner edge), then the slot on that ring nearest in angle, as
+ * long as the pointer is within half a slot pitch plus a little slack of that slot, or anywhere
+ * inside that slot's own item circle. Between two neighbours the band is still split at the
+ * midpoint, so a drag is as forgiving as before, but blank space past the end of a short arc, or
+ * far from a lone item, arms nothing. Only rings that actually hold a slot take part; beyond the
+ * reach, outside the sweep, or inside the dead zone around the anchor, nothing is armed, which
+ * is what lets a tap elsewhere on the screen cancel.
  */
 export function hitTest(
 	point: DialPoint,
 	geometry: DialGeometry,
-	rings: DialRing[],
-	slots: DialSlot[],
+	rings: readonly DialRing[],
+	slots: readonly DialSlot[],
 	deadZone: number = DEFAULT_DEAD_ZONE,
-	outerReach: number = DEFAULT_RING_PARAMS.itemSize,
+	itemSize: number = DEFAULT_RING_PARAMS.itemSize,
 ): number | null {
 	const sideways = geometry.corner === "bottom-right" ? -1 : 1;
 	const u = (point.x - geometry.anchor.x) * sideways;
@@ -285,9 +299,9 @@ export function hitTest(
 	if (usedRings.length === 0) return null;
 
 	const outermost = usedRings[usedRings.length - 1];
-	if (distance > rings[outermost].radius + outerReach) return null;
+	if (distance > rings[outermost].radius + itemSize) return null;
 	const innermost = usedRings[0];
-	if (distance < rings[innermost].radius - outerReach / 2 - HIT_INNER_SLACK) return null;
+	if (distance < rings[innermost].radius - itemSize / 2 - HIT_INNER_SLACK) return null;
 
 	let ring = outermost;
 	for (let i = 0; i < usedRings.length - 1; i++) {
@@ -302,7 +316,7 @@ export function hitTest(
 	const inside = slots.findIndex((slot) => {
 		if (slot.ring !== ring) return false;
 		const slotAngleRad = degToRad(slot.angleDeg);
-		return Math.hypot(u - radius * Math.cos(slotAngleRad), v - radius * Math.sin(slotAngleRad)) <= outerReach / 2;
+		return Math.hypot(u - radius * Math.cos(slotAngleRad), v - radius * Math.sin(slotAngleRad)) <= itemSize / 2;
 	});
 	if (inside !== -1) return inside;
 
@@ -323,35 +337,42 @@ export function hitTest(
 	return best;
 }
 
-/**
- * The ring parameters to use for a level of `count` items: the chosen spacing (`defaults`, from
- * the item size setting) unless it would need paging and the compact spacing would not, in which
- * case compact wins; when both need paging, whichever holds more per page (the chosen one on a
- * tie).
- */
-export function chooseRingParams(geometry: DialGeometry, count: number, defaults: DialRingParams = DEFAULT_RING_PARAMS): DialRingParams {
-	const defaultCapacity = totalCapacity(computeRings(geometry, defaults));
-	if (defaultCapacity >= count) return defaults;
-	const compactCapacity = totalCapacity(computeRings(geometry, COMPACT_RING_PARAMS));
-	return compactCapacity > defaultCapacity ? COMPACT_RING_PARAMS : defaults;
+/** Whether `point` lies within the band a ring's own circles occupy: half an item, plus a little slack, either side of its radius. */
+export function overRingCircles(point: DialPoint, geometry: DialGeometry, ring: DialRing, params: DialRingParams): boolean {
+	const distance = Math.hypot(point.x - geometry.anchor.x, point.y - geometry.anchor.y);
+	return Math.abs(distance - ring.radius) <= params.itemSize / 2 + HIT_INNER_SLACK;
+}
+
+/** The radius the outermost ring of a chain of levels of `counts` items would naturally take, unbounded by any screen. */
+export function naturalReach(params: DialRingParams, counts: readonly number[]): number {
+	let radius = 0;
+	counts.forEach((count, index) => {
+		radius = radiusFor(count, params, index === 0 ? firstRadius(params) : radius + ringStep(params));
+	});
+	return radius;
 }
 
 /**
- * The layout for a level of `count` items, given a way to measure the screen in each pill mode.
- * Normal placement wins whenever it holds the whole level; otherwise the raised pill is tried and
- * kept if it holds more; and if even that leaves no ring at all, the rings may overlap the pill.
+ * The pill mode for one opening of the dial, chosen once so that nothing moves under a finger
+ * while rings open: the normal placement when its reach covers `need` (the radius the deepest
+ * or widest path in the keymap would naturally take); else the raised pill, which wins back the
+ * header's strip, when that actually reaches farther (it does not when the width is the limit)
+ * and at least the first ring fits under it; else the normal placement if the first ring fits
+ * there; else the overlap placement, so a short screen still gets whatever ring it can. The
+ * chosen mode is measured last, so it is the one in effect.
  */
-export function chooseLayout(count: number, measure: (mode: DialLayoutMode) => DialGeometry, defaults: DialRingParams = DEFAULT_RING_PARAMS): DialLayout {
-	const layoutFor = (mode: DialLayoutMode): DialLayout => {
-		const geometry = measure(mode);
-		const params = chooseRingParams(geometry, count, defaults);
-		return { mode, geometry, params, rings: computeRings(geometry, params) };
-	};
-	let best = layoutFor("normal");
-	if (totalCapacity(best.rings) < count) {
-		const raised = layoutFor("raised");
-		if (totalCapacity(raised.rings) > totalCapacity(best.rings)) best = raised;
-	}
-	if (best.rings.length === 0) best = layoutFor("overlap");
-	return best;
+export function chooseMode(
+	need: number,
+	measure: (mode: DialLayoutMode) => DialGeometry,
+	params: DialRingParams = DEFAULT_RING_PARAMS,
+): { mode: DialLayoutMode; geometry: DialGeometry } {
+	const first = firstRadius(params);
+	const normal = measure("normal");
+	const normalReach = fanReach(normal, params);
+	if (need <= normalReach) return { mode: "normal", geometry: normal };
+	const raised = measure("raised");
+	const raisedReach = fanReach(raised, params);
+	if (raisedReach > normalReach && raisedReach >= first) return { mode: "raised", geometry: raised };
+	if (normalReach >= first) return { mode: "normal", geometry: measure("normal") };
+	return { mode: "overlap", geometry: measure("overlap") };
 }

@@ -444,7 +444,7 @@
 	display: none;
 }
 
-/* A scrim dims the note while the dial is open, so the pill and fan read as a layer over it and a tap on it cancels. Obsidian's own cover colour is too faint for that on a phone. */
+/* A scrim dims the note while the dial is open, so the pill and rings read as a layer over it and a tap on it cancels. Obsidian's own cover colour is too faint for that on a phone. */
 .neokeys-dial-backdrop {
 	position: absolute;
 	inset: 0;
@@ -481,6 +481,7 @@
 	pointer-events: auto;
 	touch-action: none;
 	cursor: pointer;
+	z-index: 3;
 }
 
 .neokeys-dial-left .neokeys-dial-anchor {
@@ -496,15 +497,17 @@
 /*
  * The breadcrumb pill sits just below the active note's view header so it never covers the
  * header's buttons (the plugin measures the header into --neokeys-dial-header-top/bottom, since
- * tablets put a tab strip above it and define no header offset variable); when a level needs the
- * room (a small phone with its keyboard up), the plugin raises it over the header instead
- * (.neokeys-dial-raised). Neither ever goes above the safe area.
+ * tablets put a tab strip above it and define no header offset variable); when the keymap's
+ * deepest path needs the room (a phone with its keyboard up), the plugin raises it over the
+ * header instead (.neokeys-dial-raised). Neither ever goes above the safe area. It stacks above
+ * the rings, which may reach up behind it on a very short screen.
  */
 .neokeys-dial-pill {
 	position: absolute;
 	top: calc(max(var(--neokeys-dial-header-bottom, var(--safe-area-inset-top, 0px)), var(--safe-area-inset-top, 0px)) + var(--size-4-2));
 	left: 50%;
 	transform: translateX(-50%);
+	width: max-content;
 	max-width: calc(100% - 2 * var(--neokeys-dial-edge));
 	display: flex;
 	align-items: center;
@@ -516,6 +519,7 @@
 	box-shadow: var(--shadow-l);
 	visibility: hidden;
 	pointer-events: none;
+	z-index: 2;
 }
 
 .neokeys-dial-open .neokeys-dial-pill {
@@ -565,16 +569,28 @@ body.theme-light .neokeys-dial {
 	flex-shrink: 0;
 }
 
-/* When the trail does not fit, the earlier crumbs give way (each down to an ellipsis) before the armed label, which only shrinks when it is too wide on its own. */
+/*
+ * The pill's text: the path on the first line, a description on the second. The second line is
+ * reserved at two lines' height whether or not it has text, so the pill's height, which the
+ * rings are laid out under, never changes while the dial is open.
+ */
+.neokeys-dial-pill-text {
+	display: grid;
+	min-width: 0;
+	padding: 0 var(--size-2-1);
+}
+
+/* When the trail does not fit, the earlier crumbs give way (each down to an ellipsis) before the armed label, which only shrinks when it is too wide on its own. The row keeps its one line of height while empty, so the pill measures the same before its first render. */
 .neokeys-dial-crumbs {
 	display: flex;
 	align-items: baseline;
 	min-width: 0;
+	min-height: 1.3em;
 	overflow: hidden;
 	white-space: nowrap;
 	font-size: var(--font-ui-small);
+	line-height: 1.3;
 	color: var(--text-normal);
-	padding: 0 var(--size-2-1);
 }
 
 .neokeys-dial-crumb {
@@ -607,6 +623,20 @@ body.theme-light .neokeys-dial {
 	font-weight: var(--font-semibold);
 }
 
+.neokeys-dial-desc {
+	display: -webkit-box;
+	-webkit-box-orient: vertical;
+	-webkit-line-clamp: 2;
+	overflow: hidden;
+	min-height: 2.6em;
+	max-width: 250px;
+	font-size: var(--font-ui-smaller);
+	line-height: 1.3;
+	color: var(--text-muted);
+	white-space: normal;
+	overflow-wrap: anywhere;
+}
+
 .neokeys-dial-fan {
 	position: absolute;
 	inset: 0;
@@ -629,18 +659,22 @@ body.theme-light .neokeys-dial {
 	stroke-width: 1px;
 }
 
+/* One element per ring on screen, so a ring that opens or closes is added or removed on its own and the others keep their nodes. */
+.neokeys-dial-ring {
+	position: absolute;
+	inset: 0;
+	pointer-events: none;
+}
+
 /*
- * Items: round by default, their surface, border and radius taken from the theme, each with a
- * Neokeys variable on top so a theme or snippet can restyle just the dial
- * (--neokeys-dial-item-radius, --neokeys-dial-item-background, --neokeys-dial-item-border,
- * --neokeys-dial-item-color, and --neokeys-dial-arc-color above). Positions come from the layout
- * module as custom properties and the label's size, width and line count from the fitter in
- * mobileDial.ts, so the stylesheet owns every static style.
+ * Items: round circles showing only their item's key, their surface, border and radius taken
+ * from the theme, each with a Neokeys variable on top so a theme or snippet can restyle just
+ * the dial (--neokeys-dial-item-radius, --neokeys-dial-item-background,
+ * --neokeys-dial-item-border, --neokeys-dial-item-color, and --neokeys-dial-arc-color above).
+ * Positions and the size come from the layout module as custom properties, so the stylesheet
+ * owns every static style.
  */
 .neokeys-dial-item {
-	--neokeys-dial-label-size: 0.75rem;
-	--neokeys-dial-label-width: calc(var(--neokeys-dial-size) - 2 * var(--size-2-2));
-	--neokeys-dial-line-height: 1.1;
 	position: absolute;
 	left: 0;
 	top: 0;
@@ -659,100 +693,216 @@ body.theme-light .neokeys-dial {
 	pointer-events: none;
 }
 
-/* Balanced lines, never a word broken mid-way; the fitter picks the size, width and line count that fit the circle. */
-.neokeys-dial-item-label {
-	display: -webkit-box;
-	-webkit-box-orient: vertical;
-	-webkit-line-clamp: var(--neokeys-dial-label-lines, 3);
-	overflow: hidden;
-	width: var(--neokeys-dial-label-width);
-	text-align: center;
-	text-wrap: balance;
-	overflow-wrap: normal;
-	font-size: var(--neokeys-dial-label-size);
-	line-height: var(--neokeys-dial-line-height);
-}
-
-/*
- * Only a word longer than the widest box at the smallest size may break (the chip is in the cap
- * by then, so the first word may too): at a hyphenation point where the platform has a dictionary
- * for the interface language, anywhere otherwise; the clamp ellipsizes what is left.
- */
-.neokeys-dial-label-break .neokeys-dial-item-label {
-	hyphens: auto;
-	overflow-wrap: anywhere;
-}
-
-.neokeys-dial-label-break .neokeys-dial-item-head {
-	white-space: normal;
-}
-
-/*
- * The key is a small chip inline before the label's first word, which it never parts from: on a
- * touch screen the label is what identifies an item, the key is a reminder for a hardware keyboard.
- */
-.neokeys-dial-item-head {
-	white-space: nowrap;
-}
-
+/* The key fills about a third of the circle; a glyph longer than a letter or two ("Esc", "Space", "Ctrl+B") is scaled down by the plugin so it stays inside. */
 .neokeys-dial-item-key {
-	display: inline-block;
-	vertical-align: 0.1em;
-	margin-right: 2px;
+	max-width: 90%;
+	overflow: hidden;
+	white-space: nowrap;
+	text-overflow: ellipsis;
 	font-family: var(--font-monospace);
-	font-weight: var(--font-bold);
-	font-size: 9px;
+	font-weight: var(--font-semibold);
+	font-size: calc(var(--neokeys-dial-size) * 0.36 * var(--neokeys-dial-key-scale, 1));
 	line-height: 1;
-	padding: 1px 2px;
-	border-radius: var(--radius-s);
-	background-color: var(--background-modifier-hover);
-	color: var(--text-muted);
 }
 
-/* A level where some chip and first word do not fit side by side at any size (and every compact level) puts its chips up in the circles' caps, where the label keeps the widest chords. */
-.neokeys-dial-key-cap .neokeys-dial-item-key {
-	position: absolute;
-	top: 1px;
-	left: 50%;
-	transform: translateX(-50%);
-	margin: 0;
-}
-
+/* A group's circle is rimmed and lettered in the accent, so a ring reads at a glance as groups and commands. */
 .neokeys-dial-item-group {
 	border-color: var(--text-accent);
-}
-
-.neokeys-dial-item-group .neokeys-dial-item-key {
 	color: var(--text-accent);
 }
 
-.neokeys-dial-item-file .neokeys-dial-item-key {
+.neokeys-dial-item-file {
 	color: var(--text-success);
 }
 
-.neokeys-dial-item-more .neokeys-dial-item-key {
+.neokeys-dial-item-more {
 	color: var(--text-muted);
+}
+
+.neokeys-dial-item-more .neokeys-dial-item-key {
+	font-size: calc(var(--neokeys-dial-size) * 0.5);
+	line-height: 0.6;
+}
+
+/* The group whose items are on the ring outside: tinted (an inset shadow over the opaque surface, so nothing shows through) and rimmed, so the open path shows across the rings. */
+.neokeys-dial-item-open {
+	border-color: var(--text-accent);
+	border-width: 2px;
+	box-shadow:
+		inset 0 0 0 100px hsla(var(--accent-h), var(--accent-s), var(--accent-l), 0.22),
+		var(--shadow-s);
+}
+
+/* On an inner ring, everything but the open group steps back; the outermost ring is the one in play. */
+.neokeys-dial-ring:not(:last-child) .neokeys-dial-item:not(.neokeys-dial-item-open):not(.neokeys-dial-item-armed) {
+	opacity: 0.45;
 }
 
 /* The scale rides inside the same transform as the position: a separate `scale` property would apply first and scale the translation too. */
 .neokeys-dial-item-armed {
 	background-color: var(--interactive-accent);
 	border-color: var(--interactive-accent);
+	color: var(--text-on-accent);
 	box-shadow: var(--shadow-l);
 	transform: translate(calc(var(--neokeys-dial-x) - 50%), calc(var(--neokeys-dial-y) - 50%)) scale(1.15);
 	z-index: 1;
 }
 
-.neokeys-dial-item-armed .neokeys-dial-item-key,
-.neokeys-dial-item-armed .neokeys-dial-item-label {
-	color: var(--text-on-accent);
+/*
+ * The optional description of the armed item (the Dial description setting): a card between the
+ * pill and the rings, or a bubble beside the thumb. Both are laid out while hidden so the plugin
+ * can measure them before placing them, and neither takes touches.
+ */
+.neokeys-dial-card {
+	position: absolute;
+	left: var(--size-4-6);
+	right: var(--size-4-6);
+	top: var(--neokeys-dial-card-top, 0px);
+	padding: var(--size-4-3) var(--size-4-4);
+	border-radius: var(--radius-l);
+	background-color: var(--background-primary);
+	border: 1px solid var(--background-modifier-border);
+	box-shadow: var(--shadow-l);
+	text-align: center;
+	visibility: hidden;
+	pointer-events: none;
+	z-index: 2;
 }
 
-.neokeys-dial-item-armed .neokeys-dial-item-key {
-	background-color: var(--interactive-accent-hover);
+.neokeys-dial-card-shown {
+	visibility: visible;
 }
 
-/* Motion is opt-in via .neokeys-animate, set from the same setting and reduced-motion check as the popup. */
+.neokeys-dial-card-head {
+	display: grid;
+	justify-items: center;
+	gap: var(--size-4-2);
+}
+
+.neokeys-dial-card-key {
+	display: inline-grid;
+	place-items: center;
+	min-width: 40px;
+	height: 40px;
+	padding: 0 var(--size-4-2);
+	border-radius: var(--radius-m);
+	background-color: var(--background-modifier-hover);
+	color: var(--text-accent);
+	font-family: var(--font-monospace);
+	font-weight: var(--font-bold);
+	font-size: 20px;
+	line-height: 1;
+}
+
+.neokeys-dial-card-label {
+	font-size: var(--font-ui-larger);
+	font-weight: var(--font-semibold);
+	line-height: 1.25;
+}
+
+.neokeys-dial-card-text {
+	margin-top: var(--size-2-2);
+	font-size: var(--font-ui-small);
+	color: var(--text-muted);
+	line-height: 1.35;
+}
+
+.neokeys-dial-card-meta {
+	margin-top: var(--size-2-3);
+	font-size: var(--font-ui-smaller);
+	color: var(--text-faint);
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+}
+
+/* When the full card would not fit between the pill and the outermost ring, it drops to one row. */
+.neokeys-dial-card-compact {
+	padding: var(--size-4-2) var(--size-4-3);
+}
+
+.neokeys-dial-card-compact .neokeys-dial-card-head {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.neokeys-dial-card-compact .neokeys-dial-card-key {
+	min-width: 28px;
+	height: 28px;
+	padding: 0 var(--size-2-3);
+	border-radius: var(--radius-s);
+	font-size: 15px;
+}
+
+.neokeys-dial-card-compact .neokeys-dial-card-label {
+	font-size: var(--font-ui-medium);
+}
+
+.neokeys-dial-card-compact .neokeys-dial-card-text {
+	margin-top: 2px;
+	font-size: var(--font-ui-smaller);
+}
+
+.neokeys-dial-card-compact .neokeys-dial-card-meta {
+	display: none;
+}
+
+.neokeys-dial-bubble {
+	position: absolute;
+	left: var(--neokeys-dial-bubble-left, 0px);
+	top: var(--neokeys-dial-bubble-top, 0px);
+	max-width: 220px;
+	padding: var(--size-4-2) var(--size-4-3);
+	border-radius: var(--radius-m);
+	background-color: var(--background-primary);
+	border: 1px solid var(--text-accent);
+	box-shadow: var(--shadow-l);
+	visibility: hidden;
+	pointer-events: none;
+	z-index: 2;
+}
+
+.neokeys-dial-bubble-shown {
+	visibility: visible;
+}
+
+.neokeys-dial-bubble-head {
+	display: flex;
+	align-items: center;
+	gap: var(--size-4-2);
+	white-space: nowrap;
+}
+
+.neokeys-dial-bubble-key {
+	display: inline-grid;
+	place-items: center;
+	min-width: 24px;
+	height: 24px;
+	padding: 0 var(--size-2-3);
+	border-radius: var(--radius-s);
+	background-color: var(--background-modifier-hover);
+	color: var(--text-accent);
+	font-family: var(--font-monospace);
+	font-weight: var(--font-bold);
+	font-size: 13px;
+	line-height: 1;
+}
+
+.neokeys-dial-bubble-label {
+	font-size: var(--font-ui-medium);
+	font-weight: var(--font-semibold);
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.neokeys-dial-bubble-text {
+	margin-top: 3px;
+	font-size: var(--font-ui-smaller);
+	color: var(--text-muted);
+	line-height: 1.3;
+}
+
+/* Motion is opt-in via .neokeys-animate, set from the same setting and reduced-motion check as the popup. A ring that opens pops in; the rings already on screen keep their nodes and stay put. */
 .neokeys-dial.neokeys-animate .neokeys-dial-backdrop {
 	transition: opacity var(--neokeys-anim-duration, 150ms) ease-out;
 }
@@ -765,7 +915,8 @@ body.theme-light .neokeys-dial {
 	animation: neokeys-dial-pop var(--neokeys-anim-duration, 150ms) ease-out both;
 	transition:
 		transform 80ms ease-out,
-		background-color 80ms ease-out;
+		background-color 80ms ease-out,
+		opacity 80ms ease-out;
 }
 
 @keyframes neokeys-dial-pop {
