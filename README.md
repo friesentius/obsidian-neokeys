@@ -282,9 +282,10 @@ the ring belongs to (the **Animations** toggle above governs this and the easing
 as they move, and neither animates when your OS asks for reduced motion), and a **Dial
 description** choice for where the item under your thumb is described beyond the pill's own line:
 nowhere else (the default), on a card between the pill and the rings, or in a bubble beside your
-thumb. The bubble sits next to the thumb, never under it, keeps off the circles and the hand as far
-as the screen allows, and stays on screen in either corner, at any ring depth and with the keyboard
-up.
+thumb. The bubble sits next to the thumb, never under it, keeps off the circles' keys and the hand
+as far as the screen allows, and stays on screen in either corner, at any ring depth and with the
+keyboard up. Where it could only go over the keys of other circles (a small phone with its keyboard
+up) it shrinks to the key and label, since the pill shows the description too.
 
 ![Mobile dial with the description card, dark theme](docs/screenshots/mobile/dial-card-dark.png)
 
