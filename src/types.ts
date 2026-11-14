@@ -46,6 +46,20 @@ export type DialDescription = "none" | "card" | "thumb";
 
 export const DIAL_DESCRIPTIONS: readonly DialDescription[] = ["none", "card", "thumb"];
 
+/**
+ * Where the dial's rings sit: `fixed` keeps every ring at a fixed radius and shrinks a level's
+ * circles to fit it; `fit` grows each ring until its level fits at full size, as far as the
+ * screen allows.
+ */
+export type DialRadiusRule = "fixed" | "fit";
+
+export const DIAL_RADIUS_RULES: readonly DialRadiusRule[] = ["fixed", "fit"];
+
+/** How a ring of the dial appears when it opens: fading in, or flying out from the group it belongs to. */
+export type DialRingAnimation = "fade" | "fly";
+
+export const DIAL_RING_ANIMATIONS: readonly DialRingAnimation[] = ["fade", "fly"];
+
 export interface NeokeysSettings {
 	keymapSource: string;
 	showDelayMs: number;
@@ -60,4 +74,10 @@ export interface NeokeysSettings {
 	/** Diameter of the dial's items in px, MIN_DIAL_ITEM_SIZE to MAX_DIAL_ITEM_SIZE (see dial/layout.ts). */
 	mobileDialItemSize: number;
 	mobileDialDescription: DialDescription;
+	mobileDialRadiusRule: DialRadiusRule;
+	/** How large the circle under the thumb grows, as a multiple of the item size, MIN_LENS_PEAK to MAX_LENS_PEAK (see dial/layout.ts). */
+	mobileDialLensPeak: number;
+	/** Whether a ring animates as it opens (never when the OS prefers reduced motion). */
+	mobileDialRingAnimation: boolean;
+	mobileDialRingAnimationStyle: DialRingAnimation;
 }

@@ -1,18 +1,26 @@
 import {
 	ANCHOR_RADIUS,
+	BEAD_FLOOR,
 	chooseMode,
 	DEFAULT_DIAL_ITEM_SIZE,
+	DEFAULT_LENS_PEAK,
 	DEFAULT_RING_PARAMS,
 	DIAL_SWEEP_DEG,
+	edgeRoom,
 	fanReach,
 	firstRadius,
 	fittingFrom,
+	fixedFirstRadius,
 	hitTest,
 	ITEM_GAP,
+	lensFocus,
+	lensLayout,
 	MAX_DIAL_ITEM_SIZE,
+	MAX_LENS_PEAK,
 	MIN_DIAL_ITEM_SIZE,
+	MIN_LENS_PEAK,
 	naturalReach,
-	paging,
+	peakSize,
 	planRings,
 	RING_GAP,
 	ringArcs,
@@ -20,8 +28,10 @@ import {
 	ringParamsFor,
 	ringSlots,
 	ringStep,
+	ringUnder,
 	slotAngle,
 	slotPosition,
+	TAP_FOCUS_BELOW,
 	type DialGeometry,
 	type DialLayoutMode,
 	type DialRing,
@@ -40,8 +50,8 @@ const TOOLBAR = 52;
 /** Items keep this far from the screen's edges, the pill, and the chrome below the anchor (the DOM layer's EDGE_MARGIN). */
 const MARGIN = 4;
 
-/** The default keymap's widest path on a phone: root (4), Text (5), Heading (9), whose outermost ring naturally sits at 256px at 44px. */
-const DEFAULT_NEED = naturalReach(DEFAULT_RING_PARAMS, [4, 5, 9]);
+const FIT = ringParamsFor(DEFAULT_DIAL_ITEM_SIZE, { rule: "fit" });
+const FIXED = DEFAULT_RING_PARAMS;
 
 /**
  * The geometry the DOM layer would measure on a phone of `width` x `height` with a status bar
@@ -74,39 +84,43 @@ function measureFor(geometry: DialGeometry): (mode: DialLayoutMode) => DialGeome
 	return (mode) => (mode === "normal" ? geometry : mode === "raised" ? raised(geometry) : overlap(geometry));
 }
 
-/** Rings for `counts`, with every ring fully used (paged levels fill their ring with items plus More). */
-function placed(geometry: DialGeometry, params: DialRingParams, counts: number[]) {
+/** Rings and slots for `counts`, with the lens of each ring at `focus[ring]` (or at rest). */
+function placed(geometry: DialGeometry, params: DialRingParams, counts: number[], focus: (number | null)[] = []) {
 	const rings = planRings(geometry, params, counts);
+	const peak = peakSize(geometry, params);
+	const room = edgeRoom(geometry);
 	const slots: DialSlot[] = [];
 	rings.forEach((ring, index) => {
-		const split = paging(counts[index], ring.capacity);
-		slots.push(...ringSlots(index, ring.capacity, split.pages > 1 ? split.perPage + 1 : split.perPage));
+		slots.push(...ringSlots(index, ring, counts[index], params, peak, focus[index] ?? null, room));
 	});
 	return { rings, slots, points: slots.map((slot) => slotPosition(slot, geometry, rings)) };
 }
 
-function expectInsideBounds(geometry: DialGeometry, params: DialRingParams, counts: number[]): void {
-	const { points } = placed(geometry, params, counts);
-	const half = params.itemSize / 2;
-	for (const p of points) {
-		expect(p.x - half).toBeGreaterThanOrEqual(geometry.bounds.left);
-		expect(p.x + half).toBeLessThanOrEqual(geometry.bounds.right);
-		expect(p.y - half).toBeGreaterThanOrEqual(geometry.bounds.top);
-		expect(p.y + half).toBeLessThanOrEqual(geometry.bounds.bottom);
-	}
+function expectInsideBounds(geometry: DialGeometry, params: DialRingParams, counts: number[], focus: (number | null)[] = []): void {
+	const { slots, points } = placed(geometry, params, counts, focus);
+	points.forEach((p, i) => {
+		const half = slots[i].size / 2;
+		expect(p.x - half).toBeGreaterThanOrEqual(geometry.bounds.left - 1e-6);
+		expect(p.x + half).toBeLessThanOrEqual(geometry.bounds.right + 1e-6);
+		expect(p.y - half).toBeGreaterThanOrEqual(geometry.bounds.top - 1e-6);
+		expect(p.y + half).toBeLessThanOrEqual(geometry.bounds.bottom + 1e-6);
+	});
 }
 
-function expectNoOverlap(geometry: DialGeometry, params: DialRingParams, counts: number[]): void {
-	const { points } = placed(geometry, params, counts);
+/** No two circles on the same ring closer than their radii plus `gap`. */
+function expectApart(geometry: DialGeometry, params: DialRingParams, counts: number[], focus: (number | null)[], gap: number): void {
+	const { slots, points } = placed(geometry, params, counts, focus);
 	for (let i = 0; i < points.length; i++) {
 		for (let j = i + 1; j < points.length; j++) {
+			if (slots[i].ring !== slots[j].ring) continue;
 			const distance = Math.hypot(points[i].x - points[j].x, points[i].y - points[j].y);
-			expect(distance).toBeGreaterThanOrEqual(params.itemSize + params.gap - 1e-6);
+			expect(distance).toBeGreaterThanOrEqual((slots[i].size + slots[j].size) / 2 + gap - 1e-6);
 		}
 	}
 }
 
 const PHONE = phone(390, 844, "bottom-right", 0, 47);
+const SWEEP = Array.from({ length: 101 }, (_, i) => i / 100);
 
 describe("ringCapacity", () => {
 	it("holds one item on a ring too small for two", () => {
@@ -116,418 +130,569 @@ describe("ringCapacity", () => {
 	it("grows with the radius", () => {
 		expect(ringCapacity(97, 44, 6)).toBe(4);
 		expect(ringCapacity(151, 44, 6)).toBe(5);
+		expect(ringCapacity(205, 44, 6)).toBe(7);
 		expect(ringCapacity(256, 44, 6)).toBe(9);
 	});
 
 	it("never places two items closer than size plus gap", () => {
-		for (const radius of [60, 97, 151, 256, 400]) {
+		for (let radius = 60; radius <= 400; radius += 7) {
 			const capacity = ringCapacity(radius, 44, 6);
-			if (capacity < 2) continue;
-			const pitch = (DIAL_SWEEP_DEG / (capacity - 1)) * (Math.PI / 180);
-			const chord = 2 * radius * Math.sin(pitch / 2);
-			expect(chord).toBeGreaterThanOrEqual(44 + 6 - 1e-6);
+			const pitch = capacity > 1 ? DIAL_SWEEP_DEG / (capacity - 1) : 0;
+			const chord = 2 * radius * Math.sin(((pitch / 2) * Math.PI) / 180);
+			if (capacity > 1) expect(chord).toBeGreaterThanOrEqual(50 - 1e-6);
+			expect(ringCapacity(radius, 44, 6)).toBeGreaterThanOrEqual(1);
 		}
 	});
 });
 
-describe("the sizes on offer", () => {
-	it("default to Obsidian's touch size and run from 40 to 56px with the same gaps", () => {
+describe("the sizes and rules on offer", () => {
+	it("default to Obsidian's touch size, fixed rings and a lens peak of 1.5, with the same gaps at every size", () => {
 		expect(DEFAULT_DIAL_ITEM_SIZE).toBe(44);
 		expect(MIN_DIAL_ITEM_SIZE).toBe(40);
 		expect(MAX_DIAL_ITEM_SIZE).toBe(56);
-		expect(DEFAULT_RING_PARAMS).toEqual(ringParamsFor(44));
-		expect(ringParamsFor(50)).toEqual({ itemSize: 50, gap: ITEM_GAP, ringGap: RING_GAP });
+		expect(DEFAULT_LENS_PEAK).toBe(1.5);
+		expect(MIN_LENS_PEAK).toBe(1);
+		expect(MAX_LENS_PEAK).toBe(1.5);
+		expect(DEFAULT_RING_PARAMS).toEqual({ itemSize: 44, gap: ITEM_GAP, ringGap: RING_GAP, peak: 1.5, rule: "fixed" });
+		expect(ringParamsFor(52, { peak: 1.25, rule: "fit" })).toEqual({ itemSize: 52, gap: ITEM_GAP, ringGap: RING_GAP, peak: 1.25, rule: "fit" });
 	});
 
-	it("start the first ring one ring gap and half an item outside the anchor's rim, and step one item plus one ring gap per ring", () => {
-		expect(firstRadius(ringParamsFor(44))).toBe(ANCHOR_RADIUS + RING_GAP + 22);
-		expect(ringStep(ringParamsFor(44))).toBe(44 + RING_GAP);
+	it("start the fit rule's first ring one ring gap and half an item outside the anchor's rim, and step one item plus one ring gap per ring", () => {
+		expect(firstRadius(FIT)).toBe(ANCHOR_RADIUS + RING_GAP + 22);
+		expect(ringStep(FIT)).toBe(54);
+	});
+
+	it("put the fixed rule's first ring where a four-item root fits: 97px at 44px, then 151 and 205", () => {
+		expect(fixedFirstRadius(FIXED)).toBe(97);
+		expect(fixedFirstRadius(ringParamsFor(40))).toBe(89);
+		expect(fixedFirstRadius(ringParamsFor(56))).toBe(120);
+		expect(ringCapacity(120, 56, 6)).toBe(4);
+		expect(ringCapacity(119, 56, 6)).toBe(3);
+		expect(planRings(PHONE, FIXED, [4, 5, 9]).map((ring) => ring.radius)).toEqual([97, 151, 205]);
+	});
+});
+
+describe("the lens peak against the screen", () => {
+	it("grows the circle under the finger to the peak, 66px at 44 and 1.5", () => {
+		expect(peakSize(PHONE, FIXED)).toBe(66);
+		expect(peakSize(PHONE, ringParamsFor(44, { peak: 1 }))).toBe(44);
+	});
+
+	it("caps the peak so a circle at either end of the sweep stays inside the bounds: 36px of room beside the anchor allows 72px", () => {
+		expect(edgeRoom(PHONE)).toBe(36);
+		expect(peakSize(PHONE, ringParamsFor(56))).toBe(72);
+		expect(peakSize(PHONE, ringParamsFor(48))).toBe(72);
+		expect(peakSize(PHONE, ringParamsFor(44))).toBe(66);
+	});
+
+	it("keeps the outermost ring's grown circle inside the bounds: the reach gives up half the peak, not half an item", () => {
+		expect(fanReach(PHONE, FIXED)).toBe(Math.floor(346 - 33));
+		expect(fanReach(PHONE, ringParamsFor(44, { peak: 1 }))).toBe(Math.floor(346 - 22));
 	});
 });
 
 describe("planRings", () => {
-	it("gives each level the smallest ring that holds it, at least a step outside the ring inside", () => {
-		const rings = planRings(PHONE, DEFAULT_RING_PARAMS, [4, 5, 9]);
+	it("under the fixed rule puts every ring at its fixed radius whatever its level holds", () => {
+		expect(planRings(PHONE, FIXED, [1, 1, 1]).map((ring) => ring.radius)).toEqual([97, 151, 205]);
+		expect(planRings(PHONE, FIXED, [12, 25, 2]).map((ring) => ring.radius)).toEqual([97, 151, 205]);
+		expect(planRings(PHONE, FIXED, [4]).map((ring) => ring.capacity)).toEqual([4]);
+	});
+
+	it("under the fit rule gives each level the smallest ring that holds it, at least a step outside the ring inside", () => {
+		const rings = planRings(PHONE, FIT, [4, 5, 9]);
 		expect(rings.map((ring) => ring.radius)).toEqual([97, 151, 256]);
 		expect(rings.map((ring) => ring.capacity)).toEqual([4, 5, 9]);
 	});
 
 	it("keeps a ring's radius whatever opens outside it, so nothing moves when a deeper level opens", () => {
-		const alone = planRings(PHONE, DEFAULT_RING_PARAMS, [4]);
-		const withChild = planRings(PHONE, DEFAULT_RING_PARAMS, [4, 5]);
-		const withTwo = planRings(PHONE, DEFAULT_RING_PARAMS, [4, 5, 12]);
-		expect(withChild[0]).toEqual(alone[0]);
-		expect(withTwo.slice(0, 2)).toEqual(withChild);
+		for (const params of [FIXED, FIT]) {
+			const alone = planRings(PHONE, params, [4]);
+			const withChild = planRings(PHONE, params, [4, 5]);
+			const withGrandchild = planRings(PHONE, params, [4, 5, 9]);
+			expect(withChild[0]).toEqual(alone[0]);
+			expect(withGrandchild.slice(0, 2)).toEqual(withChild);
+		}
 	});
 
-	it("caps the ring at the reach of the bounds, where a level that needs more pages", () => {
-		const geometry = phone(390, 844, "bottom-right", 300 + TOOLBAR, 47);
-		const params = ringParamsFor(MAX_DIAL_ITEM_SIZE);
-		const rings = planRings(geometry, params, [4, 5, 9]);
-		expect(rings).toHaveLength(3);
-		expect(rings[2].radius).toBe(fanReach(geometry, params));
-		expect(rings[2].capacity).toBeLessThan(9);
-		expect(paging(9, rings[2].capacity).pages).toBe(2);
+	it("under the fit rule caps the ring at the reach of the bounds, where a level that needs more is crowded", () => {
+		const rings = planRings(PHONE, FIT, [12]);
+		expect(rings[0].radius).toBe(fanReach(PHONE, FIT));
+		expect(rings[0].capacity).toBeLessThan(12);
 	});
 
 	it("stops at the first level whose ring would not fit at all", () => {
-		const geometry = phone(375, 667, "bottom-right", 260 + TOOLBAR, 20);
-		expect(planRings(raised(geometry), DEFAULT_RING_PARAMS, [4, 5, 9])).toHaveLength(2);
+		expect(planRings(PHONE, FIXED, [4, 5, 9, 9, 9, 9, 9])).toHaveLength(5);
+		expect(planRings(PHONE, FIT, [4, 5, 9, 9, 9, 9, 9]).length).toBeLessThan(7);
 	});
 
 	it("is limited by whichever of width and height is tighter", () => {
-		const wide = planRings(phone(1000, 844), DEFAULT_RING_PARAMS, [4, 12, 9]);
-		const narrow = planRings(phone(320, 844), DEFAULT_RING_PARAMS, [4, 12, 9]);
-		expect(wide[1].capacity).toBe(12);
-		expect(narrow[1].capacity).toBeLessThan(12);
-		expect(narrow[1].radius).toBe(fanReach(phone(320, 844), DEFAULT_RING_PARAMS));
+		const wide = planRings(phone(1000, 844, "bottom-right", 0, 47), FIXED, [4, 5, 9, 9, 9, 9, 9, 9]);
+		const tall = planRings(phone(390, 2000, "bottom-right", 0, 47), FIXED, [4, 5, 9, 9, 9, 9, 9, 9]);
+		expect(wide.length).toBeGreaterThan(5);
+		expect(tall).toHaveLength(5);
 	});
 
 	it("gives a screen that cannot hold even one ring none", () => {
-		const geometry: DialGeometry = { corner: "bottom-right", anchor: { x: 350, y: 100 }, bounds: { left: 4, top: 60, right: 386, bottom: 136 } };
-		expect(planRings(geometry, DEFAULT_RING_PARAMS, [4])).toEqual([]);
+		const tiny: DialGeometry = { corner: "bottom-right", anchor: { x: 350, y: 100 }, bounds: { left: 4, top: 60, right: 386, bottom: 136 } };
+		expect(planRings(tiny, FIXED, [4])).toEqual([]);
+		expect(planRings(tiny, FIT, [4])).toEqual([]);
 	});
 });
 
 describe("fittingFrom", () => {
 	it("draws the whole path when it fits", () => {
-		expect(fittingFrom(PHONE, DEFAULT_RING_PARAMS, [4, 5, 9])).toBe(0);
+		expect(fittingFrom(PHONE, FIXED, [4, 5, 9])).toBe(0);
 	});
 
 	it("gives up the innermost levels first when the screen is too short for the path", () => {
-		const geometry = raised(phone(375, 667, "bottom-right", 260 + TOOLBAR, 20));
-		expect(fittingFrom(geometry, DEFAULT_RING_PARAMS, [4, 5, 9])).toBe(1);
-		expect(planRings(geometry, DEFAULT_RING_PARAMS, [5, 9])).toHaveLength(2);
-		const shorter = raised(phone(360, 640, "bottom-right", 250 + TOOLBAR, 24));
-		expect(fittingFrom(shorter, DEFAULT_RING_PARAMS, [4, 5, 9])).toBe(2);
-		expect(planRings(shorter, DEFAULT_RING_PARAMS, [9])).toHaveLength(1);
+		const short = phone(390, 700, "bottom-right", TOOLBAR + 250, 24);
+		expect(planRings(short, FIXED, [4, 5, 9])).toHaveLength(2);
+		expect(fittingFrom(short, FIXED, [4, 5, 9])).toBe(1);
+		expect(planRings(short, FIXED, [5, 9])).toHaveLength(2);
 	});
 
 	it("is the path's length when not even its deepest level fits", () => {
-		const geometry: DialGeometry = { corner: "bottom-right", anchor: { x: 350, y: 100 }, bounds: { left: 4, top: 60, right: 386, bottom: 136 } };
-		expect(fittingFrom(geometry, DEFAULT_RING_PARAMS, [4, 5])).toBe(2);
+		const tiny: DialGeometry = { corner: "bottom-right", anchor: { x: 350, y: 100 }, bounds: { left: 4, top: 60, right: 386, bottom: 136 } };
+		expect(fittingFrom(tiny, FIXED, [4, 5])).toBe(2);
 	});
 });
 
-describe("ringSlots", () => {
-	it("spans the sweep end to end on a full ring", () => {
-		const slots = ringSlots(0, 4, 4);
-		expect(slots.map((slot) => slot.angleDeg)).toEqual([0, 30, 60, 90]);
-		expect(slots.every((slot) => slot.ring === 0)).toBe(true);
+describe("lensLayout at rest", () => {
+	it("keeps a level that fits at full size on the slot angles of a full ring, centred", () => {
+		const layout = lensLayout(4, 4, 97, FIXED, 66, null);
+		expect(layout.crowded).toBe(false);
+		expect(layout.sizes).toEqual([44, 44, 44, 44]);
+		expect(layout.angles).toEqual([0, 30, 60, 90]);
+		expect(layout.offsets).toEqual([0, 0, 0, 0]);
+		expect(lensLayout(2, 5, 151, FIXED, 66, null).angles).toEqual([33.75, 56.25]);
 	});
 
-	it("keeps a partly used ring at the full ring's pitch, centred on the sweep", () => {
-		expect(ringSlots(1, 5, 3).map((slot) => slot.angleDeg)).toEqual([22.5, 45, 67.5]);
-		expect(slotAngle(0, 2, 4)).toBe(30);
+	it("spreads a crowded level evenly over the whole sweep with circles shrunk to fit: 12 on the second fixed ring are 20px beads, 9 on the third 38px, 8 on the third keep 44", () => {
+		const window = lensLayout(12, ringCapacity(151, 44, 6), 151, FIXED, 66, null);
+		expect(window.crowded).toBe(true);
+		expect(window.angles[0]).toBe(0);
+		expect(window.angles[11]).toBeCloseTo(90);
+		expect(Math.round(window.base)).toBe(20);
+		expect(Math.round(lensLayout(9, ringCapacity(205, 44, 6), 205, FIXED, 66, null).base)).toBe(38);
+		expect(lensLayout(8, ringCapacity(205, 44, 6), 205, FIXED, 66, null).base).toBeCloseTo(44, 0);
 	});
 
-	it("puts a lone item on a ring in the middle of the sweep", () => {
-		expect(ringSlots(2, 9, 1)[0].angleDeg).toBe(45);
-		expect(slotAngle(0, 1, 1)).toBe(45);
+	it("never shrinks a circle below the floor, and zigzags beads that would still overlap, within their ring's band", () => {
+		const layout = lensLayout(40, 4, 97, FIXED, 66, null);
+		expect(layout.base).toBe(BEAD_FLOOR);
+		expect(layout.offsets.some((offset) => offset > 0)).toBe(true);
+		expect(layout.offsets.some((offset) => offset < 0)).toBe(true);
+		for (let i = 1; i < 40; i++) expect(Math.sign(layout.offsets[i])).not.toBe(Math.sign(layout.offsets[i - 1]));
+		for (const offset of layout.offsets) expect(Math.abs(offset) + BEAD_FLOOR / 2).toBeLessThanOrEqual(ringStep(FIXED) / 2);
+	});
+
+	it("marks a bead for the tap rule only on a crowded ring, outside the lens, below the tap size", () => {
+		const geometry: DialRing = { radius: 151, capacity: ringCapacity(151, 44, 6) };
+		const slots = ringSlots(1, geometry, 12, FIXED, 66, null);
+		expect(slots.every((slot) => slot.bead)).toBe(true);
+		expect(slots.every((slot) => slot.size < TAP_FOCUS_BELOW)).toBe(true);
+		expect(ringSlots(0, { radius: 97, capacity: 4 }, 4, FIXED, 66, null).every((slot) => !slot.bead)).toBe(true);
+		expect(ringSlots(2, { radius: 205, capacity: 7 }, 9, FIXED, 66, null).every((slot) => !slot.bead)).toBe(true);
+	});
+});
+
+describe("lensLayout under the finger", () => {
+	it("grows the circle under the finger to the peak and its neighbours part way, on a ring that fits as much as on a crowded one", () => {
+		const text = lensLayout(5, 5, 151, FIXED, 66, 0.25);
+		[1 / 3, 1, 1 / 3, 0, 0].forEach((weight, i) => expect(text.weights[i]).toBeCloseTo(weight));
+		expect(text.sizes[1]).toBeCloseTo(66);
+		expect(text.sizes[0]).toBeCloseTo(44 + 22 / 3);
+		expect(text.sizes[3]).toBe(44);
+		const window = lensLayout(12, 5, 151, FIXED, 66, 5 / 11);
+		expect(window.weights[5]).toBe(1);
+		expect(window.sizes[5]).toBeGreaterThanOrEqual(TAP_FOCUS_BELOW);
+		expect(window.sizes[5]).toBeGreaterThan(55);
+		expect(window.sizes[0]).toBeCloseTo(window.base);
+	});
+
+	it("keeps the item under the finger where it rests on a ring with room, opening only the gaps beside the grown circles", () => {
+		const layout = lensLayout(3, 5, 151, FIXED, 66, 0.5);
+		expect(layout.angles[1]).toBeCloseTo(45, 5);
+		expect(layout.sizes[1]).toBeCloseTo(66);
+		expect(layout.angles[1] - layout.angles[0]).toBeGreaterThan(22.5);
+		expect(layout.angles[2] - layout.angles[1]).toBeCloseTo(layout.angles[1] - layout.angles[0], 5);
+		const end = lensLayout(3, 5, 151, FIXED, 66, 0.25);
+		expect(end.angles[0]).toBeCloseTo(22.5, 5);
+		expect(end.angles[2] - end.angles[1]).toBeCloseTo(22.5, 5);
+		expect(end.angles[2]).toBeLessThanOrEqual(90 + 1e-6);
+	});
+
+	it("lets a full innermost ring give a little all round rather than grow the lens less, keeping the arc inside the sweep", () => {
+		const layout = lensLayout(4, 4, 97, FIXED, 66, 1 / 3);
+		expect(layout.sizes[1]).toBeCloseTo(66);
+		expect(layout.angles[0]).toBeGreaterThanOrEqual(0);
+		expect(layout.angles[3]).toBeLessThanOrEqual(90 + 1e-6);
+		expect(layout.angles[3] - layout.angles[0]).toBeCloseTo(90, 5);
+	});
+
+	it("anchors the circle under the finger under it on a crowded ring: the finger stays in the share of the circle it grew, and the arc stays on the sweep", () => {
+		for (const focus of SWEEP) {
+			const layout = lensLayout(12, 5, 151, FIXED, 66, focus, 36);
+			const theta = focus * 90;
+			const nearest = layout.weights.indexOf(Math.max(...layout.weights));
+			const low = nearest > 0 ? (layout.angles[nearest - 1] + layout.angles[nearest]) / 2 : -90;
+			const high = nearest < 11 ? (layout.angles[nearest + 1] + layout.angles[nearest]) / 2 : 180;
+			// Right at an end, with the finger between the last two circles, the arc has to shift over the finger's place and the two, near enough the same size, may swap shares; elsewhere the circle the finger grew is the one it is on.
+			if (focus >= 0.1 && focus <= 0.9) {
+				expect(theta).toBeGreaterThanOrEqual(low - 1e-6);
+				expect(theta).toBeLessThanOrEqual(high + 1e-6);
+			}
+			if (focus >= 0.45 && focus <= 0.55) {
+				expect(layout.angles[0]).toBeCloseTo(0, 5);
+				expect(layout.angles[11]).toBeCloseTo(90, 5);
+			}
+			expect(layout.angles[0]).toBeGreaterThanOrEqual(-4 - 1e-6);
+			expect(layout.angles[11]).toBeLessThanOrEqual(94 + 1e-6);
+			// The lens never grows less for want of room: the beads the finger has passed give way instead.
+			layout.sizes.forEach((size, i) => expect(size).toBeCloseTo(layout.base + (66 - layout.base) * layout.weights[i]));
+			expect(Math.max(...layout.sizes)).toBeGreaterThan(48);
+		}
+	});
+
+	it("never lets a ring at rest overlap, nor the circle under the finger overlap the circle beyond it, nor the lens overlap anything mid-ring", () => {
+		// On the root ring the lens at its peak is wider than half the sweep, so only the circle under the finger keeps the one beyond it clear; the wider rings keep the whole lens clear mid-ring.
+		const cases: { count: number; radius: number; mid: [number, number] | null }[] = [
+			{ count: 12, radius: 151, mid: [0.3, 0.7] },
+			{ count: 9, radius: 205, mid: [0.3, 0.7] },
+			{ count: 25, radius: 151, mid: [0.3, 0.7] },
+			{ count: 25, radius: 205, mid: [0.3, 0.7] },
+			{ count: 5, radius: 97, mid: null },
+			{ count: 8, radius: 97, mid: null },
+			{ count: 16, radius: 97, mid: null },
+		];
+		const violations: string[] = [];
+		for (const { count, radius, mid } of cases) {
+			const capacity = ringCapacity(radius, 44, 6);
+			for (const focus of [null, ...SWEEP]) {
+				const layout = lensLayout(count, capacity, radius, FIXED, 66, focus, 36);
+				for (let i = 0; i < count; i++) {
+					for (let j = i + 1; j < count; j++) {
+						const a = { r: radius + layout.offsets[i], t: (layout.angles[i] * Math.PI) / 180 };
+						const b = { r: radius + layout.offsets[j], t: (layout.angles[j] * Math.PI) / 180 };
+						const distance = Math.hypot(a.r * Math.cos(a.t) - b.r * Math.cos(b.t), a.r * Math.sin(a.t) - b.r * Math.sin(b.t));
+						const needed = (layout.sizes[i] + layout.sizes[j]) / 2 + 2;
+						// Toward an end, the beads between the finger and that end give way, piling up or slipping under the grown circle; a bead at the lens's edge, grown less than halfway, may still sit in its pile; everything else stays apart.
+						if (focus !== null) {
+							const under = layout.weights.indexOf(Math.max(...layout.weights));
+							const away = focus < 0.5 ? under + 1 : under - 1;
+							const midRing = mid !== null && focus > mid[0] && focus < mid[1];
+							const lensPair = layout.weights[i] > 0 && layout.weights[j] > 0 && Math.max(layout.weights[i], layout.weights[j]) >= 0.5;
+							const keyPair = (i === under && j === away) || (j === under && i === away);
+							if (!keyPair && !(midRing && lensPair)) continue;
+						}
+						if (distance < needed - 0.01) violations.push(`${count} on r${radius} at focus ${focus}: ${i} (${layout.sizes[i].toFixed(1)}px at ${layout.angles[i].toFixed(1)}°${layout.offsets[i] ? ` ${layout.offsets[i].toFixed(1)}` : ""}, w ${layout.weights[i].toFixed(2)}) and ${j} (${layout.sizes[j].toFixed(1)}px at ${layout.angles[j].toFixed(1)}°${layout.offsets[j] ? ` ${layout.offsets[j].toFixed(1)}` : ""}, w ${layout.weights[j].toFixed(2)}) are ${distance.toFixed(1)} apart, need ${needed.toFixed(1)}`);
+					}
+				}
+			}
+		}
+		expect(violations.slice(0, 5)).toEqual([]);
+	});
+
+	it("at a peak of 1 grows nothing on a ring that fits and only brings beads back to full size", () => {
+		const text = lensLayout(5, 5, 151, ringParamsFor(44, { peak: 1 }), 44, 0.25);
+		expect(text.sizes).toEqual([44, 44, 44, 44, 44]);
+		expect(text.angles).toEqual([0, 22.5, 45, 67.5, 90]);
+		const window = lensLayout(12, 5, 151, ringParamsFor(44, { peak: 1 }), 44, 5 / 11);
+		expect(window.sizes[5]).toBe(44);
+	});
+
+	it("keeps every circle inside the bounds at the largest size and peak, whatever the finger does, both corners", () => {
+		for (const corner of ["bottom-right", "bottom-left"] as const) {
+			const geometry = phone(390, 844, corner, TOOLBAR + 300, 59);
+			const params = ringParamsFor(56, { peak: 1.5 });
+			const counts = [4, 12, 9];
+			expectInsideBounds(geometry, params, counts);
+			for (const focus of SWEEP) {
+				expectInsideBounds(geometry, params, counts, [focus, focus, focus]);
+			}
+		}
 	});
 });
 
 describe("item placement on real phone sizes", () => {
 	const cases: [string, DialGeometry][] = [
-		["iPhone 14 class (47px notch inset), keyboard down", phone(390, 844, "bottom-right", 0, 47)],
-		["iPhone 14 class (47px notch inset), keyboard (300) and toolbar up", phone(390, 844, "bottom-right", 300 + TOOLBAR, 47)],
-		["iPhone SE 2/3 (20px status bar), keyboard (260) and toolbar up", phone(375, 667, "bottom-right", 260 + TOOLBAR, 20)],
-		["small Android (24px status bar), keyboard down", phone(360, 640, "bottom-right", 0, 24)],
-		["small Android (24px status bar), keyboard (250) and toolbar up", phone(360, 640, "bottom-right", 250 + TOOLBAR, 24)],
-		["bottom-left corner", phone(390, 844, "bottom-left", 0, 47)],
-		["bottom-left corner, keyboard up", phone(390, 844, "bottom-left", 300 + TOOLBAR, 47)],
+		["iPhone 14 (390x844), keyboard down", phone(390, 844, "bottom-right", 0, 47)],
+		["iPhone 14, keyboard up", phone(390, 844, "bottom-right", TOOLBAR + 300, 47)],
+		["iPhone SE (375x667), keyboard up", phone(375, 667, "bottom-right", TOOLBAR + 260, 20)],
+		["small Android (360x640), keyboard up", phone(360, 640, "bottom-right", TOOLBAR + 250, 24)],
+		["320x568, keyboard up", phone(320, 568, "bottom-right", TOOLBAR + 216, 20)],
+		["tablet (820x1180)", phone(820, 1180, "bottom-right", 0, 24)],
+		["left corner, keyboard up", phone(390, 844, "bottom-left", TOOLBAR + 300, 47)],
 	];
 
-	it.each(cases)("%s: every item stays on screen and apart, for paths of 1 to 15 items per level", (_name, geometry) => {
-		for (const params of [DEFAULT_RING_PARAMS, ringParamsFor(MIN_DIAL_ITEM_SIZE), ringParamsFor(MAX_DIAL_ITEM_SIZE)]) {
-			for (let count = 1; count <= 15; count++) {
-				for (const counts of [[count], [4, count], [4, 5, count]]) {
-					for (const mode of [geometry, raised(geometry), overlap(geometry)]) {
-						expectInsideBounds(mode, params, counts);
-						expectNoOverlap(mode, params, counts);
-					}
-				}
+	it.each(cases)("%s: every item stays on screen and apart under both rules, for levels of 1 to 25 items", (_name, geometry) => {
+		for (const params of [FIXED, FIT]) {
+			for (const count of [1, 2, 4, 7, 12, 25]) {
+				const counts = [4, count, 9];
+				expectInsideBounds(geometry, params, counts);
+				expectInsideBounds(geometry, params, counts, [0.5, 0.5, 0.5]);
+				expectApart(geometry, params, counts, [], 2 - 0.01);
 			}
 		}
 	});
 
-	it("walks the default keymap's deepest path (root, Text, Heading) on three whole rings on a 390px phone, keyboard up or down", () => {
-		for (const geometry of [phone(390, 844, "bottom-right", 0, 47), phone(390, 844, "bottom-right", 300 + TOOLBAR, 47)]) {
-			const chosen = chooseMode(DEFAULT_NEED, measureFor(geometry));
-			expect(chosen.mode).toBe("normal");
-			const rings = planRings(chosen.geometry, DEFAULT_RING_PARAMS, [4, 5, 9]);
-			expect(rings.map((ring) => ring.radius)).toEqual([97, 151, 256]);
-			expect(rings.map((ring) => paging([4, 5, 9][rings.indexOf(ring)], ring.capacity).pages)).toEqual([1, 1, 1]);
+	it("walks the default keymap's deepest path (root, Text, Heading) on three fixed rings on a 390px phone, keyboard up or down", () => {
+		for (const geometry of [phone(390, 844, "bottom-right", 0, 47), phone(390, 844, "bottom-right", TOOLBAR + 300, 47)]) {
+			expect(planRings(geometry, FIXED, [4, 5, 9]).map((ring) => ring.radius)).toEqual([97, 151, 205]);
+			expect(fittingFrom(geometry, FIXED, [4, 5, 9])).toBe(0);
 		}
 	});
 
-	it("holds a 12-item level whole on one ring on a 390px phone only at the smallest size, keyboard down: the width limits the ring", () => {
-		const geometry = phone(390, 844, "bottom-right", 0, 47);
-		for (let size = MIN_DIAL_ITEM_SIZE; size <= MAX_DIAL_ITEM_SIZE; size += 2) {
-			const params = ringParamsFor(size);
-			const chosen = chooseMode(naturalReach(params, [4, 5, 9]), measureFor(geometry), params);
-			const rings = planRings(chosen.geometry, params, [4, 12]);
-			expect(rings).toHaveLength(2);
-			expect(paging(12, rings[1].capacity).pages).toBe(size === MIN_DIAL_ITEM_SIZE ? 1 : 2);
-			expect(rings[1].radius).toBeLessThanOrEqual(geometry.anchor.x - MARGIN - size / 2);
-		}
+	it("holds a 12-item level whole on its ring as beads instead of paging it", () => {
+		const { slots } = placed(phone(390, 844, "bottom-right", TOOLBAR + 300, 47), FIXED, [4, 12]);
+		expect(slots.filter((slot) => slot.ring === 1)).toHaveLength(12);
+		expect(slots.filter((slot) => slot.ring === 1).every((slot) => slot.size < 44)).toBe(true);
 	});
 
-	it("pages a 12-item level in two on a 390px phone with the keyboard up at every size: the height limits the ring", () => {
-		const geometry = phone(390, 844, "bottom-right", 300 + TOOLBAR, 47);
-		for (let size = MIN_DIAL_ITEM_SIZE; size <= MAX_DIAL_ITEM_SIZE; size += 2) {
-			const params = ringParamsFor(size);
-			const chosen = chooseMode(naturalReach(params, [4, 5, 9]), measureFor(geometry), params);
-			const rings = planRings(chosen.geometry, params, [4, 12]);
-			expect(rings).toHaveLength(2);
-			expect(paging(12, rings[1].capacity).pages).toBe(2);
-		}
-	});
-
-	it("on an iPhone SE with the keyboard up, raises the pill; the Heading ring waits for the release, then opens in the root's place, paged", () => {
-		const geometry = phone(375, 667, "bottom-right", 260 + TOOLBAR, 20);
-		const chosen = chooseMode(DEFAULT_NEED, measureFor(geometry));
+	it("on an iPhone SE with the keyboard up, raises the pill; the Heading ring waits for the release, then opens in the root's place", () => {
+		const geometry = phone(375, 667, "bottom-right", TOOLBAR + 260, 20);
+		const need = naturalReach(FIXED, [4, 5, 9]);
+		const chosen = chooseMode(need, measureFor(geometry), FIXED);
 		expect(chosen.mode).toBe("raised");
-		const onArm = planRings(chosen.geometry, DEFAULT_RING_PARAMS, [4, 5, 9]);
-		expect(onArm.map((ring) => ring.radius)).toEqual([97, 151]);
-		expect(fittingFrom(chosen.geometry, DEFAULT_RING_PARAMS, [4, 5, 9])).toBe(1);
-		const onRelease = planRings(chosen.geometry, DEFAULT_RING_PARAMS, [5, 9]);
-		expect(onRelease).toHaveLength(2);
-		expect(paging(9, onRelease[1].capacity).pages).toBe(2);
-	});
-
-	it("on a small Android phone with the keyboard up, the Heading ring waits for the release and then stands alone, paged", () => {
-		const geometry = phone(360, 640, "bottom-right", 250 + TOOLBAR, 24);
-		const chosen = chooseMode(DEFAULT_NEED, measureFor(geometry));
-		expect(chosen.mode).toBe("raised");
-		expect(planRings(chosen.geometry, DEFAULT_RING_PARAMS, [4, 5, 9])).toHaveLength(2);
-		expect(fittingFrom(chosen.geometry, DEFAULT_RING_PARAMS, [4, 5, 9])).toBe(2);
-		expect(paging(9, planRings(chosen.geometry, DEFAULT_RING_PARAMS, [9])[0].capacity).pages).toBe(2);
+		expect(planRings(chosen.geometry, FIXED, [4, 5, 9])).toHaveLength(2);
+		expect(fittingFrom(chosen.geometry, FIXED, [4, 5, 9])).toBe(1);
 	});
 
 	it("mirrors the rings for the bottom-left corner", () => {
-		const right = placed(phone(390, 844, "bottom-right"), DEFAULT_RING_PARAMS, [4, 8]);
-		const left = placed(phone(390, 844, "bottom-left"), DEFAULT_RING_PARAMS, [4, 8]);
+		const right = placed(phone(390, 844, "bottom-right", 0, 47), FIXED, [4, 5]);
+		const left = placed(phone(390, 844, "bottom-left", 0, 47), FIXED, [4, 5]);
 		right.points.forEach((p, i) => {
-			expect(left.points[i].x).toBeCloseTo(390 - p.x, 6);
-			expect(left.points[i].y).toBeCloseTo(p.y, 6);
+			expect(left.points[i].x).toBeCloseTo(390 - p.x);
+			expect(left.points[i].y).toBeCloseTo(p.y);
 		});
 	});
 });
 
 describe("chooseMode", () => {
 	it("keeps the pill in its place when the widest path fits under it", () => {
-		expect(chooseMode(DEFAULT_NEED, measureFor(PHONE)).mode).toBe("normal");
+		expect(chooseMode(naturalReach(FIXED, [4, 5, 9]), measureFor(PHONE), FIXED).mode).toBe("normal");
 	});
 
 	it("raises the pill when the widest path needs the header's strip, even before that path opens", () => {
-		const geometry = phone(375, 667, "bottom-right", 260 + TOOLBAR, 20);
-		expect(chooseMode(naturalReach(DEFAULT_RING_PARAMS, [4]), measureFor(geometry)).mode).toBe("normal");
-		expect(chooseMode(DEFAULT_NEED, measureFor(geometry)).mode).toBe("raised");
-	});
-
-	it("raises the pill for the room a whole Heading ring needs at 48px on a 390px phone with the keyboard up", () => {
-		const geometry = phone(390, 844, "bottom-right", 300 + TOOLBAR, 47);
-		const params = ringParamsFor(48);
-		const chosen = chooseMode(naturalReach(params, [4, 5, 9]), measureFor(geometry), params);
-		expect(chosen.mode).toBe("raised");
-		expect(paging(9, planRings(chosen.geometry, params, [4, 5, 9])[2].capacity).pages).toBe(1);
+		const geometry = phone(375, 667, "bottom-right", TOOLBAR + 260, 20);
+		const need = naturalReach(FIXED, [4, 5, 9]);
+		expect(need).toBeGreaterThan(fanReach(geometry, FIXED));
+		expect(chooseMode(need, measureFor(geometry), FIXED).mode).toBe("raised");
 	});
 
 	it("keeps the pill in place when raising it would not reach farther, because the width is the limit", () => {
+		const geometry = phone(320, 2000, "bottom-right", 0, 20);
 		const measured: DialLayoutMode[] = [];
-		const geometry = phone(320, 568, "bottom-right", 0, 20);
-		const params = ringParamsFor(MAX_DIAL_ITEM_SIZE);
-		const chosen = chooseMode(
-			naturalReach(params, [4, 5, 9]),
-			(mode) => {
-				measured.push(mode);
-				return measureFor(geometry)(mode);
-			},
-			params,
-		);
-		expect(naturalReach(params, [4, 5, 9])).toBeGreaterThan(fanReach(geometry, params));
+		const measure = (mode: DialLayoutMode): DialGeometry => {
+			measured.push(mode);
+			return measureFor(geometry)(mode);
+		};
+		const chosen = chooseMode(1000, measure, FIXED);
 		expect(chosen.mode).toBe("normal");
 		expect(measured).toEqual(["normal", "raised", "normal"]);
 	});
 
 	it("lets the rings reach up behind the pill only when not even the root ring fits under the raised pill", () => {
-		const short: DialGeometry = { corner: "bottom-right", anchor: { x: 350, y: 160 }, bounds: { left: 4, top: 130, right: 386, bottom: 196 } };
-		expect(chooseMode(naturalReach(DEFAULT_RING_PARAMS, [4]), measureFor(short)).mode).toBe("overlap");
-		expect(planRings(overlap(short), DEFAULT_RING_PARAMS, [4])).toHaveLength(1);
+		const geometry = phone(390, 300, "bottom-right", TOOLBAR, 20);
+		expect(chooseMode(1000, measureFor(geometry), FIXED).mode).toBe("overlap");
 	});
 
 	it("measures the chosen mode last, so the mode in effect is the one measured", () => {
 		const measured: DialLayoutMode[] = [];
-		const geometry = phone(375, 667, "bottom-right", 260 + TOOLBAR, 20);
-		const chosen = chooseMode(DEFAULT_NEED, (mode) => {
+		const measure = (mode: DialLayoutMode): DialGeometry => {
 			measured.push(mode);
-			return measureFor(geometry)(mode);
-		});
-		expect(measured[measured.length - 1]).toBe(chosen.mode);
-		expect(chosen.geometry).toEqual(raised(geometry));
+			return measureFor(PHONE)(mode);
+		};
+		chooseMode(10, measure, FIXED);
+		expect(measured).toEqual(["normal"]);
 	});
 });
 
 describe("naturalReach", () => {
-	it("is where the outermost ring of a chain lands with no screen in the way", () => {
-		expect(naturalReach(DEFAULT_RING_PARAMS, [4])).toBe(97);
-		expect(naturalReach(DEFAULT_RING_PARAMS, [4, 5, 9])).toBe(256);
-		expect(naturalReach(DEFAULT_RING_PARAMS, [4, 12])).toBeGreaterThan(324);
+	it("under the fixed rule is the last ring's fixed radius, however many items the levels hold", () => {
+		expect(naturalReach(FIXED, [4, 5, 9])).toBe(205);
+		expect(naturalReach(FIXED, [25, 25, 25])).toBe(205);
+		expect(naturalReach(FIXED, [4])).toBe(97);
+		expect(naturalReach(FIXED, [])).toBe(0);
+	});
+
+	it("under the fit rule is where the outermost ring of a chain lands with no screen in the way", () => {
+		expect(naturalReach(FIT, [4, 5, 9])).toBe(256);
+		expect(naturalReach(FIT, [4])).toBe(97);
+		expect(naturalReach(FIT, [1])).toBe(firstRadius(FIT));
 	});
 });
 
 describe("ringArcs", () => {
-	const rings: DialRing[] = [
-		{ radius: 97, capacity: 4 },
-		{ radius: 151, capacity: 5 },
-	];
+	const rings = planRings(PHONE, FIXED, [4, 5]);
+	const { slots } = placed(PHONE, FIXED, [4, 5]);
 
 	it("draws one arc per ring with two or more slots, from its first slot to its last, clockwise for the right corner", () => {
-		const slots = [...ringSlots(0, 4, 4), ...ringSlots(1, 5, 3)];
 		const arcs = ringArcs(PHONE, rings, slots);
 		expect(arcs).toHaveLength(2);
 		expect(arcs[0].radius).toBe(97);
+		expect(arcs[0].clockwise).toBe(true);
 		expect(arcs[0].from).toEqual(slotPosition(slots[0], PHONE, rings));
 		expect(arcs[0].to).toEqual(slotPosition(slots[3], PHONE, rings));
-		expect(arcs[1].from).toEqual(slotPosition(slots[4], PHONE, rings));
-		expect(arcs[1].to).toEqual(slotPosition(slots[6], PHONE, rings));
-		expect(arcs.every((arc) => arc.clockwise)).toBe(true);
 	});
 
 	it("runs counter-clockwise, mirrored, for the left corner and skips rings with one slot or none", () => {
-		const left = phone(390, 844, "bottom-left");
-		const slots = [...ringSlots(0, 4, 4), ...ringSlots(1, 5, 1)];
-		const arcs = ringArcs(left, rings, slots);
+		const left = phone(390, 844, "bottom-left", 0, 47);
+		const leftRings = planRings(left, FIXED, [4, 1]);
+		const leftSlots = placed(left, FIXED, [4, 1]).slots;
+		const arcs = ringArcs(left, leftRings, leftSlots);
 		expect(arcs).toHaveLength(1);
 		expect(arcs[0].clockwise).toBe(false);
 	});
+
+	it("follows the lens: the arc ends move with the end slots", () => {
+		const moved = placed(PHONE, FIXED, [4, 12], [null, 0.5]);
+		const arcs = ringArcs(PHONE, moved.rings, moved.slots);
+		expect(arcs[1].from).toEqual(slotPosition({ ...moved.slots[4], offset: 0 }, PHONE, moved.rings));
+	});
 });
 
-describe("paging", () => {
-	it("is a single page when the level fits", () => {
-		expect(paging(5, 5)).toEqual({ pages: 1, perPage: 5 });
-		expect(paging(0, 5)).toEqual({ pages: 1, perPage: 0 });
+describe("ringUnder and lensFocus", () => {
+	const { rings, slots } = placed(PHONE, FIXED, [4, 5]);
+	const at = (radius: number, angleDeg: number) => ({ x: PHONE.anchor.x - radius * Math.cos((angleDeg * Math.PI) / 180), y: PHONE.anchor.y - radius * Math.sin((angleDeg * Math.PI) / 180) });
+
+	it("picks the ring by radial band, none inside the dead zone or beyond the reach", () => {
+		expect(ringUnder(at(97, 45), PHONE, rings, slots)).toBe(0);
+		expect(ringUnder(at(123, 45), PHONE, rings, slots)).toBe(0);
+		expect(ringUnder(at(125, 45), PHONE, rings, slots)).toBe(1);
+		expect(ringUnder(at(190, 45), PHONE, rings, slots)).toBe(1);
+		expect(ringUnder(at(200, 45), PHONE, rings, slots)).toBeNull();
+		expect(ringUnder(at(20, 45), PHONE, rings, slots)).toBeNull();
 	});
 
-	it("gives up one slot per page to the More item when the level does not fit", () => {
-		expect(paging(9, 7)).toEqual({ pages: 2, perPage: 6 });
-		expect(paging(12, 4)).toEqual({ pages: 4, perPage: 3 });
-	});
-
-	it("has no pages at all when nothing fits", () => {
-		expect(paging(3, 0)).toEqual({ pages: 0, perPage: 0 });
+	it("reads the finger's place along the sweep, held at the ends", () => {
+		expect(lensFocus(at(97, 0), PHONE)).toBeCloseTo(0);
+		expect(lensFocus(at(97, 45), PHONE)).toBeCloseTo(0.5);
+		expect(lensFocus(at(97, 90), PHONE)).toBeCloseTo(1);
+		expect(lensFocus(at(97, -20), PHONE)).toBe(0);
+		expect(lensFocus(at(97, 110), PHONE)).toBe(1);
+		expect(lensFocus(at(97, 45), phone(390, 844, "bottom-left", 0, 47))).toBeCloseTo(0.5, 0);
 	});
 });
 
 describe("hitTest", () => {
-	const rings = planRings(PHONE, DEFAULT_RING_PARAMS, [4, 5]);
-	const slots = [...ringSlots(0, rings[0].capacity, 4), ...ringSlots(1, rings[1].capacity, 5)];
-	const at = (slot: DialSlot) => slotPosition(slot, PHONE, rings);
-	const { anchor } = PHONE;
+	const { rings, slots, points } = placed(PHONE, FIXED, [4, 5]);
+	const at = (radius: number, angleDeg: number) => ({ x: PHONE.anchor.x - radius * Math.cos((angleDeg * Math.PI) / 180), y: PHONE.anchor.y - radius * Math.sin((angleDeg * Math.PI) / 180) });
 
 	it("arms nothing inside the dead zone around the anchor", () => {
-		expect(hitTest({ x: anchor.x - 20, y: anchor.y - 20 }, PHONE, rings, slots)).toBeNull();
+		expect(hitTest({ x: PHONE.anchor.x - 20, y: PHONE.anchor.y - 20 }, PHONE, rings, slots)).toBeNull();
 	});
 
 	it("arms the item whose centre the pointer is on", () => {
-		slots.forEach((slot, index) => {
-			expect(hitTest(at(slot), PHONE, rings, slots)).toBe(index);
+		points.forEach((p, i) => {
+			expect(hitTest(p, PHONE, rings, slots)).toBe(i);
 		});
 	});
 
-	it("picks the ring by radial band and the slot by nearest angle", () => {
-		const between = { x: anchor.x - 120 * Math.cos(Math.PI / 6), y: anchor.y - 120 * Math.sin(Math.PI / 6) };
-		expect(hitTest(between, PHONE, rings, slots)).toBe(1);
-		const outer = { x: anchor.x - 140 * Math.cos(Math.PI / 4), y: anchor.y - 140 * Math.sin(Math.PI / 4) };
-		expect(hitTest(outer, PHONE, rings, slots)).toBe(4 + 2);
+	it("picks the ring by radial band and the slot by its share of the arc", () => {
+		expect(hitTest(at(151, 10), PHONE, rings, slots)).toBe(4);
+		expect(hitTest(at(151, 50), PHONE, rings, slots)).toBe(6);
+		expect(hitTest(at(140, 85), PHONE, rings, slots)).toBe(8);
 	});
 
 	it("still arms the outer ring when the pointer overshoots it a little, but not by a lot", () => {
-		const radius = rings[1].radius;
-		expect(hitTest({ x: anchor.x - (radius + 30), y: anchor.y }, PHONE, rings, slots)).toBe(4);
-		expect(hitTest({ x: anchor.x - (radius + 60), y: anchor.y }, PHONE, rings, slots)).toBeNull();
+		expect(hitTest(at(151 + 40, 45), PHONE, rings, slots)).toBe(6);
+		expect(hitTest(at(151 + 50, 45), PHONE, rings, slots)).toBeNull();
 	});
 
 	it("arms nothing far from the rings, so a tap elsewhere can cancel", () => {
-		expect(hitTest({ x: 40, y: 200 }, PHONE, rings, slots)).toBeNull();
+		expect(hitTest({ x: 50, y: 300 }, PHONE, rings, slots)).toBeNull();
 	});
 
 	it("arms nothing when the pointer is far outside the sweep", () => {
-		expect(hitTest({ x: anchor.x - 100, y: anchor.y + 60 }, PHONE, rings, slots)).toBeNull();
-		expect(hitTest({ x: anchor.x + 60, y: anchor.y - 100 }, PHONE, rings, slots)).toBeNull();
-	});
-
-	it("ignores rings that hold no slots", () => {
-		const inner = ringSlots(0, rings[0].capacity, 4);
-		expect(hitTest({ x: anchor.x - rings[1].radius, y: anchor.y }, PHONE, rings, inner)).toBeNull();
-		expect(hitTest({ x: anchor.x - rings[0].radius, y: anchor.y }, PHONE, rings, inner)).toBe(0);
+		expect(hitTest(at(151, -30), PHONE, rings, slots)).toBeNull();
+		expect(hitTest(at(151, 120), PHONE, rings, slots)).toBeNull();
 	});
 
 	it("works mirrored for the bottom-left corner", () => {
-		const left = phone(390, 844, "bottom-left");
-		const leftRings = planRings(left, DEFAULT_RING_PARAMS, [4]);
-		const leftSlots = ringSlots(0, leftRings[0].capacity, 4);
-		leftSlots.forEach((slot, index) => {
-			expect(hitTest(slotPosition(slot, left, leftRings), left, leftRings, leftSlots)).toBe(index);
+		const left = phone(390, 844, "bottom-left", 0, 47);
+		const mirrored = placed(left, FIXED, [4, 5]);
+		mirrored.points.forEach((p, i) => {
+			expect(hitTest(p, left, mirrored.rings, mirrored.slots)).toBe(i);
 		});
-		expect(hitTest({ x: left.anchor.x - 100, y: left.anchor.y }, left, leftRings, leftSlots)).toBeNull();
 	});
 
 	it("arms nothing when there are no slots", () => {
-		expect(hitTest({ x: anchor.x - 100, y: anchor.y }, PHONE, rings, [])).toBeNull();
+		expect(hitTest(at(97, 45), PHONE, rings, [])).toBeNull();
+	});
+
+	it("gives a slot the arc half way to each neighbour, so a slot grown by the lens owns the room it took", () => {
+		const moved = placed(PHONE, FIXED, [4, 12], [null, 0.5]);
+		const own = moved.slots.filter((slot) => slot.ring === 1);
+		const focus = own.reduce((a, b) => (b.weight > a.weight ? b : a));
+		const next = own[focus.index + 1];
+		const between = (focus.angleDeg + next.angleDeg) / 2;
+		expect(hitTest(at(151, between - 0.5), PHONE, moved.rings, moved.slots)).toBe(4 + focus.index);
+		expect(hitTest(at(151, between + 0.5), PHONE, moved.rings, moved.slots)).toBe(4 + next.index);
 	});
 
 	it("lets the end slots of a partly used ring own a little of the arc beside them, not all of it", () => {
-		const partly = ringSlots(0, rings[0].capacity, 2);
-		const radius = rings[0].radius;
-		const atAngle = (deg: number) => ({ x: anchor.x - radius * Math.cos((deg * Math.PI) / 180), y: anchor.y - radius * Math.sin((deg * Math.PI) / 180) });
-		expect(hitTest(atAngle(30), PHONE, rings, partly)).toBe(0);
-		expect(hitTest(atAngle(10), PHONE, rings, partly)).toBe(0);
-		expect(hitTest(atAngle(0), PHONE, rings, partly)).toBeNull();
+		const partial = placed(PHONE, FIXED, [4, 2]);
+		expect(partial.slots.filter((slot) => slot.ring === 1).map((slot) => slot.angleDeg)).toEqual([33.75, 56.25]);
+		expect(hitTest(at(151, 20), PHONE, partial.rings, partial.slots)).toBe(4);
+		expect(hitTest(at(151, 10), PHONE, partial.rings, partial.slots)).toBeNull();
 	});
 
 	it("arms nothing more than half a slot pitch past a lone item, so a tap on blank space inside the fan cancels", () => {
-		const lone = ringSlots(1, rings[1].capacity, 1);
-		const radius = rings[1].radius;
-		const atAngle = (deg: number) => ({ x: anchor.x - radius * Math.cos((deg * Math.PI) / 180), y: anchor.y - radius * Math.sin((deg * Math.PI) / 180) });
-		expect(hitTest(atAngle(45), PHONE, rings, lone)).toBe(0);
-		expect(hitTest(atAngle(45 + 11.25 + 7.9), PHONE, rings, lone)).toBe(0);
-		expect(hitTest(atAngle(45 + 11.25 + 9), PHONE, rings, lone)).toBeNull();
-		expect(hitTest(atAngle(5), PHONE, rings, lone)).toBeNull();
+		const lone = placed(PHONE, FIXED, [4, 1]);
+		expect(hitTest(at(151, 45), PHONE, lone.rings, lone.slots)).toBe(4);
+		expect(hitTest(at(151, 60), PHONE, lone.rings, lone.slots)).toBe(4);
+		expect(hitTest(at(151, 80), PHONE, lone.rings, lone.slots)).toBeNull();
+	});
+
+	it("arms a bead by its own small circle, or by its share of the arc on the outermost ring", () => {
+		const beads = placed(PHONE, FIXED, [4, 12]);
+		const bead = beads.slots[4 + 5];
+		expect(bead.size).toBeLessThan(TAP_FOCUS_BELOW);
+		expect(hitTest(beads.points[4 + 5], PHONE, beads.rings, beads.slots)).toBe(4 + 5);
+		expect(hitTest(at(151, bead.angleDeg + 2), PHONE, beads.rings, beads.slots)).toBe(4 + 5);
 	});
 
 	it("on an inner ring only the circles arm, so the band between the rings is blank and a thumb heading outward swaps nothing", () => {
-		const radius = rings[0].radius;
-		const atAngle = (deg: number, distance: number) => ({ x: anchor.x - distance * Math.cos((deg * Math.PI) / 180), y: anchor.y - distance * Math.sin((deg * Math.PI) / 180) });
-		// Window sits at 30 degrees on the root ring: inside its circle (plus a little slack) it arms; between Window and Zoom, past the circles' edge but still in the root ring's band, nothing does.
-		expect(hitTest(atAngle(30, radius), PHONE, rings, slots)).toBe(1);
-		expect(hitTest(atAngle(30, radius + 25), PHONE, rings, slots)).toBe(1);
-		expect(hitTest(atAngle(44, radius + 20), PHONE, rings, slots)).toBeNull();
-		expect(hitTest(atAngle(44, radius + 20), PHONE, rings, ringSlots(0, rings[0].capacity, 4))).toBe(1);
-		// The same angle on the outermost ring's band arms by angle alone.
-		expect(hitTest(atAngle(45, (rings[0].radius + rings[1].radius) / 2 + 1), PHONE, rings, slots)).toBe(4 + 2);
+		expect(hitTest(at(107, 45), PHONE, rings, slots)).toBeNull();
+		expect(hitTest(at(85, 45), PHONE, rings, slots)).toBeNull();
+		expect(hitTest(at(97, 30), PHONE, rings, slots)).toBe(1);
+		expect(hitTest(at(97 + 22 + 3, 30), PHONE, rings, slots)).toBe(1);
+		expect(hitTest(at(97 + 22 + 4.5, 30), PHONE, rings, slots)).toBeNull();
 	});
 
 	it("keeps the sticky slot's angular share on an inner ring, and only that slot's", () => {
-		const radius = rings[0].radius;
-		const atAngle = (deg: number, distance: number) => ({ x: anchor.x - distance * Math.cos((deg * Math.PI) / 180), y: anchor.y - distance * Math.sin((deg * Math.PI) / 180) });
-		// 10 degrees off Window, 25px past its circle: nothing on its own, Window when Window is the slot already armed, still nothing when File is.
-		expect(hitTest(atAngle(40, radius + 25), PHONE, rings, slots)).toBeNull();
-		expect(hitTest(atAngle(40, radius + 25), PHONE, rings, slots, undefined, undefined, 1)).toBe(1);
-		expect(hitTest(atAngle(40, radius + 25), PHONE, rings, slots, undefined, undefined, 0)).toBeNull();
-		// Past the midpoint the outer ring's band takes over, sticky or not: the 45 degree slot of the five on the outer ring.
-		expect(hitTest(atAngle(40, (rings[0].radius + rings[1].radius) / 2 + 1), PHONE, rings, slots, undefined, undefined, 1)).toBe(4 + 2);
+		expect(hitTest(at(97, 45), PHONE, rings, slots, undefined, undefined, 1)).toBe(1);
+		expect(hitTest(at(97, 45), PHONE, rings, slots, undefined, undefined, 2)).toBe(2);
+		expect(hitTest(at(112, 15), PHONE, rings, slots, undefined, undefined, 2)).toBeNull();
+		expect(hitTest(at(112, 15), PHONE, rings, slots, undefined, undefined, 1)).toBe(1);
+		expect(hitTest(at(97, 10), PHONE, rings, slots, undefined, undefined, 2)).toBe(0);
+		expect(hitTest(at(112, 15), PHONE, rings, slots, undefined, undefined, 6)).toBeNull();
 	});
 
 	it("arms an end item anywhere inside its own circle, even outside the sweep", () => {
-		const end = at(slots[0]);
-		expect(hitTest({ x: end.x, y: end.y + 20 }, PHONE, rings, slots)).toBe(0);
+		expect(hitTest(at(151, -5), PHONE, rings, slots)).toBe(4);
 	});
 
 	it("arms nothing between the anchor rim and the innermost ring's inner edge", () => {
-		const radius = rings[0].radius;
-		expect(hitTest({ x: anchor.x - (radius - 22 - 10), y: anchor.y }, PHONE, rings, slots)).toBeNull();
-		expect(hitTest({ x: anchor.x - (radius - 22), y: anchor.y }, PHONE, rings, slots)).toBe(0);
+		expect(hitTest(at(60, 45), PHONE, rings, slots)).toBeNull();
+	});
+
+	it("measures the armed inner circle at its grown size, so the finger that grew it stays on it, but a grown sibling only at the item size, so a thumb heading out does not catch it", () => {
+		const grown = placed(PHONE, FIXED, [4, 5], [1 / 3, null]);
+		expect(grown.slots[1].size).toBeCloseTo(66);
+		expect(grown.slots[0].size).toBeCloseTo(44 + 22 / 3);
+		expect(hitTest(at(97 + 30, 30), PHONE, grown.rings, grown.slots, undefined, undefined, 1)).toBe(1);
+		expect(hitTest(at(97 + 30, 30), PHONE, grown.rings, grown.slots)).not.toBe(1);
+		expect(hitTest(at(97 + 26.5, 0), PHONE, grown.rings, grown.slots)).toBeNull();
+		expect(hitTest(at(97 + 25, 0), PHONE, grown.rings, grown.slots)).toBe(0);
+	});
+});
+
+describe("slotAngle", () => {
+	it("spans the sweep end to end on a full ring and centres a partly used one", () => {
+		expect([0, 1, 2, 3].map((i) => slotAngle(i, 4, 4))).toEqual([0, 30, 60, 90]);
+		expect([0, 1].map((i) => slotAngle(i, 2, 5))).toEqual([33.75, 56.25]);
+		expect(slotAngle(0, 1, 5)).toBe(45);
 	});
 });

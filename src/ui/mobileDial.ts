@@ -11,7 +11,7 @@ import {
 import { cardFits, cardTop, placeBubble, type CoveredCircle } from "../dial/description";
 import { ANCHOR_RADIUS, ringParamsFor, type DialArc, type DialGeometry, type DialLayoutMode } from "../dial/layout";
 import { getCommandName, hasCommand } from "../obsidianCommands";
-import type { DialCorner, DialDescription, GroupEntry, GroupNode } from "../types";
+import type { DialCorner, DialDescription, DialRadiusRule, DialRingAnimation, GroupEntry, GroupNode } from "../types";
 
 export interface MobileDialCallbacks {
 	executeCommand(id: string): void;
@@ -19,14 +19,21 @@ export interface MobileDialCallbacks {
 }
 
 export interface MobileDialAnimation {
+	/** Any motion at all (the backdrop's fade, the lens easing); off when the OS prefers reduced motion. */
 	enabled: boolean;
 	durationMs: number;
+	/** How a ring appears as it opens, or null for no entrance (the setting off, or reduced motion). */
+	ring: DialRingAnimation | null;
 }
 
 export interface MobileDialOptions {
 	corner: DialCorner;
 	/** Diameter of the dial's items in px, from the settings (MIN_DIAL_ITEM_SIZE to MAX_DIAL_ITEM_SIZE). */
 	itemSize: number;
+	/** Where the rings sit: at fixed radii, or each as far out as its level needs. */
+	radiusRule: DialRadiusRule;
+	/** How large the circle under the thumb grows, as a multiple of the item size. */
+	lensPeak: number;
 	/** Where the armed item is described beyond the pill's own line. */
 	description: DialDescription;
 	/** Read on every open, so a settings change (or the OS's reduced-motion preference) applies next time. */
@@ -38,9 +45,6 @@ const EDGE_MARGIN = 4;
 
 /** How far the anchor sits from the screen's edges and from the chrome below it (the stylesheet's --neokeys-dial-edge). */
 const ANCHOR_EDGE = 12;
-
-/** How much the armed item is scaled up (the stylesheet's scale on .neokeys-dial-item-armed), so the bubble keeps clear of it. */
-const ARMED_SCALE = 1.15;
 
 /**
  * Where the view header is when none can be measured (no note open): Obsidian's own variables,
@@ -60,12 +64,11 @@ function vibrate(): void {
 	}
 }
 
-/** The item nodes of one ring on screen, kept while the ring shows the same page of the same group. */
+/** The item nodes of one ring on screen, kept while the ring shows the same items of the same group. */
 interface RingNodes {
 	group: GroupNode;
-	page: number;
 	el: HTMLElement;
-	items: { identity: GroupEntry | "more"; el: HTMLElement }[];
+	items: { identity: GroupEntry; el: HTMLElement }[];
 }
 
 /**
@@ -117,7 +120,7 @@ export class MobileDial {
 			},
 			vibrate,
 		};
-		this.controller = new DialController(host, (mode) => this.measure(mode), ringParamsFor(options.itemSize));
+		this.controller = new DialController(host, (mode) => this.measure(mode), ringParamsFor(options.itemSize, { peak: options.lensPeak, rule: options.radiusRule }));
 		this.controller.onChange((change) => this.render(change));
 
 		this.layerEl = createDiv({ cls: "neokeys-dial" });
@@ -148,7 +151,7 @@ export class MobileDial {
 			cls: "neokeys-dial-anchor",
 			attr: { type: "button", "aria-label": "Neokeys leader", tabindex: "-1" },
 		});
-		setIcon(this.anchorEl, "command");
+		setIcon(this.anchorEl, "terminal");
 
 		// Keep the editor (and the on-screen keyboard) exactly as they are: no element of the dial
 		// may take focus or let the touch fall through to the note. Obsidian's own mobile toolbar
@@ -327,7 +330,7 @@ export class MobileDial {
 		this.open();
 	}
 
-	/** Assistive-technology activation of an item: select it the way a tap on its centre would. */
+	/** Assistive-technology activation of an item: select it the way a release on its centre would, however small the circle is. */
 	private onItemClick(evt: MouseEvent): void {
 		if (this.controller.isPressing || !this.controller.isOpen) return;
 		const target = evt.target;
@@ -339,7 +342,7 @@ export class MobileDial {
 			const item = index === -1 ? undefined : view.rings[ringIndex]?.items[index];
 			if (!item) continue;
 			this.controller.pressAt({ x: item.x, y: item.y });
-			this.controller.release();
+			this.controller.release(true);
 			return;
 		}
 	}
@@ -423,6 +426,8 @@ export class MobileDial {
 	private applyAnimation(): void {
 		const animation = this.options.animation();
 		this.layerEl.toggleClass("neokeys-animate", animation.enabled);
+		this.layerEl.toggleClass("neokeys-dial-ring-fade", animation.ring === "fade");
+		this.layerEl.toggleClass("neokeys-dial-ring-fly", animation.ring === "fly");
 		this.layerEl.setCssProps({ "--neokeys-anim-duration": `${animation.durationMs}ms` });
 	}
 
@@ -485,30 +490,37 @@ export class MobileDial {
 			this.layerEl.removeAttribute("aria-label");
 		}
 		this.syncScope(view.open);
-		this.renderPill(view);
-		if (change === "armed") {
-			this.restyleItems(view);
+		// A move of the lens alone touches only the circles and the arcs: the pill, with its
+		// text layout, and the card are left alone, so a finger sliding along a ring costs little.
+		if (change !== "lens") this.renderPill(view);
+		if (change === "armed" || change === "lens") {
+			this.placeItems(view);
 		} else {
 			this.reconcileRings(view);
-			this.renderArcs(view.arcs);
 		}
-		this.renderDescription(view);
+		this.renderArcs(view.arcs);
+		this.renderDescription(view, change !== "lens");
 	}
 
 	/**
-	 * Keep each ring's nodes while it shows the same page of the same group, so a ring opening
-	 * outside the current ones pops in on its own and the rings under the thumb do not replay
-	 * their entrance; a kept ring is re-placed, since a relayout may have moved it; a ring whose
-	 * group or page changed is rebuilt in place.
+	 * Keep each ring's nodes while it shows the same items of the same group, so a ring opening
+	 * outside the current ones appears on its own and the rings under the thumb do not replay
+	 * their entrance; a kept ring is re-placed, since a relayout or the lens may have moved its
+	 * items; a ring whose group changed is rebuilt in place, flying out from its own group.
 	 */
 	private reconcileRings(view: DialView): void {
 		view.rings.forEach((ring, index) => {
 			const existing = this.rings[index];
-			if (existing && existing.group === ring.group && existing.page === ring.page && sameItems(existing, ring)) {
-				ring.items.forEach((item, i) => this.placeItem(existing.items[i].el, item, true));
+			if (existing && existing.group === ring.group && sameItems(existing, ring)) {
+				ring.items.forEach((item, i) => this.placeItem(existing.items[i].el, item));
 				return;
 			}
 			const el = createDiv({ cls: "neokeys-dial-ring" });
+			// Where the ring's items fly out from, when the animation setting says so: the circle of
+			// the group they belong to, or the anchor for the innermost ring on screen.
+			const anchor = this.anchorEl.getBoundingClientRect();
+			const from = ring.parent ?? { x: anchor.left + anchor.width / 2, y: anchor.top + anchor.height / 2 };
+			el.setCssProps({ "--neokeys-dial-from-x": `${from.x}px`, "--neokeys-dial-from-y": `${from.y}px` });
 			if (existing) {
 				existing.el.replaceWith(el);
 			} else {
@@ -516,7 +528,6 @@ export class MobileDial {
 			}
 			this.rings[index] = {
 				group: ring.group,
-				page: ring.page,
 				el,
 				items: ring.items.map((item) => ({ identity: item.identity, el: this.createItem(el, item) })),
 			};
@@ -524,13 +535,14 @@ export class MobileDial {
 		for (const extra of this.rings.splice(view.rings.length)) extra.el.remove();
 	}
 
-	private restyleItems(view: DialView): void {
+	/** Re-place and restyle the items already on screen: the lens moved them, or the armed one changed. */
+	private placeItems(view: DialView): void {
 		view.rings.forEach((ring, index) => {
 			const nodes = this.rings[index];
 			if (!nodes) return;
 			ring.items.forEach((item, i) => {
 				const node = nodes.items[i];
-				if (node) this.placeItem(node.el, item, false);
+				if (node) this.placeItem(node.el, item);
 			});
 		});
 	}
@@ -542,39 +554,43 @@ export class MobileDial {
 		});
 		el.createSpan({ cls: "neokeys-dial-item-key", text: item.key, attr: { "aria-hidden": "true" } });
 		el.setCssProps({ "--neokeys-dial-key-scale": keyScale(item.key) });
-		this.placeItem(el, item, true);
+		this.placeItem(el, item);
 		return el;
 	}
 
-	private placeItem(el: HTMLElement, item: DialItemView, moved: boolean): void {
-		if (moved) {
-			el.setCssProps({
-				"--neokeys-dial-x": `${item.x}px`,
-				"--neokeys-dial-y": `${item.y}px`,
-				"--neokeys-dial-size": `${item.size}px`,
-			});
-		}
+	/** Position and size come from the controller as custom properties; the stylesheet owns everything else. */
+	private placeItem(el: HTMLElement, item: DialItemView): void {
+		el.setCssProps({
+			"--neokeys-dial-x": `${item.x}px`,
+			"--neokeys-dial-y": `${item.y}px`,
+			"--neokeys-dial-size": `${item.size}px`,
+			"--neokeys-dial-lens": `${Math.round(item.weight * 10)}`,
+		});
 		el.toggleClass("neokeys-dial-item-armed", item.armed);
 		el.toggleClass("neokeys-dial-item-open", item.open);
 		el.setAttribute("aria-pressed", item.armed ? "true" : "false");
 	}
 
+	/** One path per arc, kept and re-pointed while the count holds, since the arcs' ends follow the lens on every move. */
 	private renderArcs(arcs: DialArc[]): void {
-		this.arcsEl.empty();
-		for (const arc of arcs) {
+		const paths = Array.from(this.arcsEl.children);
+		for (const extra of paths.splice(arcs.length)) extra.remove();
+		arcs.forEach((arc, i) => {
 			const d = `M ${arc.from.x} ${arc.from.y} A ${arc.radius} ${arc.radius} 0 0 ${arc.clockwise ? 1 : 0} ${arc.to.x} ${arc.to.y}`;
-			this.arcsEl.createSvg("path", { attr: { d } });
-		}
+			const path = paths[i] ?? this.arcsEl.createSvg("path");
+			path.setAttribute("d", d);
+		});
 	}
 
 	/**
 	 * The pill: the path, the armed item at its end (an armed group that is in the path is the
-	 * path's own last crumb, highlighted), the page of the outermost ring, and a line about the
-	 * armed item, or about the deepest open group when the armed item has nothing to add.
+	 * path's own last crumb, highlighted), and a line about the armed item when there is one
+	 * (about that item itself, even when it has nothing to say), else about the deepest open
+	 * group.
 	 */
 	private renderPill(view: DialView): void {
 		this.crumbsEl.empty();
-		this.descEl.setText(view.open ? view.armed?.description || view.description : "");
+		this.descEl.setText(view.open ? (view.armed ? view.armed.description : view.description) : "");
 		if (!view.open) return;
 		// A leading ellipsis stands in for whatever part of the trail had to be collapsed to fit.
 		const collapsedEl = this.crumbsEl.createSpan({ cls: "neokeys-dial-crumb neokeys-dial-crumb-collapsed neokeys-hidden", text: "…" });
@@ -584,7 +600,6 @@ export class MobileDial {
 			if (i > 0) seps.push(this.crumbsEl.createSpan({ cls: "neokeys-dial-crumb-sep", text: "›" }));
 			trail.push(this.crumbsEl.createSpan({ cls: "neokeys-dial-crumb neokeys-dial-crumb-trail", text: label }));
 		});
-		const pageEl = view.pages > 1 ? this.crumbsEl.createSpan({ cls: "neokeys-dial-crumb-page", text: `${view.page + 1}/${view.pages}` }) : null;
 		let armedSepEl: HTMLElement | null = null;
 		if (view.armed?.open) {
 			trail[trail.length - 1].addClass("neokeys-dial-crumb-armed");
@@ -592,19 +607,19 @@ export class MobileDial {
 			armedSepEl = this.crumbsEl.createSpan({ cls: "neokeys-dial-crumb-sep", text: "›" });
 			this.crumbsEl.createSpan({ cls: "neokeys-dial-crumb neokeys-dial-crumb-armed", text: view.armed.label });
 		}
-		this.fitCrumbs(collapsedEl, trail, seps, pageEl, armedSepEl);
+		this.fitCrumbs(collapsedEl, trail, seps, armedSepEl);
 	}
 
 	/**
 	 * Collapse the trail from the left while any crumb is cut short, so the pill always prefers
 	 * the end of the path: "Neokeys › Text › Heading › Increase heading level" becomes
 	 * "… › Heading › Increase heading level" on a narrow phone, then "… › Increase heading level".
-	 * The label under the thumb outranks everything else: if it is still cut, the page indicator
-	 * goes, then the ellipsis itself, so the label stands alone before the stylesheet ever
-	 * shortens it. When the armed item is the last crumb of the trail, or nothing is armed, that
-	 * crumb always stays, ellipsized by the stylesheet when even it does not fit.
+	 * The label under the thumb outranks everything else: if it is still cut, the ellipsis itself
+	 * goes, so the label stands alone before the stylesheet ever shortens it. When the armed item
+	 * is the last crumb of the trail, or nothing is armed, that crumb always stays, ellipsized by
+	 * the stylesheet when even it does not fit.
 	 */
-	private fitCrumbs(collapsedEl: HTMLElement, trail: HTMLElement[], seps: HTMLElement[], pageEl: HTMLElement | null, armedSepEl: HTMLElement | null): void {
+	private fitCrumbs(collapsedEl: HTMLElement, trail: HTMLElement[], seps: HTMLElement[], armedSepEl: HTMLElement | null): void {
 		const cut = (): boolean => Array.from(this.crumbsEl.querySelectorAll(".neokeys-dial-crumb")).some((el) => el.scrollWidth > el.clientWidth + 1);
 		const keep = armedSepEl ? 0 : 1;
 		for (let hidden = 0; hidden < trail.length - keep && cut(); hidden++) {
@@ -613,23 +628,26 @@ export class MobileDial {
 			collapsedEl.removeClass("neokeys-hidden");
 		}
 		if (!armedSepEl) return;
-		if (pageEl && cut()) pageEl.addClass("neokeys-hidden");
 		if (cut()) {
 			collapsedEl.addClass("neokeys-hidden");
 			armedSepEl.addClass("neokeys-hidden");
 		}
 	}
 
-	/** The optional description of the armed item: a card between the pill and the rings, or a bubble beside the thumb. */
-	private renderDescription(view: DialView): void {
+	/**
+	 * The optional description of the armed item: a card between the pill and the rings, or a
+	 * bubble beside the thumb. Its text is rebuilt when the armed item changes; a move of the
+	 * lens alone only places it again, since the circles it keeps clear of have moved.
+	 */
+	private renderDescription(view: DialView, rebuild: boolean): void {
 		const armed = view.open ? view.armed : null;
 		const placement = this.options.description;
 		const card = placement === "card" && armed !== null;
 		const bubble = placement === "thumb" && armed !== null;
 		this.cardEl.toggleClass("neokeys-dial-card-shown", card);
 		this.bubbleEl.toggleClass("neokeys-dial-bubble-shown", bubble);
-		if (card && armed) this.renderCard(view, armed);
-		if (bubble && armed) this.renderBubble(view, armed);
+		if (card && armed) this.renderCard(view, armed, rebuild);
+		if (bubble && armed) this.renderBubble(view, armed, rebuild);
 	}
 
 	/**
@@ -638,13 +656,15 @@ export class MobileDial {
 	 * form (key and label on one row, the text under them), and when even that does not fit, to
 	 * the row alone.
 	 */
-	private renderCard(view: DialView, armed: DialArmedView): void {
-		this.cardEl.empty();
-		const head = this.cardEl.createDiv({ cls: "neokeys-dial-card-head" });
-		head.createSpan({ cls: "neokeys-dial-card-key", text: armed.key });
-		head.createSpan({ cls: "neokeys-dial-card-label", text: armed.label });
-		if (armed.description !== "") this.cardEl.createDiv({ cls: "neokeys-dial-card-text", text: armed.description });
-		this.cardEl.createDiv({ cls: "neokeys-dial-card-meta", text: armedMeta(armed) });
+	private renderCard(view: DialView, armed: DialArmedView, rebuild: boolean): void {
+		if (rebuild) {
+			this.cardEl.empty();
+			const head = this.cardEl.createDiv({ cls: "neokeys-dial-card-head" });
+			head.createSpan({ cls: "neokeys-dial-card-key", text: armed.key });
+			head.createSpan({ cls: "neokeys-dial-card-label", text: armed.label });
+			if (armed.description !== "") this.cardEl.createDiv({ cls: "neokeys-dial-card-text", text: armed.description });
+			this.cardEl.createDiv({ cls: "neokeys-dial-card-meta", text: armedMeta(armed) });
+		}
 		const pillBottom = this.pillEl.getBoundingClientRect().bottom;
 		const ringTop = Math.min(...view.rings.flatMap((ring) => ring.items.map((item) => item.y - item.size / 2)));
 		this.cardEl.removeClass("neokeys-dial-card-compact");
@@ -655,18 +675,20 @@ export class MobileDial {
 	}
 
 	/** The bubble sits beside the armed circle wherever it covers the fewest other circles. */
-	private renderBubble(view: DialView, armed: DialArmedView): void {
-		this.bubbleEl.empty();
-		const head = this.bubbleEl.createDiv({ cls: "neokeys-dial-bubble-head" });
-		head.createSpan({ cls: "neokeys-dial-bubble-key", text: armed.key });
-		head.createSpan({ cls: "neokeys-dial-bubble-label", text: armed.label });
-		if (armed.description !== "") this.bubbleEl.createDiv({ cls: "neokeys-dial-bubble-text", text: armed.description });
+	private renderBubble(view: DialView, armed: DialArmedView, rebuild: boolean): void {
+		if (rebuild) {
+			this.bubbleEl.empty();
+			const head = this.bubbleEl.createDiv({ cls: "neokeys-dial-bubble-head" });
+			head.createSpan({ cls: "neokeys-dial-bubble-key", text: armed.key });
+			head.createSpan({ cls: "neokeys-dial-bubble-label", text: armed.label });
+			if (armed.description !== "") this.bubbleEl.createDiv({ cls: "neokeys-dial-bubble-text", text: armed.description });
+		}
 		const anchorRect = this.anchorEl.getBoundingClientRect();
 		const anchor = { x: anchorRect.left + anchorRect.width / 2, y: anchorRect.top + anchorRect.height / 2 };
 		// The armed circle itself weighs most: a spot that would cover it once kept on screen is the last choice.
 		const circles: CoveredCircle[] = [
 			{ x: anchor.x, y: anchor.y, radius: ANCHOR_RADIUS, weight: 2 },
-			{ x: armed.x, y: armed.y, radius: (armed.size / 2) * ARMED_SCALE, weight: 3 },
+			{ x: armed.x, y: armed.y, radius: armed.size / 2, weight: 3 },
 		];
 		view.rings.forEach((ring, index) => {
 			const weight = index === view.rings.length - 1 ? 2 : 1;
@@ -674,7 +696,7 @@ export class MobileDial {
 		});
 		const placed = placeBubble(
 			{ x: armed.x, y: armed.y },
-			(armed.size / 2) * ARMED_SCALE,
+			armed.size / 2,
 			{ width: this.bubbleEl.offsetWidth, height: this.bubbleEl.offsetHeight },
 			{ width: activeWindow.innerWidth, height: activeWindow.innerHeight, top: this.pillEl.getBoundingClientRect().bottom },
 			circles,
@@ -699,7 +721,6 @@ function keyScale(key: string): string {
 }
 
 function itemAccessibleName(item: DialItemView): string {
-	if (item.kind === "more") return "More items, next page";
 	const kind = item.kind === "group" ? ", group" : item.kind === "file" ? ", file" : "";
 	return `${item.label}${kind}, key ${item.key}`;
 }
@@ -710,8 +731,6 @@ function armedMeta(armed: DialArmedView): string {
 			return `Group · ${armed.count ?? 0} ${armed.count === 1 ? "item" : "items"}`;
 		case "file":
 			return "File";
-		case "more":
-			return "Page";
 		case "command":
 			return "Command";
 	}

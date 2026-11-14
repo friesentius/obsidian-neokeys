@@ -8,8 +8,8 @@ import { KeymapParseError, parseKeymapSource } from "./keymap";
 import { serializeKeymap } from "./keymapSerialize";
 import { keyFromEvent, keyToString } from "./keys";
 import { getCommandHotkeys, hasCommand, listOtherCommandHotkeys } from "./obsidianCommands";
-import { parseDialCorner, parseDialDescription, parseDialItemSize } from "./defaultSettings";
-import { DEFAULT_DIAL_ITEM_SIZE, MAX_DIAL_ITEM_SIZE, MIN_DIAL_ITEM_SIZE } from "./dial/layout";
+import { parseDialCorner, parseDialDescription, parseDialItemSize, parseDialLensPeak, parseDialRadiusRule, parseDialRingAnimation } from "./defaultSettings";
+import { DEFAULT_DIAL_ITEM_SIZE, DEFAULT_LENS_PEAK, LENS_PEAK_STEP, MAX_DIAL_ITEM_SIZE, MAX_LENS_PEAK, MIN_DIAL_ITEM_SIZE, MIN_LENS_PEAK } from "./dial/layout";
 import type { GroupNode } from "./types";
 import { TreeEditorView } from "./ui/treeEditorView";
 import type NeokeysPlugin from "./main";
@@ -25,9 +25,9 @@ const SHOW_DELAY_DESC =
 	"Milliseconds to wait before the which-key popup appears. A fast, memorized sequence never flashes it. Set to 0 to show immediately.";
 const ANIMATIONS_NAME = "Animations";
 const ANIMATIONS_DESC =
-	"Slide the which-key popup in from the bottom edge, and crossfade between menus when navigating. Always off when your OS's reduced-motion accessibility preference is on, regardless of this toggle.";
+	"Slide the which-key popup in from the bottom edge, crossfade between menus when navigating, and ease the dial's circles as they move. Always off when your OS's reduced-motion accessibility preference is on, regardless of this toggle.";
 const ANIMATION_DURATION_NAME = "Animation duration";
-const ANIMATION_DURATION_DESC = "Milliseconds for the slide-in and crossfade animations (0‑1000).";
+const ANIMATION_DURATION_DESC = "Milliseconds for the popup's slide-in and crossfade animations and the dial's ring animation (0‑1000).";
 const MOBILE_DIAL_NAME = "Show the dial on mobile";
 const MOBILE_DIAL_DESC =
 	"On phones and tablets, pin a leader button to a bottom corner of the screen. Press it to fan the menu's keys out on a ring around it; dragging onto a group opens its keys on the next ring out, and letting go on a command runs it.";
@@ -39,6 +39,16 @@ const MOBILE_DIAL_ITEM_SIZE_DESC = `Diameter of the dial's circles in pixels, ${
 const MOBILE_DIAL_DESCRIPTION_NAME = "Dial description";
 const MOBILE_DIAL_DESCRIPTION_DESC =
 	"Where the dial describes the item under your thumb, beyond the line in the pill: nowhere else, on a card between the pill and the rings, or in a bubble beside your thumb.";
+const MOBILE_DIAL_RADIUS_NAME = "Dial ring radius";
+const MOBILE_DIAL_RADIUS_DESC =
+	"Fixed keeps every ring at the same radius whatever it holds, shrinking a level's circles to fit it; Fit grows each ring until its level fits at full size, as far as the screen allows.";
+const MOBILE_DIAL_LENS_NAME = "Dial lens";
+const MOBILE_DIAL_LENS_DESC = `How much the circle under your thumb, and its neighbours, grow as you pass over them, as a multiple of the item size (${MIN_LENS_PEAK} to ${MAX_LENS_PEAK}, ${DEFAULT_LENS_PEAK} by default). At ${MIN_LENS_PEAK} only shrunk circles grow, back to full size.`;
+const MOBILE_DIAL_RING_ANIMATION_NAME = "Dial ring animation";
+const MOBILE_DIAL_RING_ANIMATION_DESC =
+	"Animate a ring as it opens. Off when Animations is off, and always off when your OS's reduced-motion accessibility preference is on, regardless of this toggle.";
+const MOBILE_DIAL_RING_ANIMATION_STYLE_NAME = "Dial ring animation style";
+const MOBILE_DIAL_RING_ANIMATION_STYLE_DESC = "Fade the ring in, or fly its circles out from the group they belong to.";
 const KEYMAP_DESC =
 	'Edit the keymap as a tree, or use "Edit as YAML/JSON" for the raw, Spacekeys-compatible source (each group has items; each item is a group, a command ("command: <id>" or the short form "<id> <description>"), or a file ("file: <path>")). Both views edit the same stored keymap - switching away from the YAML view saves it first, and an invalid edit there is never silently discarded.';
 const YAML_NOTE =
@@ -155,6 +165,30 @@ export class NeokeysSettingTab extends PluginSettingTab {
 						aliases: ["description", "card", "bubble", "thumb", "label"],
 						render: (setting) => this.renderMobileDialDescription(setting),
 					},
+					{
+						name: MOBILE_DIAL_RADIUS_NAME,
+						desc: MOBILE_DIAL_RADIUS_DESC,
+						aliases: ["radius", "ring", "fixed", "fit", "shrink"],
+						render: (setting) => this.renderMobileDialRadiusRule(setting),
+					},
+					{
+						name: MOBILE_DIAL_LENS_NAME,
+						desc: MOBILE_DIAL_LENS_DESC,
+						aliases: ["lens", "peak", "grow", "magnify", "zoom", "finger", "thumb"],
+						render: (setting) => this.renderMobileDialLensPeak(setting),
+					},
+					{
+						name: MOBILE_DIAL_RING_ANIMATION_NAME,
+						desc: MOBILE_DIAL_RING_ANIMATION_DESC,
+						aliases: ["animation", "motion", "fade", "fly", "reduced motion"],
+						render: (setting) => this.renderMobileDialRingAnimation(setting),
+					},
+					{
+						name: MOBILE_DIAL_RING_ANIMATION_STYLE_NAME,
+						desc: MOBILE_DIAL_RING_ANIMATION_STYLE_DESC,
+						aliases: ["animation", "fade", "fly", "style"],
+						render: (setting) => this.renderMobileDialRingAnimationStyle(setting),
+					},
 				],
 			},
 			{
@@ -199,6 +233,10 @@ export class NeokeysSettingTab extends PluginSettingTab {
 		this.renderMobileDialCorner(new Setting(containerEl));
 		this.renderMobileDialItemSize(new Setting(containerEl));
 		this.renderMobileDialDescription(new Setting(containerEl));
+		this.renderMobileDialRadiusRule(new Setting(containerEl));
+		this.renderMobileDialLensPeak(new Setting(containerEl));
+		this.renderMobileDialRingAnimation(new Setting(containerEl));
+		this.renderMobileDialRingAnimationStyle(new Setting(containerEl));
 
 		new Setting(containerEl).setName("Keymap").setHeading();
 		this.renderKeymapEditor(new Setting(containerEl));
@@ -423,6 +461,67 @@ export class NeokeysSettingTab extends PluginSettingTab {
 						this.plugin.settings.mobileDialDescription = parseDialDescription(value);
 						await this.plugin.saveSettings();
 						this.plugin.applyMobileDial();
+					}),
+			);
+	}
+
+	private renderMobileDialRadiusRule(setting: Setting): void {
+		setting
+			.setName(MOBILE_DIAL_RADIUS_NAME)
+			.setDesc(MOBILE_DIAL_RADIUS_DESC)
+			.addDropdown((dropdown) =>
+				dropdown
+					.addOption("fixed", "Fixed rings")
+					.addOption("fit", "Fit each level")
+					.setValue(this.plugin.settings.mobileDialRadiusRule)
+					.onChange(async (value) => {
+						this.plugin.settings.mobileDialRadiusRule = parseDialRadiusRule(value);
+						await this.plugin.saveSettings();
+						this.plugin.applyMobileDial();
+					}),
+			);
+	}
+
+	private renderMobileDialLensPeak(setting: Setting): void {
+		setting
+			.setName(MOBILE_DIAL_LENS_NAME)
+			.setDesc(MOBILE_DIAL_LENS_DESC)
+			.addSlider((slider) =>
+				slider
+					.setLimits(MIN_LENS_PEAK, MAX_LENS_PEAK, LENS_PEAK_STEP)
+					.setValue(this.plugin.settings.mobileDialLensPeak)
+					.onChange(async (value) => {
+						this.plugin.settings.mobileDialLensPeak = parseDialLensPeak(value);
+						await this.plugin.saveSettings();
+						this.plugin.applyMobileDial();
+					}),
+			);
+	}
+
+	private renderMobileDialRingAnimation(setting: Setting): void {
+		setting
+			.setName(MOBILE_DIAL_RING_ANIMATION_NAME)
+			.setDesc(MOBILE_DIAL_RING_ANIMATION_DESC)
+			.addToggle((toggle) =>
+				toggle.setValue(this.plugin.settings.mobileDialRingAnimation).onChange(async (value) => {
+					this.plugin.settings.mobileDialRingAnimation = value;
+					await this.plugin.saveSettings();
+				}),
+			);
+	}
+
+	private renderMobileDialRingAnimationStyle(setting: Setting): void {
+		setting
+			.setName(MOBILE_DIAL_RING_ANIMATION_STYLE_NAME)
+			.setDesc(MOBILE_DIAL_RING_ANIMATION_STYLE_DESC)
+			.addDropdown((dropdown) =>
+				dropdown
+					.addOption("fade", "Fade in")
+					.addOption("fly", "Fly out from the group")
+					.setValue(this.plugin.settings.mobileDialRingAnimationStyle)
+					.onChange(async (value) => {
+						this.plugin.settings.mobileDialRingAnimationStyle = parseDialRingAnimation(value);
+						await this.plugin.saveSettings();
 					}),
 			);
 	}
