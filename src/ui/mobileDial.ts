@@ -1,5 +1,6 @@
 import { App, Notice, Scope, setIcon } from "obsidian";
 import { DialController, type DialChange, type DialHost, type DialItemView, type DialView } from "../dial/controller";
+import { splitItemLabel } from "../dial/label";
 import { ringParamsFor, type DialArc, type DialGeometry, type DialLayoutMode } from "../dial/layout";
 import { getCommandName, hasCommand } from "../obsidianCommands";
 import type { DialCorner, GroupNode } from "../types";
@@ -44,11 +45,6 @@ function vibrate(): void {
 	} catch {
 		// Blocked or unsupported: the armed highlight is the feedback that always works.
 	}
-}
-
-/** A label as the item shows it: a slash gets a break opportunity after it, so "bullet/checkbox" wraps there rather than mid-word. */
-function itemLabelText(label: string): string {
-	return label.replace(/\//g, "/​");
 }
 
 /** Label sizes to try, largest first, until the label fits its item; compact items start smaller. */
@@ -160,6 +156,8 @@ export class MobileDial {
 	private readonly anchorEl: HTMLElement;
 	private readonly controller: DialController;
 	private itemEls: HTMLElement[] = [];
+	/** The item size and compact flag the current items' labels were fitted for; null when they are not fitted yet. */
+	private fittedFor: { size: number; compact: boolean } | null = null;
 	/** The one pointer the dial is tracking; any other pointer is ignored until it is released. */
 	private activePointerId: number | null = null;
 	/** The keyboard scope that owns every key while the dial is open; null while it is closed. */
@@ -550,6 +548,7 @@ export class MobileDial {
 		this.renderCrumbs(view);
 		if (change === "structure" || this.itemEls.length !== view.items.length) {
 			this.renderItems(view.items);
+			this.fittedFor = null;
 		} else {
 			// The same items: move them (a relayout) or restyle them (the armed one changed) in
 			// place, so nothing is rebuilt and the pop-in does not replay.
@@ -557,7 +556,11 @@ export class MobileDial {
 		}
 		if (change !== "armed") {
 			this.renderArcs(view.arcs);
-			this.fitLabels(view);
+			const fitFor = { size: view.items[0]?.size ?? 0, compact: view.compact };
+			if (this.fittedFor === null || this.fittedFor.size !== fitFor.size || this.fittedFor.compact !== fitFor.compact) {
+				this.fitLabels(view);
+				this.fittedFor = fitFor;
+			}
 		}
 	}
 
@@ -640,12 +643,11 @@ export class MobileDial {
 			});
 			// The key chip leads the label and never parts from its first word: a chip alone on a line reads as nothing.
 			const label = el.createSpan({ cls: "neokeys-dial-item-label", attr: { "aria-hidden": "true" } });
-			const text = itemLabelText(item.label);
-			const space = text.indexOf(" ");
+			const { head: headText, tail } = splitItemLabel(item.label);
 			const head = label.createSpan({ cls: "neokeys-dial-item-head" });
 			head.createSpan({ cls: "neokeys-dial-item-key", text: item.key });
-			head.appendText(space === -1 ? text : text.slice(0, space));
-			if (space !== -1) label.appendText(text.slice(space));
+			head.appendText(headText);
+			if (tail !== "") label.appendText(tail);
 			this.placeItem(el, item, true);
 			return el;
 		});
