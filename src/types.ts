@@ -79,6 +79,8 @@ export interface NeokeysSettings {
 	mobileDialCorner: DialCorner;
 	/** Diameter of the dial's items in px, MIN_DIAL_ITEM_SIZE to MAX_DIAL_ITEM_SIZE (see dial/layout.ts). */
 	mobileDialItemSize: number;
+	/** The smallest a circle shrinks to on a crowded ring that fits its level at this size, in px: MIN_DIAL_MIN_ITEM_SIZE to the item size (see dial/layout.ts). */
+	mobileDialMinItemSize: number;
 	mobileDialDescription: DialDescription;
 	mobileDialRadiusRule: DialRadiusRule;
 	/** How large the circle under the thumb grows, as a multiple of the item size, MIN_LENS_PEAK to MAX_LENS_PEAK (see dial/layout.ts). */

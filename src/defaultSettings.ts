@@ -1,5 +1,16 @@
 import { DEFAULT_ANIMATION_DURATION_MS } from "./animation";
-import { DEFAULT_DIAL_ITEM_SIZE, DEFAULT_LENS_PEAK, DEFAULT_RADIUS_RULE, LENS_PEAK_STEP, MAX_DIAL_ITEM_SIZE, MAX_LENS_PEAK, MIN_DIAL_ITEM_SIZE, MIN_LENS_PEAK } from "./dial/layout";
+import {
+	DEFAULT_DIAL_ITEM_SIZE,
+	DEFAULT_DIAL_MIN_ITEM_SIZE,
+	DEFAULT_LENS_PEAK,
+	DEFAULT_RADIUS_RULE,
+	LENS_PEAK_STEP,
+	MAX_DIAL_ITEM_SIZE,
+	MAX_LENS_PEAK,
+	MIN_DIAL_ITEM_SIZE,
+	MIN_DIAL_MIN_ITEM_SIZE,
+	MIN_LENS_PEAK,
+} from "./dial/layout";
 import { DEFAULT_KEYMAP_YAML } from "./sampleKeymap";
 import {
 	DIAL_CORNERS,
@@ -27,6 +38,7 @@ export const DEFAULT_SETTINGS: NeokeysSettings = {
 	mobileDialEnabled: true,
 	mobileDialCorner: "bottom-right",
 	mobileDialItemSize: DEFAULT_DIAL_ITEM_SIZE,
+	mobileDialMinItemSize: DEFAULT_DIAL_MIN_ITEM_SIZE,
 	mobileDialDescription: "none",
 	mobileDialRadiusRule: DEFAULT_RADIUS_RULE,
 	mobileDialLensPeak: DEFAULT_LENS_PEAK,
@@ -54,6 +66,16 @@ export function parseDialItemSize(value: unknown): number {
 	if (typeof value !== "number" || !Number.isFinite(value)) return DEFAULT_SETTINGS.mobileDialItemSize;
 	const size = Math.round(value);
 	return size >= MIN_DIAL_ITEM_SIZE && size <= MAX_DIAL_ITEM_SIZE ? size : DEFAULT_SETTINGS.mobileDialItemSize;
+}
+
+/**
+ * A stored or chosen minimum circle size for crowded rings: whole pixels, held within the hard
+ * floor and `itemSize` (the circles' own size, which it can never exceed), the default for
+ * anything that is not a number.
+ */
+export function parseDialMinItemSize(value: unknown, itemSize: number): number {
+	const size = typeof value === "number" && Number.isFinite(value) ? Math.round(value) : DEFAULT_SETTINGS.mobileDialMinItemSize;
+	return Math.max(MIN_DIAL_MIN_ITEM_SIZE, Math.min(itemSize, size));
 }
 
 /** A stored or chosen radius rule, falling back to the default for anything unrecognised. */
@@ -84,6 +106,7 @@ export function resolveSettings(loaded: unknown): NeokeysSettings {
 	settings.mobileDialEnabled = typeof stored.mobileDialEnabled === "boolean" ? stored.mobileDialEnabled : DEFAULT_SETTINGS.mobileDialEnabled;
 	settings.mobileDialCorner = parseDialCorner(stored.mobileDialCorner);
 	settings.mobileDialItemSize = parseDialItemSize(stored.mobileDialItemSize);
+	settings.mobileDialMinItemSize = parseDialMinItemSize(stored.mobileDialMinItemSize, settings.mobileDialItemSize);
 	settings.mobileDialDescription = parseDialDescription(stored.mobileDialDescription);
 	settings.mobileDialRadiusRule = parseDialRadiusRule(stored.mobileDialRadiusRule);
 	settings.mobileDialLensPeak = parseDialLensPeak(stored.mobileDialLensPeak);

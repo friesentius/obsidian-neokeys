@@ -7,6 +7,15 @@
 
 const LUCIDE_PREFIX = "lucide-";
 
+/**
+ * The icon to draw in place of an item's key, or null to show the key: an item's icon, when
+ * `known` says Obsidian has it; an icon it does not know (a typo, or a plugin that is off)
+ * leaves the key.
+ */
+export function shownIcon(icon: string | null, known: (id: string) => boolean): string | null {
+	return icon !== null && known(icon) ? icon : null;
+}
+
 /** The bare name of an icon id: "lucide-file-text" and "file-text" are both "file-text"; a plugin's own icon id is left as it is. */
 export function iconName(id: string): string {
 	return id.startsWith(LUCIDE_PREFIX) ? id.slice(LUCIDE_PREFIX.length) : id;

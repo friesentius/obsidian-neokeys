@@ -1,4 +1,4 @@
-import { App, ButtonComponent, Notice, Platform, PluginSettingTab, Scope, Setting } from "obsidian";
+import { App, ButtonComponent, Notice, Platform, PluginSettingTab, Scope, Setting, SliderComponent } from "obsidian";
 import type { SettingDefinitionItem } from "obsidian";
 import { DEFAULT_ANIMATION_DURATION_MS, parseAnimationDurationInput } from "./animation";
 import { ComboLeaderError, describeComboLeader, parseComboLeaderString } from "./comboLeader";
@@ -9,8 +9,19 @@ import { serializeKeymap } from "./keymapSerialize";
 import { visibleSettingsGroups, type SettingsGroupId } from "./settingsGroups";
 import { keyFromEvent, keyToString } from "./keys";
 import { getCommandHotkeys, hasCommand, listOtherCommandHotkeys } from "./obsidianCommands";
-import { parseDialCorner, parseDialDescription, parseDialItemSize, parseDialLensPeak, parseDialRadiusRule, parseDialRingAnimation } from "./defaultSettings";
-import { DEFAULT_DIAL_ITEM_SIZE, DEFAULT_LENS_PEAK, LENS_PEAK_STEP, MAX_DIAL_ITEM_SIZE, MAX_LENS_PEAK, MIN_DIAL_ITEM_SIZE, MIN_LENS_PEAK } from "./dial/layout";
+import { parseDialCorner, parseDialDescription, parseDialItemSize, parseDialLensPeak, parseDialMinItemSize, parseDialRadiusRule, parseDialRingAnimation } from "./defaultSettings";
+import {
+	DEFAULT_DIAL_ITEM_SIZE,
+	DEFAULT_DIAL_MIN_ITEM_SIZE,
+	DEFAULT_LENS_PEAK,
+	DIAL_LEGIBLE_SIZE,
+	LENS_PEAK_STEP,
+	MAX_DIAL_ITEM_SIZE,
+	MAX_LENS_PEAK,
+	MIN_DIAL_ITEM_SIZE,
+	MIN_DIAL_MIN_ITEM_SIZE,
+	MIN_LENS_PEAK,
+} from "./dial/layout";
 import type { GroupNode } from "./types";
 import { TreeEditorView } from "./ui/treeEditorView";
 import type NeokeysPlugin from "./main";
@@ -37,6 +48,8 @@ const MOBILE_DIAL_CORNER_NAME = "Dial corner";
 const MOBILE_DIAL_CORNER_DESC = "Which bottom corner the dial's button is pinned to.";
 const MOBILE_DIAL_ITEM_SIZE_NAME = "Dial item size";
 const MOBILE_DIAL_ITEM_SIZE_DESC = `Diameter of the dial's circles in pixels, ${MIN_DIAL_ITEM_SIZE} to ${MAX_DIAL_ITEM_SIZE} (${DEFAULT_DIAL_ITEM_SIZE} by default). Smaller circles put more keys on each ring and more rings on the screen.`;
+const MOBILE_DIAL_MIN_ITEM_SIZE_NAME = "Dial minimum circle size";
+const MOBILE_DIAL_MIN_ITEM_SIZE_DESC = `On a ring too crowded for its circles at full size, the circles away from your thumb shrink, but never below this many pixels (${MIN_DIAL_MIN_ITEM_SIZE} up to the item size, ${DEFAULT_DIAL_MIN_ITEM_SIZE} by default); the lens under your thumb grows less instead. Circles below ${DIAL_LEGIBLE_SIZE} are dots without their key until your thumb passes over them. Circles never overlap: a level with more items than fit at this size shrinks below it, down to ${MIN_DIAL_MIN_ITEM_SIZE}.`;
 const MOBILE_DIAL_DESCRIPTION_NAME = "Dial description";
 const MOBILE_DIAL_DESCRIPTION_DESC =
 	"Where the dial describes the item under your thumb, beyond the line in the pill: nowhere else, on a card between the pill and the rings, or in a bubble beside your thumb.";
@@ -44,7 +57,7 @@ const MOBILE_DIAL_RADIUS_NAME = "Dial ring radius";
 const MOBILE_DIAL_RADIUS_DESC =
 	"Fixed keeps every ring at the same radius whatever it holds, shrinking a level's circles to fit it; Fit grows each ring until its level fits at full size, as far as the screen allows.";
 const MOBILE_DIAL_LENS_NAME = "Dial lens";
-const MOBILE_DIAL_LENS_DESC = `How much the circle under your thumb, and its neighbours, grow as you pass over them, as a multiple of the item size (${MIN_LENS_PEAK} to ${MAX_LENS_PEAK}, ${DEFAULT_LENS_PEAK} by default). At ${MIN_LENS_PEAK} only shrunk circles grow, back to full size. Above about 1.15 the rings sit farther apart, so a grown circle never reaches the next ring.`;
+const MOBILE_DIAL_LENS_DESC = `How much the circle under your thumb, and its neighbours, grow as you pass over them, as a multiple of the item size (${MIN_LENS_PEAK} to ${MAX_LENS_PEAK}, ${DEFAULT_LENS_PEAK} by default). At ${MIN_LENS_PEAK} only shrunk circles grow, back toward full size as far as the ring has room. Above about 1.15 the rings sit farther apart, so a grown circle never reaches the next ring.`;
 const MOBILE_DIAL_RING_ANIMATION_NAME = "Dial ring animation";
 const MOBILE_DIAL_RING_ANIMATION_DESC =
 	"Animate a ring as it opens. Off when Animations is off, and always off when your OS's reduced-motion accessibility preference is on, regardless of this toggle.";
@@ -79,6 +92,7 @@ export class NeokeysSettingTab extends PluginSettingTab {
 	private viewMode: "tree" | "yaml" = "tree";
 	private comboDisplayEl: HTMLElement | null = null;
 	private comboErrorEl: HTMLElement | null = null;
+	private minItemSizeSlider: SliderComponent | null = null;
 	private invalidCommandsEl: HTMLElement | null = null;
 	private hotkeyConflictsEl: HTMLElement | null = null;
 	private stopRecordingCombo: (() => void) | null = null;
@@ -161,6 +175,12 @@ export class NeokeysSettingTab extends PluginSettingTab {
 						render: (setting) => this.renderMobileDialItemSize(setting),
 					},
 					{
+						name: MOBILE_DIAL_MIN_ITEM_SIZE_NAME,
+						desc: MOBILE_DIAL_MIN_ITEM_SIZE_DESC,
+						aliases: ["minimum", "smallest", "crowded", "shrink", "dot", "circle"],
+						render: (setting) => this.renderMobileDialMinItemSize(setting),
+					},
+					{
 						name: MOBILE_DIAL_DESCRIPTION_NAME,
 						desc: MOBILE_DIAL_DESCRIPTION_DESC,
 						aliases: ["description", "card", "bubble", "thumb", "label"],
@@ -237,6 +257,7 @@ export class NeokeysSettingTab extends PluginSettingTab {
 		this.renderMobileDialEnabled(new Setting(containerEl));
 		this.renderMobileDialCorner(new Setting(containerEl));
 		this.renderMobileDialItemSize(new Setting(containerEl));
+		this.renderMobileDialMinItemSize(new Setting(containerEl));
 		this.renderMobileDialDescription(new Setting(containerEl));
 		this.renderMobileDialRadiusRule(new Setting(containerEl));
 		this.renderMobileDialLensPeak(new Setting(containerEl));
@@ -445,11 +466,31 @@ export class NeokeysSettingTab extends PluginSettingTab {
 					.setLimits(MIN_DIAL_ITEM_SIZE, MAX_DIAL_ITEM_SIZE, 2)
 					.setValue(this.plugin.settings.mobileDialItemSize)
 					.onChange(async (value) => {
-						this.plugin.settings.mobileDialItemSize = parseDialItemSize(value);
+						const settings = this.plugin.settings;
+						settings.mobileDialItemSize = parseDialItemSize(value);
+						settings.mobileDialMinItemSize = parseDialMinItemSize(settings.mobileDialMinItemSize, settings.mobileDialItemSize);
+						this.minItemSizeSlider?.setLimits(MIN_DIAL_MIN_ITEM_SIZE, settings.mobileDialItemSize, 1).setValue(settings.mobileDialMinItemSize);
 						await this.plugin.saveSettings();
 						this.plugin.applyMobileDial();
 					}),
 			);
+	}
+
+	private renderMobileDialMinItemSize(setting: Setting): void {
+		setting
+			.setName(MOBILE_DIAL_MIN_ITEM_SIZE_NAME)
+			.setDesc(MOBILE_DIAL_MIN_ITEM_SIZE_DESC)
+			.addSlider((slider) => {
+				this.minItemSizeSlider = slider;
+				slider
+					.setLimits(MIN_DIAL_MIN_ITEM_SIZE, this.plugin.settings.mobileDialItemSize, 1)
+					.setValue(this.plugin.settings.mobileDialMinItemSize)
+					.onChange(async (value) => {
+						this.plugin.settings.mobileDialMinItemSize = parseDialMinItemSize(value, this.plugin.settings.mobileDialItemSize);
+						await this.plugin.saveSettings();
+						this.plugin.applyMobileDial();
+					});
+			});
 	}
 
 	private renderMobileDialDescription(setting: Setting): void {

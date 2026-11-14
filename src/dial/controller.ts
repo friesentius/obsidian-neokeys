@@ -74,7 +74,7 @@ export interface DialRingView {
 export interface DialArmedView {
 	kind: DialItemKind;
 	key: string;
-	/** The item's icon id from the keymap, which stands in for its key on its circle; null when it has none. The pill then shows the key itself. */
+	/** The item's icon id from the keymap, which stands in for its key on its circle when Obsidian knows it (the pill then shows the key itself); null when it has none. */
 	icon: string | null;
 	label: string;
 	/** A group that is in the path: its ring is open outside its own, or waiting for the release to open. Its crumb is the last of the trail. */

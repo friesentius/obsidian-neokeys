@@ -8,7 +8,8 @@ import {
 	type DialView,
 } from "../dial/controller";
 import { BUBBLE_MARGIN, bubbleNeedsShortForm, cardFits, cardTop, placeBubble, preferShortBubble, type BubblePlacement, type CoveredCircle } from "../dial/description";
-import { ANCHOR_RADIUS, DIAL_LEGIBLE_SIZE, ringParamsFor, type DialArc, type DialGeometry, type DialLayoutMode } from "../dial/layout";
+import { shownIcon } from "../icons";
+import { ANCHOR_RADIUS, ringParamsFor, showsGlyph, type DialArc, type DialGeometry, type DialLayoutMode } from "../dial/layout";
 import { diffRings } from "../dial/ringDiff";
 import { getCommandName, hasCommand } from "../obsidianCommands";
 import type { DialCorner, DialDescription, DialRadiusRule, DialRingAnimation, GroupEntry, GroupNode } from "../types";
@@ -30,6 +31,8 @@ export interface MobileDialOptions {
 	corner: DialCorner;
 	/** Diameter of the dial's items in px, from the settings (MIN_DIAL_ITEM_SIZE to MAX_DIAL_ITEM_SIZE). */
 	itemSize: number;
+	/** The smallest a circle shrinks to on a crowded ring that fits its level at this size, from the settings. */
+	minItemSize: number;
 	/** Where the rings sit: at fixed radii, or each as far out as its level needs. */
 	radiusRule: DialRadiusRule;
 	/** How large the circle under the thumb grows, as a multiple of the item size. */
@@ -126,7 +129,7 @@ export class MobileDial {
 			},
 			vibrate,
 		};
-		this.controller = new DialController(host, (mode) => this.measure(mode), ringParamsFor(options.itemSize, { peak: options.lensPeak, rule: options.radiusRule }));
+		this.controller = new DialController(host, (mode) => this.measure(mode), ringParamsFor(options.itemSize, { peak: options.lensPeak, rule: options.radiusRule, minSize: options.minItemSize }));
 		this.controller.onChange((change) => this.render(change));
 
 		this.layerEl = createDiv({ cls: "neokeys-dial" });
@@ -599,9 +602,10 @@ export class MobileDial {
 			attr: { role: "button", "aria-label": itemAccessibleName(item) },
 		});
 		// An item's icon stands in for its key on the circle; an icon Obsidian does not know (a typo, or a plugin that is off) leaves the key.
-		if (item.icon !== null && getIcon(item.icon) !== null) {
+		const icon = circleIcon(item.icon);
+		if (icon !== null) {
 			const iconEl = el.createSpan({ cls: "neokeys-dial-item-icon", attr: { "aria-hidden": "true" } });
-			setIcon(iconEl, item.icon);
+			setIcon(iconEl, icon);
 		} else {
 			el.createSpan({ cls: "neokeys-dial-item-key", text: item.key, attr: { "aria-hidden": "true" } });
 			el.setCssProps({ "--neokeys-dial-key-scale": keyScale(item.key) });
@@ -621,7 +625,7 @@ export class MobileDial {
 		el.toggleClass("neokeys-dial-item-armed", item.armed);
 		el.toggleClass("neokeys-dial-item-open", item.open);
 		// A circle shrunk below what a key or icon can be read at is only a dot until the lens grows it.
-		el.toggleClass("neokeys-dial-item-tiny", item.size < DIAL_LEGIBLE_SIZE);
+		el.toggleClass("neokeys-dial-item-tiny", !showsGlyph(item.size));
 		el.setAttribute("aria-pressed", item.armed ? "true" : "false");
 	}
 
@@ -655,8 +659,8 @@ export class MobileDial {
 			trail.push(this.crumbsEl.createSpan({ cls: "neokeys-dial-crumb neokeys-dial-crumb-trail", text: label }));
 		});
 		let armedSepEl: HTMLElement | null = null;
-		// An item with an icon shows no key on its circle, so the pill says the key beside its name: the binding stays discoverable.
-		const keyChip = (): HTMLElement | null => (view.armed?.icon != null ? createSpan({ cls: "neokeys-dial-crumb-key", text: view.armed.key }) : null);
+		// An item whose icon stands in for its key on the circle shows no key there, so the pill says the key beside its name: the binding stays discoverable.
+		const keyChip = (): HTMLElement | null => (view.armed && circleIcon(view.armed.icon) !== null ? createSpan({ cls: "neokeys-dial-crumb-key", text: view.armed.key }) : null);
 		if (view.armed?.open) {
 			const last = trail[trail.length - 1];
 			last.addClass("neokeys-dial-crumb-armed");
@@ -787,6 +791,11 @@ function keyScale(key: string): string {
 	if (length <= 2) return "1";
 	if (length <= 4) return "0.72";
 	return "0.55";
+}
+
+/** The icon an item's circle draws in place of its key, as `shownIcon` decides it against the icons Obsidian knows. */
+function circleIcon(icon: string | null): string | null {
+	return shownIcon(icon, (id) => getIcon(id) !== null);
 }
 
 function itemAccessibleName(item: DialItemView): string {

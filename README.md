@@ -214,8 +214,12 @@ The rings are always in the same places: the first where four circles fit, each 
 enough out that a circle grown by the lens never reaches a circle on the next ring, so the hand
 learns where each level is. A level with more items than its ring holds at full size keeps every
 one of them on the ring's own radius and shrinks the circles the farther they are from your thumb,
-down to 10px, so the few near it stay easy to hit and the far end is still there, reached by
-bringing it into the lens; nothing is ever paged, hidden or piled up. The circle under your thumb
+down to the minimum circle size you set (18px by default, the smallest a circle still shows its key
+at), so the few near it stay easy to hit and the far end is still there, reached by bringing it
+into the lens; nothing is ever paged or piled up. When the level and the lens do not both fit at
+that minimum, the lens grows less; a level with more items than fit on the ring even at the minimum
+shrinks below it instead, down to 10px, rather than letting circles overlap, and a circle under
+18px is a dot that shows its key once the lens grows it. The circle under your thumb
 grows, up to one and a half times the circle size by default, its neighbours a little less: a
 **lens** that follows the thumb along every ring, so a crowded ring reads as you pass over it and
 the grown circle doubles as the highlight. No two circles ever overlap. On a ring that is not
@@ -273,11 +277,14 @@ exposed to screen readers as a button named after its label and key.
 
 Settings → Neokeys has a **Mobile dial** group with a **Show the dial on mobile** toggle (on by
 default), a **Dial corner** choice, bottom right or bottom left, a **Dial item size** slider (the
-circles' diameter, 40 to 56px, 44 by default), a **Dial ring radius** choice between fixed rings
+circles' diameter, 40 to 56px, 44 by default), a **Dial minimum circle size** slider (the smallest
+the circles of a crowded ring shrink to, from 10px up to the item size, 18 by default, so their
+keys stay in view; a level that does not fit at it still shrinks below it, never under 10px, so
+circles never overlap), a **Dial ring radius** choice between fixed rings
 (the default, described above) and fit, where each ring grows until its level fits at full size as
 far as the screen allows, a **Dial lens** slider for how much the circle under your thumb grows (1
-to 1.5 times the item size; at 1 only shrunk beads grow, back to full size), a **Dial ring
-animation** toggle with a **Dial ring animation style** choice, fade in or fly out from the group
+to 1.5 times the item size; at 1 only shrunk beads grow, back toward full size as far as the
+ring has room), a **Dial ring animation** toggle with a **Dial ring animation style** choice, fade in or fly out from the group
 the ring belongs to (the **Animations** toggle above governs this and the easing of the circles
 as they move, and neither animates when your OS asks for reduced motion), and a **Dial
 description** choice for where the item under your thumb is described beyond the pill's own line:

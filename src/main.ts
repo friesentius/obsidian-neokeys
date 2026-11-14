@@ -103,6 +103,7 @@ export default class NeokeysPlugin extends Plugin {
 			{
 				corner: this.settings.mobileDialCorner,
 				itemSize: this.settings.mobileDialItemSize,
+				minItemSize: this.settings.mobileDialMinItemSize,
 				radiusRule: this.settings.mobileDialRadiusRule,
 				lensPeak: this.settings.mobileDialLensPeak,
 				description: this.settings.mobileDialDescription,

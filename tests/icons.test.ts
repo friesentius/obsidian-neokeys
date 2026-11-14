@@ -1,4 +1,4 @@
-import { iconName, searchIcons } from "../src/icons";
+import { iconName, searchIcons, shownIcon } from "../src/icons";
 
 const IDS = ["lucide-file", "lucide-file-text", "lucide-text-file", "lucide-folder", "lucide-folder-open", "lucide-star", "lucide-search", "lucide-file-search", "plugin-icon", "star"];
 
@@ -30,5 +30,19 @@ describe("searchIcons", () => {
 
 	it("is case-insensitive and caps the results", () => {
 		expect(searchIcons(IDS, "FILE", 2)).toEqual(["file", "file-search"]);
+	});
+});
+
+describe("shownIcon", () => {
+	const known = (id: string): boolean => id === "star" || id === "file-text";
+
+	it("draws an item's icon in place of its key when the icon is known, and so the pill adds the key beside the name", () => {
+		expect(shownIcon("star", known)).toBe("star");
+		expect(shownIcon("file-text", known)).toBe("file-text");
+	});
+
+	it("leaves the key on the circle, and no key chip in the pill, for an unknown icon or none", () => {
+		expect(shownIcon("not-an-icon", known)).toBeNull();
+		expect(shownIcon(null, known)).toBeNull();
 	});
 });
