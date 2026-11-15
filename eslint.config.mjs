@@ -9,6 +9,14 @@ import obsidianmd from "eslint-plugin-obsidianmd";
 // @since tag, which hides every finding the scanner reports for this repo.
 // Revisit this pin once the scanner (or its documented plugin version) moves
 // past that behavior.
+//
+// typescript is held to ~6.0.3 (typescript-eslint supports <6.1.0): the
+// scanner type-checks with TypeScript 6, whose lib.dom types an `input` event
+// as InputEvent (5.9 types it as Event). On 5.9, local lint missed the
+// scanner's @typescript-eslint/no-unnecessary-type-assertion findings on
+// `evt as InputEvent` in entryEditorModal.ts. tsconfig.json therefore also
+// names its `types` (TS 6 no longer loads every @types package implicitly) and
+// drops the deprecated `baseUrl`.
 
 export default defineConfig([
 	// Build output and Node build/tooling scripts are not plugin source.
