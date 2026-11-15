@@ -118,8 +118,9 @@ circle falls back to the key. Keymaps written before `icon` existed load unchang
 A phone has no hotkeys, and on the dial the key only labels a circle, so on a phone an item needs
 **a key or an icon** (either one is enough). On a phone a key only labels the circle (when the item
 has no icon) and works with an attached keyboard; it is mainly kept so the same item has its leader
-key on your desktop and tablet after the keymap syncs (the **Key** field in the dialog says so). An item saved with an icon and no key is stored in the
-YAML under a placeholder id, `nokey1`, `nokey2`, and so on, since a keymap names its items by key:
+key on your desktop and tablet after the keymap syncs (the **Key** field in the dialog says so). An
+item saved with an icon and no key is stored in the YAML under a placeholder id, `nokey1`, `nokey2`,
+and so on, since a keymap names its items by key:
 
 ```yaml
 items:
@@ -330,24 +331,24 @@ exposed to screen readers as a button named after its label and key.
 
 Settings → Neokeys has a **Mobile dial** group, shown only on phones and tablets (desktop has no
 dial, so the group is hidden there; the values stay saved and still apply on a phone or tablet the
-settings sync to), with a **Show the dial on mobile** toggle (on by
-default), a **Dial corner** choice, bottom right or bottom left, a **Dial item size** slider (the
-circles' diameter, 40 to 56px, 44 by default), a **Dial ring radius** choice between fixed rings
-(the default, described above) and fit, where each ring grows until its level fits at full size as
-far as the screen allows, a **Dial lens** slider for how much the circle under your thumb grows (1
-to 1.5 times the item size; at 1 only shrunk beads grow, back to full size), a **Dial ring
-animation** toggle with a **Dial ring animation style** choice, fade in or fly out from the group
-the ring belongs to (the **Animations** toggle above governs this and the easing of the circles
-as they move, and neither animates when your OS asks for reduced motion), and a **Dial
-description** choice for where the item under your thumb is described beyond the pill's own line:
-nowhere else (the default), on a card between the pill and the rings, or in a bubble beside your
-thumb. The bubble always sits next to the thumb, never under it, and keeps off the hand as far as
-the screen allows, at either end of a ring included, in either corner, at any ring depth and with
-the keyboard up. It keeps off the anchor and the circles either side of the one under your thumb,
-which you slide to next, but it may cover the keys of the circles beyond them (the far circles of
-a crowded ring, or a group's children) rather than move away from your finger. Where it could not sit beside the
-thumb in full (a small phone with its keyboard up, or a ring crowded close around the thumb) it
-shrinks to the key and label, since the pill shows the description too.
+settings sync to), with a **Show the dial on mobile** toggle (on by default), a **Dial corner**
+choice, bottom right or bottom left, a **Dial item size** slider (the circles' diameter, 40 to 56px,
+44 by default), a **Dial ring radius** choice between fixed rings (the default, described above) and
+fit, where each ring grows until its level fits at full size as far as the screen allows, a **Dial
+lens** slider for how much the circle under your thumb grows (1 to 1.5 times the item size; at 1
+only shrunk beads grow, back to full size), a **Dial ring animation** toggle with a **Dial ring
+animation style** choice, fade in or fly out from the group the ring belongs to (the **Animations**
+toggle above governs this and the easing of the circles as they move, and neither animates when your
+OS asks for reduced motion), and a **Dial description** choice for where the item under your thumb
+is described beyond the pill's own line: nowhere else (the default), on a card between the pill and
+the rings, or in a bubble beside your thumb. The bubble always sits next to the thumb, never under
+it, and keeps off the hand as far as the screen allows, at either end of a ring included, in either
+corner, at any ring depth and with the keyboard up. It keeps off the anchor and the circles either
+side of the one under your thumb, which you slide to next, but it may cover the keys of the circles
+beyond them (the far circles of a crowded ring, or a group's children) rather than move away from
+your finger. Where it could not sit beside the thumb in full (a small phone with its keyboard up, or
+a ring crowded close around the thumb) it shrinks to the key and label, since the pill shows the
+description too.
 
 ![Mobile dial with the description card, dark theme](docs/screenshots/mobile/dial-card-dark.png)
 
@@ -412,8 +413,8 @@ leader or hotkey on a hardware keyboard) opens that same dial, which the keyboar
   edit operations, tree resolution/sorting, delay logic, combo-leader validation, command-ID
   validation, breadcrumb building, hotkey-conflict detection, animation settings, heading-level
   increase/decrease, entry icons, items with no key and the per-device key/icon rules of the
-  add/edit dialog, the typed-key reader, the mobile dial's ring layout, description-bubble placement and
-  sibling-ring swap diff, and its drag/arm/release state machine)
+  add/edit dialog, the typed-key reader, the mobile dial's ring layout, description-bubble
+  placement and sibling-ring swap diff, and its drag/arm/release state machine)
 - `npm run lint` - ESLint with `eslint-plugin-obsidianmd`'s recommended config, plus
   `@eslint/css`'s `no-important` on `styles.css`, mirroring the community directory's source and
   CSS scans (see `eslint.config.mjs` for why the plugin version is pinned)
