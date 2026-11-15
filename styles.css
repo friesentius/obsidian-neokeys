@@ -126,6 +126,12 @@
 	overflow-y: auto;
 }
 
+.neokeys-keyless-note {
+	grid-column: 1 / -1;
+	color: var(--text-muted);
+	font-size: var(--font-ui-small);
+}
+
 .neokeys-row {
 	display: flex;
 	align-items: center;
@@ -139,6 +145,30 @@
 	border-radius: var(--radius-s);
 	padding: 0 var(--size-2-2);
 	flex-shrink: 0;
+}
+
+.neokeys-icon {
+	--icon-size: var(--icon-s);
+	display: inline-flex;
+	align-items: center;
+	flex-shrink: 0;
+	color: var(--text-muted);
+}
+
+.neokeys-icon-empty {
+	width: var(--icon-s);
+}
+
+.neokeys-row-group .neokeys-icon {
+	color: var(--text-accent);
+}
+
+.neokeys-row-file .neokeys-icon {
+	color: var(--text-success);
+}
+
+.neokeys-row-invalid .neokeys-icon {
+	color: var(--text-error);
 }
 
 .neokeys-label {
@@ -341,6 +371,8 @@
 
 .neokeys-tree-row {
 	display: flex;
+	/* On a phone a nested row with a badge has no room for its controls beside the label: they wrap below it rather than squeezing the label to a column of single letters. */
+	flex-wrap: wrap;
 	align-items: center;
 	gap: var(--size-2-2);
 	padding: var(--size-2-1) var(--size-2-2);
@@ -359,6 +391,12 @@
 	flex-shrink: 0;
 }
 
+.neokeys-tree-key-none {
+	font-family: var(--font-interface);
+	font-style: italic;
+	color: var(--text-muted);
+}
+
 .neokeys-tree-icon {
 	--icon-size: var(--icon-s);
 	display: inline-flex;
@@ -369,7 +407,8 @@
 
 .neokeys-tree-label {
 	flex: 0 1 auto;
-	min-width: 0;
+	min-width: 6em;
+	text-align: start;
 	overflow-wrap: break-word;
 }
 
@@ -405,6 +444,23 @@
 	white-space: nowrap;
 }
 
+/* A real field, so a tap opens the on-screen keyboard.
+   Specific enough to beat Obsidian's mobile `.is-mobile input[type="text"]` rules. */
+.neokeys-entry-editor input[type="text"].neokeys-entry-key-input {
+	text-align: center;
+	font-family: var(--font-monospace);
+}
+
+/* The placeholder is a word, not a key: the narrower interface font keeps "Key (optional)" whole on small phones. */
+.neokeys-entry-editor input[type="text"].neokeys-entry-key-input::placeholder {
+	font-family: var(--font-interface);
+}
+
+/* Wide enough for "space" or "c-enter". Phones keep Obsidian's wider field, which fits "Key (optional)". */
+body:not(.is-phone) .neokeys-entry-editor input[type="text"].neokeys-entry-key-input {
+	width: 7em;
+}
+
 .neokeys-entry-description-input {
 	width: 100%;
 	resize: vertical;
@@ -435,7 +491,8 @@
 	color: var(--text-error);
 	font-size: var(--font-ui-small);
 	white-space: pre-wrap;
-	min-height: 0;
+	/* The modal's content is a flex column that may scroll: without this the message shrinks to no height and the buttons below sit on top of its text. */
+	flex-shrink: 0;
 }
 
 /* --- Mobile dial ---------------------------------------------------------- */

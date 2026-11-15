@@ -107,11 +107,59 @@ show a heading for the section you're in. Every entry under `items` is one of:
 
 Any of the three can also carry an optional `icon`: the id of one of Obsidian's icons
 (e.g. `icon: folder` or `icon: lucide-file-plus`). The mobile dial draws it on the item's circle in
-place of the key, and the tree editor shows it beside the entry; the key still shows in the pill
-and in the which-key popup, and an item with no `icon` is unchanged. The **Edit** dialog has an
-**Icon** field with a searchable picker of every icon Obsidian ships, and a clear button. An icon
-id Obsidian does not know is kept as written (a plugin's icon may simply not be loaded) and the
-circle falls back to the key. Keymaps written before `icon` existed load unchanged.
+place of the key, and the tree editor shows it beside the entry. The which-key popup on desktop
+draws it right after the entry's key; the key still shows in the dial's pill, and an item with no
+`icon` is unchanged. The **Edit** dialog has an **Icon** field with a searchable picker of every
+icon Obsidian ships, and a clear button. An icon id Obsidian does not know is kept as written (a
+plugin's icon may simply not be loaded) and the circle falls back to the key. Keymaps written before `icon` existed load unchanged.
+
+![Which-key popup with icons beside the keys, dark theme](docs/screenshots/key-entry/desktop-popup-icons-dark.png)
+
+![Which-key popup with icons beside the keys, light theme](docs/screenshots/key-entry/desktop-popup-icons-light.png)
+
+#### Items with no key
+
+A phone has no hotkeys, and on the dial the key only labels a circle, so on a phone an item needs
+**a key or an icon** (either one is enough). A key set on a phone is kept so the same item has its
+leader key on your desktop and tablet after the keymap syncs (the **Key** field's help text on a
+phone says so, see [Adding and editing items on a phone or tablet](#adding-and-editing-items-on-a-phone-or-tablet)).
+An item saved with an icon and no key is stored in the YAML under a placeholder id, `nokey1`,
+`nokey2`, and so on, since a keymap names its items by key:
+
+```yaml
+items:
+  nokey1:
+    command: editor:toggle-italics
+    icon: star
+```
+
+You can write one by hand the same way. The id is only bookkeeping: it is never shown as the item's
+key, and the tree editor shows **No key** in its place. A keymap with such items syncs to a tablet or
+desktop without breaking anything. On a phone or tablet the item stays on the dial, drawn as its
+icon (or, if the icon is not one Obsidian knows, the first letter of its name). No keyboard can
+reach it: the leader sequence and the dial's hardware-keyboard path skip it, and the keyboard popup
+on desktop does not list it. A group whose items all lack a key opens in that popup with a short
+note saying they have no key yet and can be given one in Settings → Neokeys. The tree editor marks
+such an item **Needs a key** on a tablet or desktop, and the **Edit** dialog there will not save it
+until it has one; on a phone it is fine as it is. Neokeys versions from before this one read the
+placeholder id as a key no keyboard has, so a keymap with such items still loads on a device that
+has not updated yet.
+
+![Tree editor on a phone, an icon-only item shown with No key, light theme](docs/screenshots/key-entry/phone-tree-no-key-row-light.png)
+
+![Mobile dial drawing an icon-only item as its icon, dark theme](docs/screenshots/key-entry/phone-dial-icon-only-dark.png)
+
+![Tree editor on a tablet marking a keyless item Needs a key, light theme](docs/screenshots/key-entry/tablet-tree-needs-key-light.png)
+
+![Desktop popup for a group whose items all lack a key, with a note saying so, dark theme](docs/screenshots/key-entry/desktop-popup-keyless-group-note-dark.png)
+
+![Desktop popup for a group whose items all lack a key, with a note saying so, light theme](docs/screenshots/key-entry/desktop-popup-keyless-group-note-light.png)
+
+![Edit dialog on a tablet for a keyless item, asking for a key first, dark theme](docs/screenshots/key-entry/tablet-edit-keyless-dark.png)
+
+![Tree editor on desktop marking a keyless item Needs a key, dark theme](docs/screenshots/key-entry/desktop-tree-needs-key-dark.png)
+
+![Which-key popup on desktop leaving out a keyless item, light theme](docs/screenshots/key-entry/desktop-popup-skips-keyless-light.png)
 
 ```yaml
 title: Neokeys
@@ -285,30 +333,74 @@ the popup: a key bound in the deepest open group picks that item, <kbd>Backspace
 <kbd>Esc</kbd> closes, and nothing you type while it is open reaches the note. Each item is also
 exposed to screen readers as a button named after its label and key.
 
-Settings → Neokeys has a **Mobile dial** group with a **Show the dial on mobile** toggle (on by
-default), a **Dial corner** choice, bottom right or bottom left, a **Dial item size** slider (the
-circles' diameter, 40 to 56px, 44 by default), a **Dial ring radius** choice between fixed rings
-(the default, described above) and fit, where each ring grows until its level fits at full size as
-far as the screen allows, a **Dial lens** slider for how much the circle under your thumb grows (1
-to 1.5 times the item size; at 1 only shrunk beads grow, back to full size), a **Dial ring
-animation** toggle with a **Dial ring animation style** choice, fade in or fly out from the group
-the ring belongs to (the **Animations** toggle above governs this and the easing of the circles
-as they move, and neither animates when your OS asks for reduced motion), and a **Dial
-description** choice for where the item under your thumb is described beyond the pill's own line:
-nowhere else (the default), on a card between the pill and the rings, or in a bubble beside your
-thumb. The bubble always sits next to the thumb, never under it, and keeps off the hand as far as
-the screen allows, at either end of a ring included, in either corner, at any ring depth and with
-the keyboard up. It keeps off the anchor and the circles either side of the one under your thumb,
-which you slide to next, but it may cover the keys of the circles beyond them (the far circles of
-a crowded ring, or a group's children) rather than move away from your finger. Where it could not sit beside the
-thumb in full (a small phone with its keyboard up, or a ring crowded close around the thumb) it
-shrinks to the key and label, since the pill shows the description too.
+Settings → Neokeys has a **Mobile dial** group, shown only on phones and tablets (desktop has no
+dial, so the group is hidden there; the values stay saved and still apply on a phone or tablet the
+settings sync to), with a **Show the dial on mobile** toggle (on by default), a **Dial corner**
+choice, bottom right or bottom left, a **Dial item size** slider (the circles' diameter, 40 to 56px,
+44 by default), a **Dial ring radius** choice between fixed rings (the default, described above) and
+fit, where each ring grows until its level fits at full size as far as the screen allows, a **Dial
+lens** slider for how much the circle under your thumb grows (1 to 1.5 times the item size; at 1
+only shrunk beads grow, back to full size), a **Dial ring animation** toggle with a **Dial ring
+animation style** choice, fade in or fly out from the group the ring belongs to (the **Animations**
+toggle above governs this and the easing of the circles as they move, and neither animates when your
+OS asks for reduced motion), and a **Dial description** choice for where the item under your thumb
+is described beyond the pill's own line: nowhere else (the default), on a card between the pill and
+the rings, or in a bubble beside your thumb. The bubble always sits next to the thumb, never under
+it, and keeps off the hand as far as the screen allows, at either end of a ring included, in either
+corner, at any ring depth and with the keyboard up. It keeps off the anchor and the circles either
+side of the one under your thumb, which you slide to next, but it may cover the keys of the circles
+beyond them (the far circles of a crowded ring, or a group's children) rather than move away from
+your finger. Where it could not sit beside the thumb in full (a small phone with its keyboard up, or
+a ring crowded close around the thumb) it shrinks to the key and label, since the pill shows the
+description too.
 
 ![Mobile dial with the description card, dark theme](docs/screenshots/mobile/dial-card-dark.png)
 
+#### Adding and editing items on a phone or tablet
+
+The **Add item** / **Edit** dialog adapts to the device (Obsidian's phone and tablet detection, not
+the screen width). **Record key** waits for a physical key press, which a touch screen cannot give
+it, so on a phone or tablet the **Key** row is a small text box: tap it, the on-screen keyboard
+opens, and type one character, a letter in either case (`F` is Shift+F), a digit or a symbol. The
+key is read from what you typed, not from key events, which soft keyboards do not send reliably.
+**Record key** stays next to the box on a phone and a tablet alike, for a hardware keyboard, which
+can record a key with Ctrl, Alt or Cmd (whether one is attached cannot be told reliably). A key
+already used by a sibling in the same group is still refused, everywhere.
+
+The help text under each field follows the device. **Key**: on a phone, "Optional if you pick an
+icon. Used by your desktop leader keys after sync."; on a tablet and a desktop, "A single key, with
+optional Ctrl/Shift/Alt/Cmd." **Icon**: on a phone, "Shows on the dial instead of the key. Pick a
+key, an icon, or both."; on a tablet and a desktop, "Optional. Shows in the whichkey menu and on the
+radial menu on mobile."
+
+![Add item on a phone, a key typed into the Key box, dark theme](docs/screenshots/key-entry/phone-key-typed-keyboard-up-dark.png)
+
+![Add item on a phone with an icon and no key, light theme](docs/screenshots/key-entry/phone-icon-only-light.png)
+
+![Add item on a phone refusing a key a sibling already uses, dark theme](docs/screenshots/key-entry/phone-duplicate-key-dark.png)
+
+![Add item on a tablet with a key recorded from a hardware keyboard, light theme](docs/screenshots/key-entry/tablet-editor-recorded-light.png)
+
+What an item needs before it saves depends on the device:
+
+| Device | Key | Icon |
+| --- | --- | --- |
+| Phone | a key **or** an icon | either one is enough |
+| Tablet | required | optional |
+| Desktop | required | optional |
+
+![Add item on a phone with neither a key nor an icon, light theme](docs/screenshots/key-entry/phone-error-neither-light.png)
+
+![Add item on a tablet with no key, refused, dark theme](docs/screenshots/key-entry/tablet-error-key-required-dark.png)
+
+![Add item on desktop with no key, refused, light theme](docs/screenshots/key-entry/desktop-editor-key-required-light.png)
+
 On mobile the **Leader** group of Settings → Neokeys (the leader hotkey, the combo leader and the
 hotkey-conflict check) is hidden, since the dial is the way in; the settings reappear on desktop
-unchanged. A hardware-keyboard combo leader you set up earlier keeps working.
+unchanged. A hardware-keyboard combo leader you set up earlier keeps working. The other way round,
+the **Mobile dial** group is hidden on desktop.
+
+![Settings → Neokeys on desktop, with no Mobile dial group, dark theme](docs/screenshots/key-entry/desktop-settings-no-dial-dark.png)
 
 A theme or CSS snippet can restyle the items through `--neokeys-dial-item-radius`,
 `--neokeys-dial-item-background`, `--neokeys-dial-item-border`, `--neokeys-dial-item-color` and
@@ -330,8 +422,9 @@ leader or hotkey on a hardware keyboard) opens that same dial, which the keyboar
 - `npm test` - Jest unit tests (key parsing, keymap parsing/validation and serialization, tree
   edit operations, tree resolution/sorting, delay logic, combo-leader validation, command-ID
   validation, breadcrumb building, hotkey-conflict detection, animation settings, heading-level
-  increase/decrease, entry icons, the mobile dial's ring layout, description-bubble placement and
-  sibling-ring swap diff, and its drag/arm/release state machine)
+  increase/decrease, entry icons, items with no key and the per-device key/icon rules of the
+  add/edit dialog, the typed-key reader, the mobile dial's ring layout, description-bubble
+  placement and sibling-ring swap diff, and its drag/arm/release state machine)
 - `npm run lint` - ESLint with `eslint-plugin-obsidianmd`'s recommended config, plus
   `@eslint/css`'s `no-important` on `styles.css`, mirroring the community directory's source and
   CSS scans (see `eslint.config.mjs` for why the plugin version is pinned)

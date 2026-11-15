@@ -1,7 +1,8 @@
+import { entryKeyText } from "./tree";
 import type { GroupNode } from "./types";
 
 export interface InvalidCommandEntry {
-	/** Raw key path from the root to this entry, e.g. ["f", "d"]. */
+	/** Key path from the root to this entry as the user reads it, e.g. ["f", "d"], with "No key" for a keyless hop. */
 	path: string[];
 	command: string;
 }
@@ -15,7 +16,7 @@ export function findInvalidCommands(root: GroupNode, isKnown: (id: string) => bo
 
 	function walk(group: GroupNode, path: string[]): void {
 		for (const entry of group.entries) {
-			const entryPath = [...path, entry.rawKey];
+			const entryPath = [...path, entryKeyText(entry)];
 			if (entry.node.kind === "group") {
 				walk(entry.node, entryPath);
 			} else if (entry.node.kind === "command" && !isKnown(entry.node.command)) {

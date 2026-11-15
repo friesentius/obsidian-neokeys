@@ -233,15 +233,17 @@ export class NeokeysSettingTab extends PluginSettingTab {
 		this.renderAnimationsEnabled(new Setting(containerEl));
 		this.renderAnimationDuration(new Setting(containerEl));
 
-		new Setting(containerEl).setName("Mobile dial").setHeading();
-		this.renderMobileDialEnabled(new Setting(containerEl));
-		this.renderMobileDialCorner(new Setting(containerEl));
-		this.renderMobileDialItemSize(new Setting(containerEl));
-		this.renderMobileDialDescription(new Setting(containerEl));
-		this.renderMobileDialRadiusRule(new Setting(containerEl));
-		this.renderMobileDialLensPeak(new Setting(containerEl));
-		this.renderMobileDialRingAnimation(new Setting(containerEl));
-		this.renderMobileDialRingAnimationStyle(new Setting(containerEl));
+		if (shown.includes("dial")) {
+			new Setting(containerEl).setName("Mobile dial").setHeading();
+			this.renderMobileDialEnabled(new Setting(containerEl));
+			this.renderMobileDialCorner(new Setting(containerEl));
+			this.renderMobileDialItemSize(new Setting(containerEl));
+			this.renderMobileDialDescription(new Setting(containerEl));
+			this.renderMobileDialRadiusRule(new Setting(containerEl));
+			this.renderMobileDialLensPeak(new Setting(containerEl));
+			this.renderMobileDialRingAnimation(new Setting(containerEl));
+			this.renderMobileDialRingAnimationStyle(new Setting(containerEl));
+		}
 
 		new Setting(containerEl).setName("Keymap").setHeading();
 		this.renderKeymapEditor(new Setting(containerEl));

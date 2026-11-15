@@ -47,4 +47,19 @@ items:
 		const fileRoot = parseKeymapSource(source);
 		expect(findInvalidCommands(fileRoot, () => false)).toEqual([]);
 	});
+
+	it("names a keyless hop \"No key\" rather than its stored token", () => {
+		const source = `
+items:
+  nokey1:
+    icon: star
+    items:
+      nokey1:
+        icon: zap
+        command: missing:command
+`;
+		expect(findInvalidCommands(parseKeymapSource(source), () => false)).toEqual([
+			{ path: ["No key", "No key"], command: "missing:command" },
+		]);
+	});
 });
