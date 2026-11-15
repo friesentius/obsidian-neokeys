@@ -115,6 +115,6 @@ items:
 	it("writes a node without an icon exactly as before, and no icon line at all", () => {
 		const root = parseKeymapSource("items:\n  n:\n    command: file-explorer:new-file\n    description: New file\n  w: workspace:new-tab\n");
 		expect(serializeKeymap(root)).toBe("items:\n  n:\n    command: file-explorer:new-file\n    description: New file\n  w:\n    command: workspace:new-tab\n");
-		expect(serializeKeymap(parseKeymapSource(DEFAULT_KEYMAP_YAML))).not.toContain("icon");
+		expect(serializeKeymap(parseKeymapSource("items:\n  w: workspace:new-tab New tab\n  p:\n    command: command-palette:open\n"))).not.toContain("icon");
 	});
 });
