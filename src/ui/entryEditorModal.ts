@@ -1,6 +1,6 @@
 import { App, ButtonComponent, ExtraButtonComponent, getIcon, Modal, Platform, Scope, setIcon, Setting } from "obsidian";
 import type { EntryDraft, EntryKind } from "../entryDraft";
-import { deviceFromPlatform, hasKeyField, hasRecordButton, keyIsOptional, validateKeyAndIcon, type EntryDevice } from "../entryValidation";
+import { deviceFromPlatform, hasKeyField, keyIsOptional, validateKeyAndIcon, type EntryDevice } from "../entryValidation";
 import { keyFromEvent, keyToString } from "../keys";
 import { isKeylessId } from "../keyless";
 import { keyFromTyped } from "../typedKey";
@@ -151,15 +151,17 @@ export class EntryEditorModal extends Modal {
 	/**
 	 * The key row. Every device but a desktop gets a text field: tapping it opens the on-screen
 	 * keyboard and the typed character is the key, which "Record key" cannot do since a phone gives
-	 * nothing the recorder's scope could focus. Desktop and tablet keep "Record key" for a physical
-	 * keyboard (a tablet may have one); a phone, which in practice has none, shows the field alone.
+	 * nothing the recorder's scope could focus. Every device keeps "Record key" for a hardware
+	 * keyboard, since whether a phone or tablet has one cannot be told reliably.
 	 */
 	private renderKeySetting(contentEl: HTMLElement): void {
 		this.keyDisplayEl = null;
 		this.keyInputEl = null;
 		const keySetting = new Setting(contentEl).setName("Key");
 		if (this.device === "phone") {
-			keySetting.setDesc("One character, typed on your keyboard. Not needed when the item has an icon.");
+			keySetting.setDesc(
+				"One character, typed on your keyboard, or a key with Ctrl/Shift/Alt/Cmd recorded from a hardware keyboard. Not needed when the item has an icon.",
+			);
 		} else if (this.device === "tablet") {
 			keySetting.setDesc("One character, typed on your keyboard, or a key with Ctrl/Shift/Alt/Cmd recorded from a hardware keyboard.");
 		} else {
@@ -195,9 +197,7 @@ export class EntryEditorModal extends Modal {
 			});
 		}
 
-		if (hasRecordButton(this.device)) {
-			keySetting.addButton((button) => button.setButtonText("Record key").onClick(() => this.startRecording(button)));
-		}
+		keySetting.addButton((button) => button.setButtonText("Record key").onClick(() => this.startRecording(button)));
 	}
 
 	/** Takes the key from the field after a change to it, then shows the key in the field's own form ("space" for a typed space). */

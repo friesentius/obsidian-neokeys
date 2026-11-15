@@ -131,11 +131,24 @@ key, and the tree editor shows **No key** in its place. A keymap with such items
 desktop without breaking anything. On a phone or tablet the item stays on the dial, drawn as its
 icon (or, if the icon is not one Obsidian knows, the first letter of its name). No keyboard can
 reach it: the leader sequence and the dial's hardware-keyboard path skip it, and the keyboard popup
-on desktop does not list it. A group whose items all lack a key opens in that popup with a short note
-saying they have no key yet and can be given one in Settings → Neokeys. The tree editor marks it **Needs a key** on a tablet or desktop, and
-the **Edit** dialog there will not save it until it has one; on a phone it is fine as it is.
-Neokeys versions from before this one read the placeholder id as a key no keyboard has, so a
-keymap with such items still loads on a device that has not updated yet.
+on desktop does not list it. A group whose items all lack a key opens in that popup with a short
+note saying they have no key yet and can be given one in Settings → Neokeys. The tree editor marks
+such an item **Needs a key** on a tablet or desktop, and the **Edit** dialog there will not save it
+until it has one; on a phone it is fine as it is. Neokeys versions from before this one read the
+placeholder id as a key no keyboard has, so a keymap with such items still loads on a device that
+has not updated yet.
+
+![Tree editor on a phone, an icon-only item shown with No key, light theme](docs/screenshots/key-entry/phone-tree-no-key-row-light.png)
+
+![Mobile dial drawing an icon-only item as its icon, dark theme](docs/screenshots/key-entry/phone-dial-icon-only-dark.png)
+
+![Tree editor on a tablet marking a keyless item Needs a key, light theme](docs/screenshots/key-entry/tablet-tree-needs-key-light.png)
+
+![Edit dialog on a tablet for a keyless item, asking for a key first, dark theme](docs/screenshots/key-entry/tablet-edit-keyless-dark.png)
+
+![Tree editor on desktop marking a keyless item Needs a key, dark theme](docs/screenshots/key-entry/desktop-tree-needs-key-dark.png)
+
+![Which-key popup on desktop leaving out a keyless item, light theme](docs/screenshots/key-entry/desktop-popup-skips-keyless-light.png)
 
 ```yaml
 title: Neokeys
@@ -338,12 +351,18 @@ The **Add item** / **Edit** dialog adapts to the device (Obsidian's phone and ta
 the screen width). **Record key** waits for a physical key press, which a touch screen cannot give
 it, so on a phone or tablet the **Key** row is a small text box: tap it, the on-screen keyboard
 opens, and type one character, a letter in either case (`F` is Shift+F), a digit or a symbol. The
-key is read from what you typed, not from key events, which soft keyboards do not send reliably. A
-tablet keeps **Record key** next to the box for a hardware keyboard, which can record a key with
-Ctrl, Alt or Cmd; a phone shows the box alone. A key already used by a sibling in the same group is
-still refused, everywhere.
+key is read from what you typed, not from key events, which soft keyboards do not send reliably.
+**Record key** stays next to the box on a phone and a tablet alike, for a hardware keyboard, which
+can record a key with Ctrl, Alt or Cmd (whether one is attached cannot be told reliably). A key
+already used by a sibling in the same group is still refused, everywhere.
 
 ![Add item on a phone, a key typed into the Key box, dark theme](docs/screenshots/key-entry/phone-key-typed-keyboard-up-dark.png)
+
+![Add item on a phone with an icon and no key, light theme](docs/screenshots/key-entry/phone-icon-only-light.png)
+
+![Add item on a phone refusing a key a sibling already uses, dark theme](docs/screenshots/key-entry/phone-duplicate-key-dark.png)
+
+![Add item on a tablet with a key recorded from a hardware keyboard, light theme](docs/screenshots/key-entry/tablet-editor-recorded-light.png)
 
 What an item needs before it saves depends on the device:
 
@@ -355,9 +374,16 @@ What an item needs before it saves depends on the device:
 
 ![Add item on a phone with neither a key nor an icon, light theme](docs/screenshots/key-entry/phone-error-neither-light.png)
 
+![Add item on a tablet with no key, refused, dark theme](docs/screenshots/key-entry/tablet-error-key-required-dark.png)
+
+![Add item on desktop with no key, refused, light theme](docs/screenshots/key-entry/desktop-editor-key-required-light.png)
+
 On mobile the **Leader** group of Settings → Neokeys (the leader hotkey, the combo leader and the
 hotkey-conflict check) is hidden, since the dial is the way in; the settings reappear on desktop
-unchanged. A hardware-keyboard combo leader you set up earlier keeps working.
+unchanged. A hardware-keyboard combo leader you set up earlier keeps working. The other way round,
+the **Mobile dial** group is hidden on desktop.
+
+![Settings → Neokeys on desktop, with no Mobile dial group, dark theme](docs/screenshots/key-entry/desktop-settings-no-dial-dark.png)
 
 A theme or CSS snippet can restyle the items through `--neokeys-dial-item-radius`,
 `--neokeys-dial-item-background`, `--neokeys-dial-item-border`, `--neokeys-dial-item-color` and

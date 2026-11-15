@@ -2,7 +2,6 @@ import {
 	deviceFromPlatform,
 	entryNeeds,
 	hasKeyField,
-	hasRecordButton,
 	keyIsOptional,
 	validateKeyAndIcon,
 } from "../src/entryValidation";
@@ -18,10 +17,6 @@ describe("deviceFromPlatform", () => {
 describe("what the key row offers", () => {
 	it("gives phones and tablets a text field, and desktop none", () => {
 		expect([hasKeyField("phone"), hasKeyField("tablet"), hasKeyField("desktop")]).toEqual([true, true, false]);
-	});
-
-	it("keeps Record key on tablet and desktop, where a hardware keyboard may be, and drops it on a phone", () => {
-		expect([hasRecordButton("phone"), hasRecordButton("tablet"), hasRecordButton("desktop")]).toEqual([false, true, true]);
 	});
 });
 

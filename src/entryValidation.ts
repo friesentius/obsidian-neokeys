@@ -22,11 +22,6 @@ export function hasKeyField(device: EntryDevice): boolean {
 	return device !== "desktop";
 }
 
-/** Whether the form shows "Record key", which waits for a physical key press. */
-export function hasRecordButton(device: EntryDevice): boolean {
-	return device !== "phone";
-}
-
 /** Whether an item may be saved without a key (it must then have an icon). */
 export function keyIsOptional(device: EntryDevice): boolean {
 	return device === "phone";
