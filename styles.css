@@ -777,7 +777,7 @@ body.theme-light .neokeys-dial {
 	flex-shrink: 0;
 }
 
-/* A circle too small for its key or icon to be read (a far circle on a crowded ring) is a dot: it shows neither until the lens grows it. */
+/* A circle too small for its key or icon to be read (a crowded ring at rest, or a far circle fading out under the finger) is a dot: it shows neither until the lens grows it. */
 .neokeys-dial-item-tiny .neokeys-dial-item-key,
 .neokeys-dial-item-tiny .neokeys-dial-item-icon {
 	visibility: hidden;

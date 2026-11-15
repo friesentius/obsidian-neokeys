@@ -625,7 +625,7 @@ export class MobileDial {
 		else el.removeAttribute("aria-hidden");
 		el.toggleClass("neokeys-dial-item-armed", item.armed);
 		el.toggleClass("neokeys-dial-item-open", item.open);
-		// A circle shrunk below what a key or icon can be read at is only a dot until the lens grows it.
+		// A circle shrunk below what a key or icon can be read at (a crowded ring at rest, or a circle fading out) is only a dot until the lens grows it.
 		el.toggleClass("neokeys-dial-item-tiny", item.size < DIAL_LEGIBLE_SIZE);
 		el.setAttribute("aria-pressed", item.armed ? "true" : "false");
 	}
