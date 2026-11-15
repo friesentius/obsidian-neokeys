@@ -116,8 +116,8 @@ function expectApart(geometry: DialGeometry, params: DialRingParams, counts: num
 	const { slots, points } = placed(geometry, params, counts, focus);
 	for (let i = 0; i < points.length; i++) {
 		for (let j = i + 1; j < points.length; j++) {
-			// Circles fading out past an end of the sweep may sit on one another: only the ones more than half there are held apart.
-			if (slots[i].presence < HIT_PRESENCE || slots[j].presence < HIT_PRESENCE) continue;
+			// A gone circle is not drawn (it is parked at the end of the sweep), so it overlaps nothing; every drawn one, faint or not, is held apart.
+			if (slots[i].presence === 0 || slots[j].presence === 0) continue;
 			const distance = Math.hypot(points[i].x - points[j].x, points[i].y - points[j].y);
 			expect(distance).toBeGreaterThanOrEqual((slots[i].size + slots[j].size) / 2 + (slots[i].ring === slots[j].ring ? gap : ringGap) - 1e-6);
 		}
