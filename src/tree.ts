@@ -17,6 +17,11 @@ export function entryKeyGlyph(entry: GroupEntry): string {
 	return entry.key === null ? "" : keyGlyph(entry.key);
 }
 
+/** An entry's key as the tree editor and the settings write it ("f", "C-j"), or "No key" for an entry with no key. */
+export function entryKeyText(entry: GroupEntry): string {
+	return entry.key === null ? "No key" : entry.rawKey;
+}
+
 function kindOrder(entry: GroupEntry): number {
 	switch (entry.node.kind) {
 		case "group":
