@@ -176,7 +176,7 @@ export class EntryEditorModal extends Modal {
 				input.addEventListener("focus", () => input.select());
 				// The key is read from what the field's text did, not from keydown, which a soft keyboard does not send dependably.
 				input.addEventListener("input", (evt) => {
-					if (!(evt as InputEvent).isComposing) this.readTypedKey(evt as InputEvent);
+					if (!evt.isComposing) this.readTypedKey(evt);
 				});
 				input.addEventListener("compositionend", () => this.readTypedKey(null));
 				// A predictive keyboard may still be composing when the user moves on: take what the field shows then.

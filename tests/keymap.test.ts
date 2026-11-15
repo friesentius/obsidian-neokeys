@@ -172,7 +172,7 @@ items:
 			expect("icon" in node).toBe(false);
 			if (node.kind === "group") node.entries.forEach((entry) => walk(entry.node));
 		};
-		walk(parseKeymapSource(DEFAULT_KEYMAP_YAML));
+		walk(parseKeymapSource("title: Old\nitems:\n  f:\n    title: File\n    items:\n      n: file-explorer:new-file New file\n      s:\n        command: editor:save-file\n"));
 	});
 
 	it("trims the name and treats an empty one as no icon", () => {
