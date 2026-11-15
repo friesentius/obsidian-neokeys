@@ -2,6 +2,7 @@ import {
 	deviceFromPlatform,
 	entryNeeds,
 	hasKeyField,
+	keyDescription,
 	keyIsOptional,
 	validateKeyAndIcon,
 } from "../src/entryValidation";
@@ -59,5 +60,19 @@ describe("entryNeeds: the tree editor's note on an existing entry", () => {
 		expect(entryNeeds("phone", false, "star")).toBeNull();
 		expect(entryNeeds("phone", false, undefined)).toBe("Needs a key or an icon");
 		expect(entryNeeds("phone", false, " ")).toBe("Needs a key or an icon");
+	});
+});
+
+describe("keyDescription", () => {
+	it("tells a phone that a key does nothing there and is kept for desktop and tablet", () => {
+		const text = keyDescription("phone");
+		expect(text).toMatch(/^Optional on phones/);
+		expect(text).toMatch(/only labels the circle when the item has no icon/);
+		expect(text).toMatch(/desktop and tablet leader keys after sync/);
+	});
+
+	it("does not call the key optional on a tablet or desktop", () => {
+		expect(keyDescription("tablet")).not.toMatch(/optional on phones/i);
+		expect(keyDescription("desktop")).not.toMatch(/optional on phones/i);
 	});
 });

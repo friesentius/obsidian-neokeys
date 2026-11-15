@@ -27,6 +27,21 @@ export function keyIsOptional(device: EntryDevice): boolean {
 	return device === "phone";
 }
 
+/**
+ * The help text under the Key field. On a phone it says plainly that a key does nothing there (it
+ * only labels the dial's circle when the item has no icon) and is kept for the desktop and tablet
+ * leader keys once the keymap syncs.
+ */
+export function keyDescription(device: EntryDevice): string {
+	if (device === "phone") {
+		return "Optional on phones. Here a key only labels the circle when the item has no icon; it is kept for your desktop and tablet leader keys after sync. One character, typed or recorded from a hardware keyboard.";
+	}
+	if (device === "tablet") {
+		return "One character, typed on your keyboard, or a key with Ctrl/Shift/Alt/Cmd recorded from a hardware keyboard.";
+	}
+	return "A single key, with optional Ctrl/Shift/Alt/Cmd.";
+}
+
 /** The inline error for a key/icon pair, or null when the device accepts it. */
 export function validateKeyAndIcon(device: EntryDevice, rawKey: string, icon: string): string | null {
 	const hasKey = rawKey.trim().length > 0;

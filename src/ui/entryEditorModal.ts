@@ -1,6 +1,6 @@
 import { App, ButtonComponent, ExtraButtonComponent, getIcon, Modal, Platform, Scope, setIcon, Setting } from "obsidian";
 import type { EntryDraft, EntryKind } from "../entryDraft";
-import { deviceFromPlatform, hasKeyField, keyIsOptional, validateKeyAndIcon, type EntryDevice } from "../entryValidation";
+import { deviceFromPlatform, hasKeyField, keyDescription, keyIsOptional, validateKeyAndIcon, type EntryDevice } from "../entryValidation";
 import { keyFromEvent, keyToString } from "../keys";
 import { isKeylessId } from "../keyless";
 import { keyFromTyped } from "../typedKey";
@@ -158,15 +158,7 @@ export class EntryEditorModal extends Modal {
 		this.keyDisplayEl = null;
 		this.keyInputEl = null;
 		const keySetting = new Setting(contentEl).setName("Key");
-		if (this.device === "phone") {
-			keySetting.setDesc(
-				"One character, typed on your keyboard, or a key with Ctrl/Shift/Alt/Cmd recorded from a hardware keyboard. Not needed when the item has an icon.",
-			);
-		} else if (this.device === "tablet") {
-			keySetting.setDesc("One character, typed on your keyboard, or a key with Ctrl/Shift/Alt/Cmd recorded from a hardware keyboard.");
-		} else {
-			keySetting.setDesc("A single key, with optional Ctrl/Shift/Alt/Cmd.");
-		}
+		keySetting.setDesc(keyDescription(this.device));
 
 		if (hasKeyField(this.device)) {
 			keySetting.addText((text) => {
