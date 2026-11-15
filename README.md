@@ -428,7 +428,7 @@ leader or hotkey on a hardware keyboard) opens that same dial, which the keyboar
 - `npm test` - Jest unit tests (key parsing, keymap parsing/validation and serialization, tree
   edit operations, tree resolution/sorting, delay logic, combo-leader validation, command-ID
   validation, breadcrumb building, hotkey-conflict detection, animation settings, heading-level
-  increase/decrease, entry icons, items with no key and the per-device key/icon rules of the
+  increase/decrease, entry icons, the default keymap's icons, items with no key and the per-device key/icon rules of the
   add/edit dialog, the typed-key reader, the mobile dial's ring layout, description-bubble
   placement and sibling-ring swap diff, and its drag/arm/release state machine)
 - `npm run lint` - ESLint with `eslint-plugin-obsidianmd`'s recommended config, plus
