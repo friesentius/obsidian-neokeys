@@ -116,9 +116,9 @@ circle falls back to the key. Keymaps written before `icon` existed load unchang
 #### Items with no key
 
 A phone has no hotkeys, and on the dial the key only labels a circle, so on a phone an item needs
-**a key or an icon** (either one is enough). A key set on a phone does nothing there: it only labels
-the circle when the item has no icon, and is kept so the same item has its leader key on your desktop
-and tablet after the keymap syncs (the **Key** field in the dialog says so). An item saved with an icon and no key is stored in the
+**a key or an icon** (either one is enough). On a phone a key only labels the circle (when the item
+has no icon) and works with an attached keyboard; it is mainly kept so the same item has its leader
+key on your desktop and tablet after the keymap syncs (the **Key** field in the dialog says so). An item saved with an icon and no key is stored in the
 YAML under a placeholder id, `nokey1`, `nokey2`, and so on, since a keymap names its items by key:
 
 ```yaml

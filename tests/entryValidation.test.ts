@@ -64,11 +64,13 @@ describe("entryNeeds: the tree editor's note on an existing entry", () => {
 });
 
 describe("keyDescription", () => {
-	it("tells a phone that a key does nothing there and is kept for desktop and tablet", () => {
+	it("tells a phone that a key labels the circle, works with an attached keyboard and is mainly kept for desktop and tablet", () => {
 		const text = keyDescription("phone");
 		expect(text).toMatch(/^Optional on phones/);
-		expect(text).toMatch(/only labels the circle when the item has no icon/);
-		expect(text).toMatch(/desktop and tablet leader keys after sync/);
+		expect(text).toMatch(/only labels the circle \(when there is no icon\)/);
+		expect(text).toMatch(/works with an attached keyboard/);
+		expect(text).not.toMatch(/does nothing/);
+		expect(text).toMatch(/mainly kept for your desktop and tablet leader keys after sync/);
 	});
 
 	it("does not call the key optional on a tablet or desktop", () => {
