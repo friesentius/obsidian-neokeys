@@ -109,10 +109,9 @@ Any of the three can also carry an optional `icon`: the id of one of Obsidian's 
 (e.g. `icon: folder` or `icon: lucide-file-plus`). The mobile dial draws it on the item's circle in
 place of the key, and the tree editor shows it beside the entry. The which-key popup on desktop
 draws it right after the entry's key; the key still shows in the dial's pill, and an item with no
-`icon` is unchanged. The **Edit** dialog has an
-**Icon** field with a searchable picker of every icon Obsidian ships, and a clear button. An icon
-id Obsidian does not know is kept as written (a plugin's icon may simply not be loaded) and the
-circle falls back to the key. Keymaps written before `icon` existed load unchanged.
+`icon` is unchanged. The **Edit** dialog has an **Icon** field with a searchable picker of every
+icon Obsidian ships, and a clear button. An icon id Obsidian does not know is kept as written (a
+plugin's icon may simply not be loaded) and the circle falls back to the key. Keymaps written before `icon` existed load unchanged.
 
 ![Which-key popup with icons beside the keys, dark theme](docs/screenshots/key-entry/desktop-popup-icons-dark.png)
 
@@ -121,10 +120,11 @@ circle falls back to the key. Keymaps written before `icon` existed load unchang
 #### Items with no key
 
 A phone has no hotkeys, and on the dial the key only labels a circle, so on a phone an item needs
-**a key or an icon** (either one is enough). The **Key** field on a phone says "Optional if you pick
-an icon. Used by your desktop leader keys after sync": the key is kept so the same item has its
-leader key on your desktop and tablet after the keymap syncs. An item saved with an icon and no key is stored in the YAML under a placeholder id, `nokey1`, `nokey2`,
-and so on, since a keymap names its items by key:
+**a key or an icon** (either one is enough). A key set on a phone is kept so the same item has its
+leader key on your desktop and tablet after the keymap syncs (the **Key** field's help text on a
+phone says so, see [Adding and editing items on a phone or tablet](#adding-and-editing-items-on-a-phone-or-tablet)).
+An item saved with an icon and no key is stored in the YAML under a placeholder id, `nokey1`,
+`nokey2`, and so on, since a keymap names its items by key:
 
 ```yaml
 items:
