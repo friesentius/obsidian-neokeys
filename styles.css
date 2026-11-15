@@ -420,8 +420,9 @@
 	white-space: nowrap;
 }
 
-/* A real field, so a tap opens the on-screen keyboard; wide enough for "space" or "c-enter". */
-.neokeys-entry-key-input {
+/* A real field, so a tap opens the on-screen keyboard; wide enough for "space" or "c-enter".
+   Specific enough to beat Obsidian's mobile `.is-mobile input[type="text"]` full-width rule. */
+.neokeys-entry-editor input[type="text"].neokeys-entry-key-input {
 	width: 7em;
 	text-align: center;
 	font-family: var(--font-monospace);
