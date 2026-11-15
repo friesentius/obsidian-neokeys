@@ -197,7 +197,7 @@ tab/split/window management, loosely following the terminal multiplexer herdr's 
 mnemonics (`c` for new, not `n`, so `n`/`p` stay free for next/previous); splitting is bound
 directly on `v` (split right) and `-` (split down), not through a submenu.
 
-Every group and item in it carries an `icon` (see below), so the mobile dial and the which-key popup show it from the first run. The tab-by-number commands under Window keep their digit instead, since a ring of eight identical icons would not say which circle is which tab. Icons are part of the keymap you start with: a keymap you have already saved is never changed.
+Every group and item in it carries an `icon` (see above), so the mobile dial and the which-key popup show it from the first run. The tab-by-number commands under Window keep their digit instead, since a ring of eight identical icons would not say which circle is which tab. Icons are part of the keymap you start with: a keymap you have already saved is never changed.
 
 ![Which-key popup showing the default keymap's Formatting group with icons, dark theme](docs/screenshots/default-icons/desktop-text-formatting-dark.png)
 
