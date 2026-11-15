@@ -1,21 +1,11 @@
-import { App, ButtonComponent, Modal, Scope, Setting } from "obsidian";
+import { App, ButtonComponent, ExtraButtonComponent, getIcon, Modal, Scope, setIcon, Setting } from "obsidian";
+import type { EntryDraft, EntryKind } from "../entryDraft";
 import { keyFromEvent, keyToString } from "../keys";
 import { CommandPickerModal } from "./commandPickerModal";
+import { IconPickerModal } from "./iconPickerModal";
 import { getCommandName } from "../obsidianCommands";
 import { openModalInWindow } from "./modalWindow";
 import type { KeymapNode } from "../types";
-
-export type EntryKind = "group" | "command" | "file";
-
-export interface EntryDraft {
-	rawKey: string;
-	kind: EntryKind;
-	title: string;
-	description: string;
-	command: string;
-	commandName: string;
-	file: string;
-}
 
 const MODIFIER_KEY_NAMES = new Set(["Control", "Shift", "Alt", "AltGraph", "Meta", "OS", "CapsLock"]);
 
@@ -29,6 +19,7 @@ export class EntryEditorModal extends Modal {
 	private rawKey: string;
 	private title = "";
 	private description = "";
+	private icon = "";
 	private command = "";
 	private commandName = "";
 	private file = "";
@@ -47,6 +38,7 @@ export class EntryEditorModal extends Modal {
 		super(app);
 		this.kind = initial?.node.kind ?? "command";
 		this.rawKey = initial?.rawKey ?? "";
+		this.icon = initial?.node.icon ?? "";
 		if (initial?.node.kind === "group") {
 			this.title = initial.node.title ?? "";
 			this.description = initial.node.description ?? "";
@@ -102,6 +94,8 @@ export class EntryEditorModal extends Modal {
 		});
 		keySetting.addButton((button) => button.setButtonText("Record key").onClick(() => this.startRecording(button)));
 
+		this.renderIconSetting(contentEl);
+
 		if (this.kind === "group") {
 			new Setting(contentEl)
 				.setName("Title")
@@ -150,6 +144,43 @@ export class EntryEditorModal extends Modal {
 			.setButtonText("Save")
 			.setCta()
 			.onClick(() => this.submit());
+	}
+
+	/** The icon row: its picture and name, a picker over Obsidian's icons, and a clear button. */
+	private renderIconSetting(contentEl: HTMLElement): void {
+		const known = this.icon === "" || getIcon(this.icon) !== null;
+		const setting = new Setting(contentEl)
+			.setName("Icon")
+			.setDesc(
+				known
+					? "Shown on the mobile dial's circle in place of the key (the key still shows in the pill and descriptions). Optional."
+					: "Obsidian has no icon with this name, so the mobile dial shows the key instead. Pick another, or clear it.",
+			);
+		const pictureEl = setting.controlEl.createSpan({ cls: "neokeys-entry-icon-picture" });
+		if (this.icon !== "" && known) setIcon(pictureEl, this.icon);
+		setting.controlEl.createSpan({ cls: "neokeys-entry-key-display", text: this.icon || "None" });
+		setting.addButton((button) =>
+			button.setButtonText(this.icon === "" ? "Choose icon..." : "Change icon...").onClick(() => {
+				openModalInWindow(
+					new IconPickerModal(this.app, (picked) => {
+						this.icon = picked;
+						this.render();
+					}),
+					this.contentEl.win,
+				);
+			}),
+		);
+		if (this.icon !== "") {
+			setting.addExtraButton((button: ExtraButtonComponent) =>
+				button
+					.setIcon("x")
+					.setTooltip("Clear the icon")
+					.onClick(() => {
+						this.icon = "";
+						this.render();
+					}),
+			);
+		}
 	}
 
 	private showError(message: string): void {
@@ -213,6 +244,7 @@ export class EntryEditorModal extends Modal {
 			kind: this.kind,
 			title: this.title.trim(),
 			description: this.description.trim(),
+			icon: this.icon.trim(),
 			command: this.command.trim(),
 			commandName: this.commandName,
 			file: this.file.trim(),

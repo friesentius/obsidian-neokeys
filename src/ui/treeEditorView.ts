@@ -1,4 +1,5 @@
-import { App, ButtonComponent, ExtraButtonComponent } from "obsidian";
+import { App, ButtonComponent, ExtraButtonComponent, getIcon, setIcon } from "obsidian";
+import { nodeFromDraft } from "../entryDraft";
 import { getCommandName, hasCommand } from "../obsidianCommands";
 import { entryLabel } from "../tree";
 import {
@@ -11,27 +12,10 @@ import {
 	setGroupMeta,
 	updateEntry,
 } from "../treeOps";
-import type { CommandNode, FileNode, GroupEntry, GroupNode, KeymapNode } from "../types";
+import type { GroupEntry, GroupNode } from "../types";
 import { ConfirmDeleteModal } from "./confirmDeleteModal";
-import { EntryEditorModal, type EntryDraft } from "./entryEditorModal";
+import { EntryEditorModal } from "./entryEditorModal";
 import { openModalInWindow } from "./modalWindow";
-
-function nodeFromDraft(draft: EntryDraft, existingEntries: GroupEntry[] | null): KeymapNode {
-	if (draft.kind === "group") {
-		const node: GroupNode = { kind: "group", entries: existingEntries ?? [] };
-		if (draft.title.length > 0) node.title = draft.title;
-		if (draft.description.length > 0) node.description = draft.description;
-		return node;
-	}
-	if (draft.kind === "command") {
-		const node: CommandNode = { kind: "command", command: draft.command };
-		if (draft.description.length > 0) node.description = draft.description;
-		return node;
-	}
-	const node: FileNode = { kind: "file", file: draft.file };
-	if (draft.description.length > 0) node.description = draft.description;
-	return node;
-}
 
 /**
  * Renders the keymap as an expandable tree of groups/commands/files inside `containerEl`, and
@@ -137,6 +121,10 @@ export class TreeEditorView {
 		}
 
 		row.createSpan({ cls: "neokeys-tree-key", text: entry.rawKey });
+		// An entry's icon, small, before its name: the dial shows it in place of the key.
+		if (entry.node.icon !== undefined && getIcon(entry.node.icon) !== null) {
+			setIcon(row.createSpan({ cls: "neokeys-tree-icon", attr: { "aria-label": `Icon: ${entry.node.icon}` } }), entry.node.icon);
+		}
 		row.createSpan({
 			cls: "neokeys-tree-label" + (invalid ? " neokeys-tree-label-invalid" : ""),
 			text: label,

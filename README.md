@@ -105,6 +105,14 @@ show a heading for the section you're in. Every entry under `items` is one of:
 - **A file** - `file: <vault-relative-path>`, opened with the same resolution as Obsidian's
   internal links. An optional `description` overrides the label.
 
+Any of the three can also carry an optional `icon`: the id of one of Obsidian's icons
+(e.g. `icon: folder` or `icon: lucide-file-plus`). The mobile dial draws it on the item's circle in
+place of the key, and the tree editor shows it beside the entry; the key still shows in the pill
+and in the which-key popup, and an item with no `icon` is unchanged. The **Edit** dialog has an
+**Icon** field with a searchable picker of every icon Obsidian ships, and a clear button. An icon
+id Obsidian does not know is kept as written (a plugin's icon may simply not be loaded) and the
+circle falls back to the key. Keymaps written before `icon` existed load unchanged.
+
 ```yaml
 title: Neokeys
 description: Root menu
@@ -193,7 +201,7 @@ backspaced away, or you press Esc.
 
 On phones and tablets, Neokeys replaces typing with a **dial**: a leader button (a `>_` prompt)
 pinned to a bottom corner of the screen. Press it and the root menu's keys fan out on a ring of
-small circles around it, each circle showing just its key, groups rimmed in the accent colour.
+small circles around it, each circle showing its key (or its icon, if the keymap gives the item one), groups rimmed in the accent colour.
 Drag onto a group and its own keys open on the next ring out, so one drag walks the keymap: root,
 then Text, then Heading, then the digit you want. Let go on a command to run it, on a file to open
 it; let go on a group and its ring simply stays open for the next press. Passing over an item on
@@ -204,24 +212,44 @@ running anything.
 
 The rings are always in the same places: the first where four circles fit, each next ring far
 enough out that a circle grown by the lens never reaches a circle on the next ring, so the hand
-learns where each level is. A level with more items than its ring holds spreads them evenly over
-the ring as smaller circles, down to 14px beads, which step in and out of the ring, two deep, where
-even that would not keep them apart; nothing is ever paged or hidden. The circle under your thumb
+learns where each level is. A level with more items than its ring holds at full size keeps every
+circle on the ring's own radius, and while your thumb is on the ring it shrinks the circles the
+farther they are from it, but never below a readable 24px: a circle that cannot be that large for
+want of room is not drawn as a blank dot, it fades out. So the circle under your thumb and a few
+beside it always show their keys, and the rest of the level waits out of sight until you slide
+toward it. The circle under your thumb
 grows, up to one and a half times the circle size by default, its neighbours a little less: a
 **lens** that follows the thumb along every ring, so a crowded ring reads as you pass over it and
-the grown circle doubles as the highlight. No two circles ever overlap. The lens takes its room
-from the other gaps on the ring, which close up as far as keeps their circles apart; on a crowded
-ring the other beads pile two deep; the arc may run a few degrees past the ends of its quarter
-turn; and only when even that is not enough does the lens grow a little less (the root ring, full
-with four circles, gets most of the lens mid-ring, all of it at its ends). A ring you have left
-keeps its lens where your thumb left it, so the path you took stays large.
+the grown circle doubles as the highlight. While your thumb is on a ring, no two circles ever
+overlap. On a ring that is not
+crowded the lens takes its room from the other gaps on the ring, which close up as far as keeps
+their circles apart (the root ring, full with four circles, gets most of the lens mid-ring, all of
+it at its ends); on a crowded one the circles under the thumb stay big and the sizes fall away on
+either side, and the arc may run a few degrees past the ends of its quarter turn. A level that
+cannot show all of its circles at the readable size (more than about five items on the first ring,
+nine on the second, fourteen on the third and nineteen on the fourth, at the default circle size
+on a 390px-wide phone) loses the circles far from your thumb instead: they fade out and are gone,
+neither drawn nor tappable, while the ones near it stay whole and the circle under your thumb
+keeps its key. They come back as you slide toward them and the ones at the other end drop out, so
+every item can still be brought under your thumb by sliding along the ring. Near an end of a ring
+there is room beside the circle under your thumb on one side only, so fewer circles show there. A
+ring your thumb has not been on yet, at rest, shows all of its circles, shrunk to fit as far as
+10px, and they grow to the readable size as your thumb arrives (a ring that big at rest, 17 or
+more items on the first ring, lets the circles touch). A ring you have left keeps its lens where
+your thumb left it, so the path you took stays large and the far circles of a level that big stay
+gone.
+
+Dragging from a group to a sibling group on the same ring (File to Text, say) swaps the child ring
+in place: the old ring fades or flies away while the new one comes in, in the style you chose below,
+rather than the new ring popping in over the old.
 
 A pill just below Obsidian's header names what you are on: the path of open groups, the item under
 your thumb at its end, and on a second line what that item does: a group's description (or its
 keys and labels, when it has none), a command's name in Obsidian when the keymap labels it
-something else, a file's path. On a narrow phone the start of the path gives way to an ellipsis,
-so the item under your thumb is the last thing ever shortened. Back and Close buttons sit at either
-end.
+something else, a file's path; the text is centred in the pill whether it has one line or two. On
+a narrow phone the start of the path gives way to an ellipsis, so the item under your thumb is the
+last thing ever shortened. Back and Close buttons sit at either end. An item with an icon (see
+below) shows its key in the pill as a small chip, since its circle shows the icon instead.
 
 ![Mobile dial mid-drag through Text and Heading to Heading 2, dark theme](docs/screenshots/mobile/dial-heading-dark.png)
 
@@ -268,9 +296,19 @@ the ring belongs to (the **Animations** toggle above governs this and the easing
 as they move, and neither animates when your OS asks for reduced motion), and a **Dial
 description** choice for where the item under your thumb is described beyond the pill's own line:
 nowhere else (the default), on a card between the pill and the rings, or in a bubble beside your
-thumb.
+thumb. The bubble always sits next to the thumb, never under it, and keeps off the hand as far as
+the screen allows, at either end of a ring included, in either corner, at any ring depth and with
+the keyboard up. It keeps off the anchor and the circles either side of the one under your thumb,
+which you slide to next, but it may cover the keys of the circles beyond them (the far circles of
+a crowded ring, or a group's children) rather than move away from your finger. Where it could not sit beside the
+thumb in full (a small phone with its keyboard up, or a ring crowded close around the thumb) it
+shrinks to the key and label, since the pill shows the description too.
 
 ![Mobile dial with the description card, dark theme](docs/screenshots/mobile/dial-card-dark.png)
+
+On mobile the **Leader** group of Settings → Neokeys (the leader hotkey, the combo leader and the
+hotkey-conflict check) is hidden, since the dial is the way in; the settings reappear on desktop
+unchanged. A hardware-keyboard combo leader you set up earlier keeps working.
 
 A theme or CSS snippet can restyle the items through `--neokeys-dial-item-radius`,
 `--neokeys-dial-item-background`, `--neokeys-dial-item-border`, `--neokeys-dial-item-color` and
@@ -292,7 +330,8 @@ leader or hotkey on a hardware keyboard) opens that same dial, which the keyboar
 - `npm test` - Jest unit tests (key parsing, keymap parsing/validation and serialization, tree
   edit operations, tree resolution/sorting, delay logic, combo-leader validation, command-ID
   validation, breadcrumb building, hotkey-conflict detection, animation settings, heading-level
-  increase/decrease, the mobile dial's ring layout and its drag/arm/release state machine)
+  increase/decrease, entry icons, the mobile dial's ring layout, description-bubble placement and
+  sibling-ring swap diff, and its drag/arm/release state machine)
 - `npm run lint` - ESLint with `eslint-plugin-obsidianmd`'s recommended config, plus
   `@eslint/css`'s `no-important` on `styles.css`, mirroring the community directory's source and
   CSS scans (see `eslint.config.mjs` for why the plugin version is pinned)

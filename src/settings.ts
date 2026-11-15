@@ -1,4 +1,4 @@
-import { App, ButtonComponent, Notice, PluginSettingTab, Scope, Setting } from "obsidian";
+import { App, ButtonComponent, Notice, Platform, PluginSettingTab, Scope, Setting } from "obsidian";
 import type { SettingDefinitionItem } from "obsidian";
 import { DEFAULT_ANIMATION_DURATION_MS, parseAnimationDurationInput } from "./animation";
 import { ComboLeaderError, describeComboLeader, parseComboLeaderString } from "./comboLeader";
@@ -6,6 +6,7 @@ import { findInvalidCommands } from "./commandValidation";
 import { findHotkeyConflicts } from "./hotkeyConflict";
 import { KeymapParseError, parseKeymapSource } from "./keymap";
 import { serializeKeymap } from "./keymapSerialize";
+import { visibleSettingsGroups, type SettingsGroupId } from "./settingsGroups";
 import { keyFromEvent, keyToString } from "./keys";
 import { getCommandHotkeys, hasCommand, listOtherCommandHotkeys } from "./obsidianCommands";
 import { parseDialCorner, parseDialDescription, parseDialItemSize, parseDialLensPeak, parseDialRadiusRule, parseDialRingAnimation } from "./defaultSettings";
@@ -90,8 +91,8 @@ export class NeokeysSettingTab extends PluginSettingTab {
 	}
 
 	getSettingDefinitions(): SettingDefinitionItem[] {
-		return [
-			{
+		const groups: Record<SettingsGroupId, SettingDefinitionItem> = {
+			leader: {
 				type: "group",
 				heading: "Leader key",
 				items: [
@@ -115,7 +116,7 @@ export class NeokeysSettingTab extends PluginSettingTab {
 					},
 				],
 			},
-			{
+			popup: {
 				type: "group",
 				heading: "Which-key popup",
 				items: [
@@ -137,7 +138,7 @@ export class NeokeysSettingTab extends PluginSettingTab {
 					},
 				],
 			},
-			{
+			dial: {
 				type: "group",
 				heading: "Mobile dial",
 				items: [
@@ -191,7 +192,7 @@ export class NeokeysSettingTab extends PluginSettingTab {
 					},
 				],
 			},
-			{
+			keymap: {
 				type: "group",
 				heading: "Keymap",
 				items: [
@@ -210,7 +211,8 @@ export class NeokeysSettingTab extends PluginSettingTab {
 					},
 				],
 			},
-		];
+		};
+		return visibleSettingsGroups(Platform.isMobile).map((id) => groups[id]);
 	}
 
 	/** Fallback renderer for Obsidian versions older than 1.13.0. */
@@ -218,10 +220,13 @@ export class NeokeysSettingTab extends PluginSettingTab {
 		const { containerEl } = this;
 		containerEl.empty();
 
-		new Setting(containerEl).setName("Leader key").setHeading();
-		this.renderLeaderHotkey(new Setting(containerEl));
-		this.renderComboLeader(new Setting(containerEl));
-		this.renderHotkeyConflicts(new Setting(containerEl).setName(HOTKEY_CONFLICTS_NAME).setDesc(HOTKEY_CONFLICTS_DESC));
+		const shown = visibleSettingsGroups(Platform.isMobile);
+		if (shown.includes("leader")) {
+			new Setting(containerEl).setName("Leader key").setHeading();
+			this.renderLeaderHotkey(new Setting(containerEl));
+			this.renderComboLeader(new Setting(containerEl));
+			this.renderHotkeyConflicts(new Setting(containerEl).setName(HOTKEY_CONFLICTS_NAME).setDesc(HOTKEY_CONFLICTS_DESC));
+		}
 
 		new Setting(containerEl).setName("Which-key popup").setHeading();
 		this.renderShowDelay(new Setting(containerEl));

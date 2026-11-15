@@ -1,15 +1,16 @@
-import { App, Notice, Scope, setIcon } from "obsidian";
+import { App, getIcon, Notice, Scope, setIcon } from "obsidian";
 import {
 	DialController,
 	type DialArmedView,
 	type DialChange,
 	type DialHost,
 	type DialItemView,
-	type DialRingView,
 	type DialView,
 } from "../dial/controller";
-import { cardFits, cardTop, placeBubble, type CoveredCircle } from "../dial/description";
-import { ANCHOR_RADIUS, ringParamsFor, type DialArc, type DialGeometry, type DialLayoutMode } from "../dial/layout";
+import { BUBBLE_MARGIN, bubbleNeedsShortForm, cardFits, cardTop, coveredCircles, placeBubble, preferShortBubble, type BubblePlacement } from "../dial/description";
+import { shownIcon } from "../icons";
+import { DIAL_LEGIBLE_SIZE, ringParamsFor, type DialArc, type DialGeometry, type DialLayoutMode } from "../dial/layout";
+import { diffRings, swapRing } from "../dial/ringDiff";
 import { getCommandName, hasCommand } from "../obsidianCommands";
 import type { DialCorner, DialDescription, DialRadiusRule, DialRingAnimation, GroupEntry, GroupNode } from "../types";
 
@@ -92,15 +93,21 @@ export class MobileDial {
 	private readonly anchorEl: HTMLElement;
 	private readonly controller: DialController;
 	private rings: RingNodes[] = [];
+	/** Rings that were swapped for a sibling's and are still animating out, with the timers that remove them. */
+	private readonly leaving = new Map<HTMLElement, number>();
 	/** The one pointer the dial is tracking; any other pointer is ignored until it is released. */
 	private activePointerId: number | null = null;
 	/** The keyboard scope that owns every key while the dial is open; null while it is closed. */
 	private scope: Scope | null = null;
+	/** How long a ring's entrance and exit animations run, in ms, as of the dial's last opening; 0 when ring animation is off. */
+	private ringAnimationMs = 0;
 	/** A pending re-measure, so a burst of observer callbacks produces one relayout per frame. */
 	private frame: number | null = null;
 	private resizeObserver: ResizeObserver | null = null;
 	private mutationObserver: MutationObserver | null = null;
 	private classObserver: MutationObserver | null = null;
+	/** Where the bubble beside the thumb was last placed, so a finger sliding along a ring does not make it jump between sides; null while it is hidden. */
+	private bubblePlacement: BubblePlacement | null = null;
 	private readonly teardown: (() => void)[] = [];
 
 	constructor(
@@ -239,6 +246,7 @@ export class MobileDial {
 		// as a belt, since a leaked catch-all scope would swallow every key in the app.
 		this.controller.close();
 		this.controller.onChange(() => undefined);
+		this.clearLeaving();
 		this.popScope();
 		this.resizeObserver?.disconnect();
 		this.mutationObserver?.disconnect();
@@ -429,6 +437,7 @@ export class MobileDial {
 		this.layerEl.toggleClass("neokeys-dial-ring-fade", animation.ring === "fade");
 		this.layerEl.toggleClass("neokeys-dial-ring-fly", animation.ring === "fly");
 		this.layerEl.setCssProps({ "--neokeys-anim-duration": `${animation.durationMs}ms` });
+		this.ringAnimationMs = animation.ring !== null ? animation.durationMs : 0;
 	}
 
 	/**
@@ -505,12 +514,19 @@ export class MobileDial {
 	 * Keep each ring's nodes while it shows the same items of the same group, so a ring opening
 	 * outside the current ones appears on its own and the rings under the thumb do not replay
 	 * their entrance; a kept ring is re-placed, since a relayout or the lens may have moved its
-	 * items; a ring whose group changed is rebuilt in place, flying out from its own group.
+	 * items. A ring whose group changed (the thumb went from one group to its sibling, so the
+	 * ring outside them shows the sibling's items) is swapped: the new ring enters as any ring
+	 * does, flying out from its own group, and the old one leaves in step, fading out or flying
+	 * back into the group it belonged to, rather than vanishing in one frame.
 	 */
 	private reconcileRings(view: DialView): void {
+		const changes = diffRings(
+			this.rings.map((ring) => ({ group: ring.group, items: ring.items.map((item) => item.identity) })),
+			view.rings.map((ring) => ({ group: ring.group, items: ring.items.map((item) => item.identity) })),
+		);
 		view.rings.forEach((ring, index) => {
 			const existing = this.rings[index];
-			if (existing && existing.group === ring.group && sameItems(existing, ring)) {
+			if (changes[index] === "keep" && existing) {
 				ring.items.forEach((item, i) => this.placeItem(existing.items[i].el, item));
 				return;
 			}
@@ -521,7 +537,7 @@ export class MobileDial {
 			const from = ring.parent ?? { x: anchor.left + anchor.width / 2, y: anchor.top + anchor.height / 2 };
 			el.setCssProps({ "--neokeys-dial-from-x": `${from.x}px`, "--neokeys-dial-from-y": `${from.y}px` });
 			if (existing) {
-				existing.el.replaceWith(el);
+				swapRing(existing.el, el, (leaving) => this.retire(leaving));
 			} else {
 				this.fanEl.appendChild(el);
 			}
@@ -532,6 +548,36 @@ export class MobileDial {
 			};
 		});
 		for (const extra of this.rings.splice(view.rings.length)) extra.el.remove();
+		if (!view.open) this.clearLeaving();
+	}
+
+	/**
+	 * Take a ring that has been swapped for another off the live rings: it animates out for as
+	 * long as a ring takes to enter (the style follows the setting) and is then removed, at once
+	 * when ring animation is off. Nothing on it is announced or hit: items never take pointer
+	 * events, and it is hidden from assistive technology.
+	 */
+	private retire(el: HTMLElement): void {
+		if (this.ringAnimationMs <= 0 || !this.layerEl.hasClass("neokeys-animate")) {
+			el.remove();
+			return;
+		}
+		// A few swaps in quick succession (a thumb sweeping along a ring) leave a few rings fading; never an unbounded pile.
+		for (const old of Array.from(this.leaving.keys()).slice(0, Math.max(0, this.leaving.size - 2))) this.dropLeaving(old);
+		el.addClass("neokeys-dial-ring-leaving");
+		el.setAttribute("aria-hidden", "true");
+		this.leaving.set(el, window.setTimeout(() => this.dropLeaving(el), this.ringAnimationMs + 60));
+	}
+
+	private dropLeaving(el: HTMLElement): void {
+		const timer = this.leaving.get(el);
+		if (timer !== undefined) window.clearTimeout(timer);
+		this.leaving.delete(el);
+		el.remove();
+	}
+
+	private clearLeaving(): void {
+		for (const el of Array.from(this.leaving.keys())) this.dropLeaving(el);
 	}
 
 	/** Re-place and restyle the items already on screen: the lens moved them, or the armed one changed. */
@@ -551,8 +597,15 @@ export class MobileDial {
 			cls: `neokeys-dial-item neokeys-dial-item-${item.kind}`,
 			attr: { role: "button", "aria-label": itemAccessibleName(item) },
 		});
-		el.createSpan({ cls: "neokeys-dial-item-key", text: item.key, attr: { "aria-hidden": "true" } });
-		el.setCssProps({ "--neokeys-dial-key-scale": keyScale(item.key) });
+		// An item's icon stands in for its key on the circle; an icon Obsidian does not know (a typo, or a plugin that is off) leaves the key.
+		const icon = circleIcon(item.icon);
+		if (icon !== null) {
+			const iconEl = el.createSpan({ cls: "neokeys-dial-item-icon", attr: { "aria-hidden": "true" } });
+			setIcon(iconEl, icon);
+		} else {
+			el.createSpan({ cls: "neokeys-dial-item-key", text: item.key, attr: { "aria-hidden": "true" } });
+			el.setCssProps({ "--neokeys-dial-key-scale": keyScale(item.key) });
+		}
 		this.placeItem(el, item);
 		return el;
 	}
@@ -564,9 +617,16 @@ export class MobileDial {
 			"--neokeys-dial-y": `${item.y}px`,
 			"--neokeys-dial-size": `${item.size}px`,
 			"--neokeys-dial-lens": `${Math.round(item.weight * 10)}`,
+			"--neokeys-dial-presence": `${item.presence}`,
 		});
+		// A circle gone from a level too big for its ring (far from the lens) is neither drawn nor there for assistive technology.
+		el.toggleClass("neokeys-dial-item-gone", item.presence <= 0);
+		if (item.presence <= 0) el.setAttribute("aria-hidden", "true");
+		else el.removeAttribute("aria-hidden");
 		el.toggleClass("neokeys-dial-item-armed", item.armed);
 		el.toggleClass("neokeys-dial-item-open", item.open);
+		// A circle shrunk below what a key or icon can be read at (a crowded ring at rest, or a circle fading out) is only a dot until the lens grows it.
+		el.toggleClass("neokeys-dial-item-tiny", item.size < DIAL_LEGIBLE_SIZE);
 		el.setAttribute("aria-pressed", item.armed ? "true" : "false");
 	}
 
@@ -600,10 +660,17 @@ export class MobileDial {
 			trail.push(this.crumbsEl.createSpan({ cls: "neokeys-dial-crumb neokeys-dial-crumb-trail", text: label }));
 		});
 		let armedSepEl: HTMLElement | null = null;
+		// An item whose icon stands in for its key on the circle shows no key there, so the pill says the key beside its name: the binding stays discoverable.
+		const keyChip = (): HTMLElement | null => (view.armed && circleIcon(view.armed.icon) !== null ? createSpan({ cls: "neokeys-dial-crumb-key", text: view.armed.key }) : null);
 		if (view.armed?.open) {
-			trail[trail.length - 1].addClass("neokeys-dial-crumb-armed");
+			const last = trail[trail.length - 1];
+			last.addClass("neokeys-dial-crumb-armed");
+			const chip = keyChip();
+			if (chip) last.before(chip);
 		} else if (view.armed) {
 			armedSepEl = this.crumbsEl.createSpan({ cls: "neokeys-dial-crumb-sep", text: "›" });
+			const chip = keyChip();
+			if (chip) this.crumbsEl.appendChild(chip);
 			this.crumbsEl.createSpan({ cls: "neokeys-dial-crumb neokeys-dial-crumb-armed", text: view.armed.label });
 		}
 		this.fitCrumbs(collapsedEl, trail, seps, armedSepEl);
@@ -645,6 +712,7 @@ export class MobileDial {
 		const bubble = placement === "thumb" && armed !== null;
 		this.cardEl.toggleClass("neokeys-dial-card-shown", card);
 		this.bubbleEl.toggleClass("neokeys-dial-bubble-shown", bubble);
+		if (!bubble) this.bubblePlacement = null;
 		if (card && armed) this.renderCard(view, armed, rebuild);
 		if (bubble && armed) this.renderBubble(view, armed, rebuild);
 	}
@@ -673,7 +741,12 @@ export class MobileDial {
 		this.cardEl.setCssProps({ "--neokeys-dial-card-top": `${Math.round(cardTop(pillBottom, ringTop, this.cardEl.offsetHeight))}px` });
 	}
 
-	/** The bubble sits beside the armed circle wherever it covers the fewest other circles. */
+	/**
+	 * The bubble sits beside the thumb (the armed circle) wherever that covers the least: the
+	 * area it may use is the screen below the pill and above the chrome the anchor keeps clear
+	 * of, which is where the rings themselves are kept (a keyboard or toolbar below that is
+	 * never covered). It is re-placed on every move of the lens, so it follows the finger.
+	 */
 	private renderBubble(view: DialView, armed: DialArmedView, rebuild: boolean): void {
 		if (rebuild) {
 			this.bubbleEl.empty();
@@ -684,31 +757,29 @@ export class MobileDial {
 		}
 		const anchorRect = this.anchorEl.getBoundingClientRect();
 		const anchor = { x: anchorRect.left + anchorRect.width / 2, y: anchorRect.top + anchorRect.height / 2 };
-		// The armed circle itself weighs most: a spot that would cover it once kept on screen is the last choice.
-		const circles: CoveredCircle[] = [
-			{ x: anchor.x, y: anchor.y, radius: ANCHOR_RADIUS, weight: 2 },
-			{ x: armed.x, y: armed.y, radius: armed.size / 2, weight: 3 },
-		];
-		view.rings.forEach((ring, index) => {
-			const weight = index === view.rings.length - 1 ? 2 : 1;
-			for (const item of ring.items) if (!item.armed) circles.push({ x: item.x, y: item.y, radius: item.size / 2, weight });
-		});
-		const placed = placeBubble(
-			{ x: armed.x, y: armed.y },
-			armed.size / 2,
-			{ width: this.bubbleEl.offsetWidth, height: this.bubbleEl.offsetHeight },
-			{ width: activeWindow.innerWidth, height: activeWindow.innerHeight, top: this.pillEl.getBoundingClientRect().bottom },
-			circles,
-			anchor,
-			this.options.corner === "bottom-right" ? -1 : 1,
-		);
+		const circles = coveredCircles(view.rings, anchor);
+		const place = (): BubblePlacement =>
+			placeBubble(
+				{ x: armed.x, y: armed.y },
+				armed.size / 2,
+				{ width: this.bubbleEl.offsetWidth, height: this.bubbleEl.offsetHeight },
+				{ left: BUBBLE_MARGIN, top: this.pillEl.getBoundingClientRect().bottom + BUBBLE_MARGIN, right: activeWindow.innerWidth - BUBBLE_MARGIN, bottom: view.bounds.bottom },
+				circles,
+				anchor,
+				this.bubblePlacement,
+			);
+		// The full bubble first; where it can only go over the keys of circles or far from the thumb, the shorter one (key and label, without the description the pill already shows) if that does clearly better.
+		this.bubbleEl.removeClass("neokeys-dial-bubble-compact");
+		let placed = place();
+		if (armed.description !== "" && bubbleNeedsShortForm(placed)) {
+			this.bubbleEl.addClass("neokeys-dial-bubble-compact");
+			const shorter = place();
+			if (preferShortBubble(placed, shorter)) placed = shorter;
+			else this.bubbleEl.removeClass("neokeys-dial-bubble-compact");
+		}
+		this.bubblePlacement = placed;
 		this.bubbleEl.setCssProps({ "--neokeys-dial-bubble-left": `${Math.round(placed.left)}px`, "--neokeys-dial-bubble-top": `${Math.round(placed.top)}px` });
 	}
-}
-
-/** The same items in the same order, by identity. */
-function sameItems(nodes: RingNodes, ring: DialRingView): boolean {
-	return nodes.items.length === ring.items.length && nodes.items.every((node, i) => node.identity === ring.items[i].identity);
 }
 
 /** A key glyph longer than a letter or two ("Esc", "Space", "Ctrl+B") is drawn smaller so it stays inside its circle. */
@@ -717,6 +788,11 @@ function keyScale(key: string): string {
 	if (length <= 2) return "1";
 	if (length <= 4) return "0.72";
 	return "0.55";
+}
+
+/** The icon an item's circle draws in place of its key, as `shownIcon` decides it against the icons Obsidian knows. */
+function circleIcon(icon: string | null): string | null {
+	return shownIcon(icon, (id) => getIcon(id) !== null);
 }
 
 function itemAccessibleName(item: DialItemView): string {
