@@ -72,6 +72,7 @@ export class EntryEditorModal extends Modal {
 	}
 
 	private render(): void {
+		this.syncKeyFromField();
 		const { contentEl } = this;
 		contentEl.empty();
 		this.errorEl = null;
@@ -184,6 +185,8 @@ export class EntryEditorModal extends Modal {
 					if (!(evt as InputEvent).isComposing) this.readTypedKey(evt as InputEvent);
 				});
 				input.addEventListener("compositionend", () => this.readTypedKey(null));
+				// A predictive keyboard may still be composing when the user moves on: take what the field shows then.
+				input.addEventListener("blur", () => this.syncKeyFromField());
 			});
 		} else {
 			this.keyDisplayEl = keySetting.controlEl.createSpan({
@@ -205,6 +208,14 @@ export class EntryEditorModal extends Modal {
 		if (typed !== null) this.rawKey = typed;
 		input.value = this.rawKey;
 		if (typed !== null && typed !== "") input.select();
+	}
+
+	/**
+	 * Takes the key from the field if it shows something other than the key held: a keyboard that is
+	 * mid-composition (Android's, say) has not sent its final input yet when a button is tapped.
+	 */
+	private syncKeyFromField(): void {
+		if (this.keyInputEl && this.keyInputEl.value !== this.rawKey) this.readTypedKey(null);
 	}
 
 	/** Shows the current key in whichever control the form has for it. */
@@ -295,6 +306,7 @@ export class EntryEditorModal extends Modal {
 	}
 
 	private submit(): void {
+		this.syncKeyFromField();
 		const keyError = validateKeyAndIcon(this.device, this.rawKey, this.icon);
 		if (keyError !== null) {
 			this.showError(keyError);

@@ -1450,3 +1450,61 @@ describe("DialController on a level too big for its ring", () => {
 		expect(calls.executed).toEqual(["workspace:new-tab"]);
 	});
 });
+
+describe("DialController items with no key", () => {
+	const KEYLESS = `
+items:
+  z: app:zoom Zoom
+  nokey1:
+    command: app:open-help
+    description: Help
+    icon: help-circle
+  nokey2:
+    title: More
+    icon: ellipsis
+    items:
+      c: workspace:new-tab New tab
+`;
+
+	function open() {
+		const { host, calls } = makeHost();
+		const controller = new DialController(host, () => PHONE);
+		controller.open(parseKeymapSource(KEYLESS));
+		return { controller, calls };
+	}
+
+	it("shows a keyless item on the ring with its icon and an empty key, and its group's keys one ring out once opened", () => {
+		const { controller } = open();
+		expect(items(controller).map((i) => [i.label, i.key, i.icon])).toEqual([
+			["More", "", "ellipsis"],
+			["Zoom", "z", null],
+			["Help", "", "help-circle"],
+		]);
+		controller.pressAt(itemAt(controller, "More"));
+		controller.release();
+		expect(labels(controller)).toContain("New tab");
+	});
+
+	it("is run by a release on it, like any other item", () => {
+		const { controller, calls } = open();
+		const p = itemAt(controller, "Help");
+		controller.pressAt(p);
+		controller.release();
+		expect(calls.executed).toEqual(["app:open-help"]);
+	});
+
+	it("is never picked by a hardware key, whatever is typed, while keyed items still are", () => {
+		const { controller, calls } = open();
+		for (const k of ["nokey1", "nokey", "1", "h", "H", "Unidentified", "Enter", " "]) controller.typeKey(key(k));
+		expect(calls.executed).toEqual([]);
+		controller.typeKey(key("z"));
+		expect(calls.executed).toEqual(["app:zoom"]);
+	});
+
+	it("describes a group by its keyless items' labels alone, without a stray gap where the key would be", () => {
+		const { host } = makeHost();
+		const controller = new DialController(host, () => PHONE);
+		controller.open(parseKeymapSource("items:\n  z: app:zoom Zoom\n  nokey1:\n    command: app:open-help\n    description: Help\n    icon: help-circle\n"));
+		expect(controller.view().description).toBe("z Zoom · Help");
+	});
+});
