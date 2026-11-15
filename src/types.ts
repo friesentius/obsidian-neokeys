@@ -23,8 +23,10 @@ export interface FileNode {
 }
 
 export interface GroupEntry {
+	/** The key string the entry is stored under, or the `nokeyN` token of a keyless entry (see keyless.ts). */
 	rawKey: string;
-	key: ParsedKey;
+	/** What a press must match; null for an entry with no key, which no key press ever selects. */
+	key: ParsedKey | null;
 	node: KeymapNode;
 }
 

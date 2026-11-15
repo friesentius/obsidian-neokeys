@@ -1,9 +1,20 @@
-import { keysEqual } from "./keys";
+import { keyGlyph, keysEqual } from "./keys";
+import { isKeylessId } from "./keyless";
 import type { GroupEntry, GroupNode, ParsedKey } from "./types";
 
-/** Find the entry in `group` whose key matches `pressed`, if any. */
+/** Find the entry in `group` whose key matches `pressed`, if any. An entry with no key is never found: nothing a keyboard sends selects it. */
 export function findEntry(group: GroupNode, pressed: ParsedKey): GroupEntry | undefined {
-	return group.entries.find((entry) => keysEqual(entry.key, pressed));
+	return group.entries.find((entry) => entry.key !== null && keysEqual(entry.key, pressed));
+}
+
+/** The entries a keyboard can reach: every one that has a key. The keyboard popup lists only these. */
+export function keyedEntries(entries: GroupEntry[]): GroupEntry[] {
+	return entries.filter((entry) => entry.key !== null);
+}
+
+/** An entry's key as the grid and the dial write it ("f", "Ctrl+J"), or "" for an entry with no key. */
+export function entryKeyGlyph(entry: GroupEntry): string {
+	return entry.key === null ? "" : keyGlyph(entry.key);
 }
 
 function kindOrder(entry: GroupEntry): number {
@@ -35,7 +46,8 @@ export function sortEntries(group: GroupNode): GroupEntry[] {
 export function entryLabel(entry: GroupEntry, resolveCommandName?: (id: string) => string | undefined): string {
 	const { node } = entry;
 	if (node.kind === "group") {
-		return node.title ?? node.description ?? entry.rawKey;
+		// A keyless entry's token ("nokey1") is bookkeeping, not a name: its icon is the nearest thing it has.
+		return node.title ?? node.description ?? (isKeylessId(entry.rawKey) ? (node.icon ?? "Untitled group") : entry.rawKey);
 	}
 	if (node.kind === "command") {
 		return node.description ?? resolveCommandName?.(node.command) ?? node.command;

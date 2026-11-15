@@ -113,6 +113,29 @@ and in the which-key popup, and an item with no `icon` is unchanged. The **Edit*
 id Obsidian does not know is kept as written (a plugin's icon may simply not be loaded) and the
 circle falls back to the key. Keymaps written before `icon` existed load unchanged.
 
+#### Items with no key
+
+A phone has no hotkeys, and on the dial the key only labels a circle, so on a phone an item needs
+**a key or an icon** (either one is enough). An item saved with an icon and no key is stored in the
+YAML under a placeholder id, `nokey1`, `nokey2`, and so on, since a keymap names its items by key:
+
+```yaml
+items:
+  nokey1:
+    command: editor:toggle-italics
+    icon: star
+```
+
+You can write one by hand the same way. The id is only bookkeeping: it is never shown as the item's
+key, and the tree editor shows **No key** in its place. A keymap with such items syncs to a tablet or
+desktop without breaking anything. On a phone or tablet the item stays on the dial, drawn as its
+icon (or, if the icon is not one Obsidian knows, the first letter of its name). No keyboard can
+reach it: the leader sequence and the dial's hardware-keyboard path skip it, and the keyboard popup
+on desktop does not list it. The tree editor marks it **Needs a key** on a tablet or desktop, and
+the **Edit** dialog there will not save it until it has one; on a phone it is fine as it is.
+Neokeys versions from before this one read the placeholder id as a key no keyboard has, so a
+keymap with such items still loads on a device that has not updated yet.
+
 ```yaml
 title: Neokeys
 description: Root menu
@@ -285,7 +308,9 @@ the popup: a key bound in the deepest open group picks that item, <kbd>Backspace
 <kbd>Esc</kbd> closes, and nothing you type while it is open reaches the note. Each item is also
 exposed to screen readers as a button named after its label and key.
 
-Settings → Neokeys has a **Mobile dial** group with a **Show the dial on mobile** toggle (on by
+Settings → Neokeys has a **Mobile dial** group, shown only on phones and tablets (desktop has no
+dial, so the group is hidden there; the values stay saved and still apply on a phone or tablet the
+settings sync to), with a **Show the dial on mobile** toggle (on by
 default), a **Dial corner** choice, bottom right or bottom left, a **Dial item size** slider (the
 circles' diameter, 40 to 56px, 44 by default), a **Dial ring radius** choice between fixed rings
 (the default, described above) and fit, where each ring grows until its level fits at full size as
@@ -305,6 +330,29 @@ thumb in full (a small phone with its keyboard up, or a ring crowded close aroun
 shrinks to the key and label, since the pill shows the description too.
 
 ![Mobile dial with the description card, dark theme](docs/screenshots/mobile/dial-card-dark.png)
+
+#### Adding and editing items on a phone or tablet
+
+The **Add item** / **Edit** dialog adapts to the device (Obsidian's phone and tablet detection, not
+the screen width). **Record key** waits for a physical key press, which a touch screen cannot give
+it, so on a phone or tablet the **Key** row is a small text box: tap it, the on-screen keyboard
+opens, and type one character, a letter in either case (`F` is Shift+F), a digit or a symbol. The
+key is read from what you typed, not from key events, which soft keyboards do not send reliably. A
+tablet keeps **Record key** next to the box for a hardware keyboard, which can record a key with
+Ctrl, Alt or Cmd; a phone shows the box alone. A key already used by a sibling in the same group is
+still refused, everywhere.
+
+![Add item on a phone, a key typed into the Key box, dark theme](docs/screenshots/key-entry/phone-key-typed-keyboard-up-dark.png)
+
+What an item needs before it saves depends on the device:
+
+| Device | Key | Icon |
+| --- | --- | --- |
+| Phone | a key **or** an icon | either one is enough |
+| Tablet | required | optional |
+| Desktop | required | optional |
+
+![Add item on a phone with neither a key nor an icon, light theme](docs/screenshots/key-entry/phone-error-neither-light.png)
 
 On mobile the **Leader** group of Settings → Neokeys (the leader hotkey, the combo leader and the
 hotkey-conflict check) is hidden, since the dial is the way in; the settings reappear on desktop
@@ -330,7 +378,8 @@ leader or hotkey on a hardware keyboard) opens that same dial, which the keyboar
 - `npm test` - Jest unit tests (key parsing, keymap parsing/validation and serialization, tree
   edit operations, tree resolution/sorting, delay logic, combo-leader validation, command-ID
   validation, breadcrumb building, hotkey-conflict detection, animation settings, heading-level
-  increase/decrease, entry icons, the mobile dial's ring layout, description-bubble placement and
+  increase/decrease, entry icons, items with no key and the per-device key/icon rules of the
+  add/edit dialog, the typed-key reader, the mobile dial's ring layout, description-bubble placement and
   sibling-ring swap diff, and its drag/arm/release state machine)
 - `npm run lint` - ESLint with `eslint-plugin-obsidianmd`'s recommended config, plus
   `@eslint/css`'s `no-important` on `styles.css`, mirroring the community directory's source and

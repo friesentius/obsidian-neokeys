@@ -603,8 +603,10 @@ export class MobileDial {
 			const iconEl = el.createSpan({ cls: "neokeys-dial-item-icon", attr: { "aria-hidden": "true" } });
 			setIcon(iconEl, icon);
 		} else {
-			el.createSpan({ cls: "neokeys-dial-item-key", text: item.key, attr: { "aria-hidden": "true" } });
-			el.setCssProps({ "--neokeys-dial-key-scale": keyScale(item.key) });
+			// An item with no key (made on a phone) whose icon does not resolve is drawn with the first letter of its name.
+			const text = item.key !== "" ? item.key : initialOf(item.label);
+			el.createSpan({ cls: "neokeys-dial-item-key", text, attr: { "aria-hidden": "true" } });
+			el.setCssProps({ "--neokeys-dial-key-scale": keyScale(text) });
 		}
 		this.placeItem(el, item);
 		return el;
@@ -661,7 +663,7 @@ export class MobileDial {
 		});
 		let armedSepEl: HTMLElement | null = null;
 		// An item whose icon stands in for its key on the circle shows no key there, so the pill says the key beside its name: the binding stays discoverable.
-		const keyChip = (): HTMLElement | null => (view.armed && circleIcon(view.armed.icon) !== null ? createSpan({ cls: "neokeys-dial-crumb-key", text: view.armed.key }) : null);
+		const keyChip = (): HTMLElement | null => (view.armed && view.armed.key !== "" && circleIcon(view.armed.icon) !== null ? createSpan({ cls: "neokeys-dial-crumb-key", text: view.armed.key }) : null);
 		if (view.armed?.open) {
 			const last = trail[trail.length - 1];
 			last.addClass("neokeys-dial-crumb-armed");
@@ -727,7 +729,7 @@ export class MobileDial {
 		if (rebuild) {
 			this.cardEl.empty();
 			const head = this.cardEl.createDiv({ cls: "neokeys-dial-card-head" });
-			head.createSpan({ cls: "neokeys-dial-card-key", text: armed.key });
+			if (armed.key !== "") head.createSpan({ cls: "neokeys-dial-card-key", text: armed.key });
 			head.createSpan({ cls: "neokeys-dial-card-label", text: armed.label });
 			if (armed.description !== "") this.cardEl.createDiv({ cls: "neokeys-dial-card-text", text: armed.description });
 			this.cardEl.createDiv({ cls: "neokeys-dial-card-meta", text: armedMeta(armed) });
@@ -751,7 +753,7 @@ export class MobileDial {
 		if (rebuild) {
 			this.bubbleEl.empty();
 			const head = this.bubbleEl.createDiv({ cls: "neokeys-dial-bubble-head" });
-			head.createSpan({ cls: "neokeys-dial-bubble-key", text: armed.key });
+			if (armed.key !== "") head.createSpan({ cls: "neokeys-dial-bubble-key", text: armed.key });
 			head.createSpan({ cls: "neokeys-dial-bubble-label", text: armed.label });
 			if (armed.description !== "") this.bubbleEl.createDiv({ cls: "neokeys-dial-bubble-text", text: armed.description });
 		}
@@ -782,6 +784,12 @@ export class MobileDial {
 	}
 }
 
+/** The first letter of a label, in capitals, for a circle that has neither a key nor an icon to show. */
+function initialOf(label: string): string {
+	const first = [...label.trim()][0];
+	return first === undefined ? "?" : first.toUpperCase();
+}
+
 /** A key glyph longer than a letter or two ("Esc", "Space", "Ctrl+B") is drawn smaller so it stays inside its circle. */
 function keyScale(key: string): string {
 	const length = [...key].length;
@@ -797,7 +805,7 @@ function circleIcon(icon: string | null): string | null {
 
 function itemAccessibleName(item: DialItemView): string {
 	const kind = item.kind === "group" ? ", group" : item.kind === "file" ? ", file" : "";
-	return `${item.label}${kind}, key ${item.key}`;
+	return item.key === "" ? `${item.label}${kind}` : `${item.label}${kind}, key ${item.key}`;
 }
 
 function armedMeta(armed: DialArmedView): string {

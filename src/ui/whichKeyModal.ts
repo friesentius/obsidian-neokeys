@@ -1,9 +1,9 @@
 import { App, Modal, Notice } from "obsidian";
 import { ShowDelayGate } from "../delay";
-import { keyFromEvent, keyGlyph } from "../keys";
+import { keyFromEvent } from "../keys";
 import { commandUnavailableMessage } from "../messages";
 import { getCommandName, hasCommand } from "../obsidianCommands";
-import { breadcrumbTrail, entryLabel, findEntry, sortEntries } from "../tree";
+import { breadcrumbTrail, entryKeyGlyph, entryLabel, findEntry, keyedEntries, sortEntries } from "../tree";
 import type { GroupNode } from "../types";
 
 export interface WhichKeyCallbacks {
@@ -93,12 +93,13 @@ export class WhichKeyModal extends Modal {
 		});
 
 		this.gridEl.empty();
-		for (const entry of sortEntries(group)) {
+		// A keyless entry (made on a phone) has no key to press, so the keyboard popup leaves it out.
+		for (const entry of keyedEntries(sortEntries(group))) {
 			const invalid = entry.node.kind === "command" && !hasCommand(this.app, entry.node.command);
 			const row = this.gridEl.createDiv({
 				cls: `neokeys-row neokeys-row-${entry.node.kind}${invalid ? " neokeys-row-invalid" : ""}`,
 			});
-			row.createSpan({ text: keyGlyph(entry.key), cls: "neokeys-key" });
+			row.createSpan({ text: entryKeyGlyph(entry), cls: "neokeys-key" });
 			const label = entryLabel(entry, (id) => getCommandName(this.app, id));
 			row.createSpan({
 				text: entry.node.kind === "group" ? `+${label}` : label,
