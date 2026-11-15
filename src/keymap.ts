@@ -1,5 +1,6 @@
 import { parse as parseYamlOrJson, YAMLParseError } from "yaml";
 import { KeyParseError, parseKeyString } from "./keys";
+import { isKeylessId } from "./keyless";
 import type { CommandNode, FileNode, GroupNode, KeymapNode } from "./types";
 
 export class KeymapParseError extends Error {
@@ -148,25 +149,28 @@ export function parseGroup(value: unknown, path: string[] = []): GroupNode {
 		// (JS object keys are always strings), so an existing keymap loads unchanged either way.
 		const rawKey = typeof rawKeyUnknown === "string" ? rawKeyUnknown : String(rawKeyUnknown);
 		const childPath = [...path, "items", rawKey];
-		let key;
-		try {
-			key = parseKeyString(rawKey);
-		} catch (err) {
-			if (err instanceof KeyParseError) {
-				throw new KeymapParseError(childPath, err.message);
+		// An item with no key (made on a phone) is stored under a `nokeyN` token and has no key combination to collide.
+		let key: GroupNode["entries"][number]["key"] = null;
+		if (!isKeylessId(rawKey)) {
+			try {
+				key = parseKeyString(rawKey);
+			} catch (err) {
+				if (err instanceof KeyParseError) {
+					throw new KeymapParseError(childPath, err.message);
+				}
+				throw err;
 			}
-			throw err;
-		}
 
-		const dedupeKey = JSON.stringify(key);
-		const existing = seen.get(dedupeKey);
-		if (existing !== undefined) {
-			throw new KeymapParseError(
-				childPath,
-				`Key "${rawKey}" collides with sibling key "${existing}" (same key combination)`,
-			);
+			const dedupeKey = JSON.stringify(key);
+			const existing = seen.get(dedupeKey);
+			if (existing !== undefined) {
+				throw new KeymapParseError(
+					childPath,
+					`Key "${rawKey}" collides with sibling key "${existing}" (same key combination)`,
+				);
+			}
+			seen.set(dedupeKey, rawKey);
 		}
-		seen.set(dedupeKey, rawKey);
 
 		const node = parseNode(childValue, childPath);
 		entries.push({ rawKey, key, node });

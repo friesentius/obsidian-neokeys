@@ -1,9 +1,37 @@
-import { keysEqual } from "./keys";
+import { keyGlyph, keysEqual } from "./keys";
+import { shownIcon } from "./icons";
+import { isKeylessId } from "./keyless";
 import type { GroupEntry, GroupNode, ParsedKey } from "./types";
 
-/** Find the entry in `group` whose key matches `pressed`, if any. */
+/** Find the entry in `group` whose key matches `pressed`, if any. An entry with no key is never found: nothing a keyboard sends selects it. */
 export function findEntry(group: GroupNode, pressed: ParsedKey): GroupEntry | undefined {
-	return group.entries.find((entry) => keysEqual(entry.key, pressed));
+	return group.entries.find((entry) => entry.key !== null && keysEqual(entry.key, pressed));
+}
+
+/** The entries a keyboard can reach: every one that has a key. The keyboard popup lists only these. */
+export function keyedEntries(entries: GroupEntry[]): GroupEntry[] {
+	return entries.filter((entry) => entry.key !== null);
+}
+
+/** The note the keyboard popup shows in place of an empty grid when a group has items but none of them has a key, or null when there is nothing to explain. */
+export function keylessGroupNote(entries: GroupEntry[]): string | null {
+	if (entries.length === 0 || keyedEntries(entries).length > 0) return null;
+	return "These items have no key yet. Give them one in Settings → Neokeys.";
+}
+
+/** The icon the keyboard popup draws beside an entry's key, or null for none: the entry's icon when `known` says Obsidian has it, so an entry with no icon or an unknown one is drawn as before. */
+export function entryPopupIcon(entry: GroupEntry, known: (id: string) => boolean): string | null {
+	return shownIcon(entry.node.icon ?? null, known);
+}
+
+/** An entry's key as the grid and the dial write it ("f", "Ctrl+J"), or "" for an entry with no key. */
+export function entryKeyGlyph(entry: GroupEntry): string {
+	return entry.key === null ? "" : keyGlyph(entry.key);
+}
+
+/** An entry's key as the tree editor and the settings write it ("f", "C-j"), or "No key" for an entry with no key. */
+export function entryKeyText(entry: GroupEntry): string {
+	return entry.key === null ? "No key" : entry.rawKey;
 }
 
 function kindOrder(entry: GroupEntry): number {
@@ -35,7 +63,8 @@ export function sortEntries(group: GroupNode): GroupEntry[] {
 export function entryLabel(entry: GroupEntry, resolveCommandName?: (id: string) => string | undefined): string {
 	const { node } = entry;
 	if (node.kind === "group") {
-		return node.title ?? node.description ?? entry.rawKey;
+		// A keyless entry's token ("nokey1") is bookkeeping, not a name: its icon is the nearest thing it has.
+		return node.title ?? node.description ?? (isKeylessId(entry.rawKey) ? (node.icon ?? "Untitled group") : entry.rawKey);
 	}
 	if (node.kind === "command") {
 		return node.description ?? resolveCommandName?.(node.command) ?? node.command;

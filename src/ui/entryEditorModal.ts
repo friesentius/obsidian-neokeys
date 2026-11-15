@@ -1,6 +1,9 @@
-import { App, ButtonComponent, ExtraButtonComponent, getIcon, Modal, Scope, setIcon, Setting } from "obsidian";
+import { App, ButtonComponent, ExtraButtonComponent, getIcon, Modal, Platform, Scope, setIcon, Setting } from "obsidian";
 import type { EntryDraft, EntryKind } from "../entryDraft";
+import { deviceFromPlatform, hasKeyField, iconDescription, keyDescription, keyIsOptional, validateKeyAndIcon, type EntryDevice } from "../entryValidation";
 import { keyFromEvent, keyToString } from "../keys";
+import { isKeylessId } from "../keyless";
+import { keyFromTyped } from "../typedKey";
 import { CommandPickerModal } from "./commandPickerModal";
 import { IconPickerModal } from "./iconPickerModal";
 import { getCommandName } from "../obsidianCommands";
@@ -25,7 +28,10 @@ export class EntryEditorModal extends Modal {
 	private file = "";
 	private errorEl: HTMLElement | null = null;
 	private buttonContainerEl!: HTMLElement;
-	private keyDisplayEl!: HTMLElement;
+	private keyDisplayEl: HTMLElement | null = null;
+	private keyInputEl: HTMLInputElement | null = null;
+	/** Which kind of device the form is on, read when it opens: what the key and icon rows offer and require depends on it. */
+	private device: EntryDevice = "desktop";
 	private stopRecording: (() => void) | null = null;
 
 	constructor(
@@ -37,7 +43,8 @@ export class EntryEditorModal extends Modal {
 	) {
 		super(app);
 		this.kind = initial?.node.kind ?? "command";
-		this.rawKey = initial?.rawKey ?? "";
+		// An item with no key is stored under a bookkeeping token; the form shows it as an empty key.
+		this.rawKey = initial === null || isKeylessId(initial.rawKey) ? "" : initial.rawKey;
 		this.icon = initial?.node.icon ?? "";
 		if (initial?.node.kind === "group") {
 			this.title = initial.node.title ?? "";
@@ -53,6 +60,7 @@ export class EntryEditorModal extends Modal {
 	}
 
 	onOpen(): void {
+		this.device = deviceFromPlatform(Platform);
 		this.modalEl.addClass("neokeys-entry-editor");
 		this.titleEl.setText(this.heading);
 		this.render();
@@ -64,6 +72,7 @@ export class EntryEditorModal extends Modal {
 	}
 
 	private render(): void {
+		this.syncKeyFromField();
 		const { contentEl } = this;
 		contentEl.empty();
 		this.errorEl = null;
@@ -85,14 +94,7 @@ export class EntryEditorModal extends Modal {
 				}),
 		);
 
-		const keySetting = new Setting(contentEl)
-			.setName("Key")
-			.setDesc("A single key, with optional Ctrl/Shift/Alt/Cmd.");
-		this.keyDisplayEl = keySetting.controlEl.createSpan({
-			cls: "neokeys-entry-key-display",
-			text: this.rawKey || "Not set",
-		});
-		keySetting.addButton((button) => button.setButtonText("Record key").onClick(() => this.startRecording(button)));
+		this.renderKeySetting(contentEl);
 
 		this.renderIconSetting(contentEl);
 
@@ -146,6 +148,74 @@ export class EntryEditorModal extends Modal {
 			.onClick(() => this.submit());
 	}
 
+	/**
+	 * The key row. Every device but a desktop gets a text field: tapping it opens the on-screen
+	 * keyboard and the typed character is the key, which "Record key" cannot do since a phone gives
+	 * nothing the recorder's scope could focus. Every device keeps "Record key" for a hardware
+	 * keyboard, since whether a phone or tablet has one cannot be told reliably.
+	 */
+	private renderKeySetting(contentEl: HTMLElement): void {
+		this.keyDisplayEl = null;
+		this.keyInputEl = null;
+		const keySetting = new Setting(contentEl).setName("Key");
+		keySetting.setDesc(keyDescription(this.device));
+
+		if (hasKeyField(this.device)) {
+			keySetting.addText((text) => {
+				const input = text.inputEl;
+				this.keyInputEl = input;
+				input.addClass("neokeys-entry-key-input");
+				input.setAttribute("aria-label", "Key");
+				// Case is part of a key ("F" is Shift+F) and a key is not a word: keep the keyboard from fixing either.
+				input.setAttribute("autocapitalize", "off");
+				input.setAttribute("autocorrect", "off");
+				input.setAttribute("autocomplete", "off");
+				input.setAttribute("spellcheck", "false");
+				input.setAttribute("enterkeyhint", "done");
+				text.setPlaceholder(keyIsOptional(this.device) ? "Key (optional)" : "Key").setValue(this.rawKey);
+				input.addEventListener("focus", () => input.select());
+				// The key is read from what the field's text did, not from keydown, which a soft keyboard does not send dependably.
+				input.addEventListener("input", (evt) => {
+					if (!(evt as InputEvent).isComposing) this.readTypedKey(evt as InputEvent);
+				});
+				input.addEventListener("compositionend", () => this.readTypedKey(null));
+				// A predictive keyboard may still be composing when the user moves on: take what the field shows then.
+				input.addEventListener("blur", () => this.syncKeyFromField());
+			});
+		} else {
+			this.keyDisplayEl = keySetting.controlEl.createSpan({
+				cls: "neokeys-entry-key-display",
+				text: this.rawKey || "Not set",
+			});
+		}
+
+		keySetting.addButton((button) => button.setButtonText("Record key").onClick(() => this.startRecording(button)));
+	}
+
+	/** Takes the key from the field after a change to it, then shows the key in the field's own form ("space" for a typed space). */
+	private readTypedKey(evt: InputEvent | null): void {
+		const input = this.keyInputEl;
+		if (!input) return;
+		const typed = keyFromTyped(evt?.inputType ?? "insertText", evt?.data ?? null, input.value);
+		if (typed !== null) this.rawKey = typed;
+		input.value = this.rawKey;
+		if (typed !== null && typed !== "") input.select();
+	}
+
+	/**
+	 * Takes the key from the field if it shows something other than the key held: a keyboard that is
+	 * mid-composition (Android's, say) has not sent its final input yet when a button is tapped.
+	 */
+	private syncKeyFromField(): void {
+		if (this.keyInputEl && this.keyInputEl.value !== this.rawKey) this.readTypedKey(null);
+	}
+
+	/** Shows the current key in whichever control the form has for it. */
+	private showKey(): void {
+		this.keyDisplayEl?.setText(this.rawKey || "Not set");
+		if (this.keyInputEl) this.keyInputEl.value = this.rawKey;
+	}
+
 	/** The icon row: its picture and name, a picker over Obsidian's icons, and a clear button. */
 	private renderIconSetting(contentEl: HTMLElement): void {
 		const known = this.icon === "" || getIcon(this.icon) !== null;
@@ -153,7 +223,7 @@ export class EntryEditorModal extends Modal {
 			.setName("Icon")
 			.setDesc(
 				known
-					? "Shown on the mobile dial's circle in place of the key (the key still shows in the pill and descriptions). Optional."
+					? iconDescription(this.device)
 					: "Obsidian has no icon with this name, so the mobile dial shows the key instead. Pick another, or clear it.",
 			);
 		const pictureEl = setting.controlEl.createSpan({ cls: "neokeys-entry-icon-picture" });
@@ -209,7 +279,7 @@ export class EntryEditorModal extends Modal {
 			const key = keyFromEvent(evt);
 			this.cancelRecording();
 			this.rawKey = keyToString(key);
-			this.keyDisplayEl.setText(this.rawKey);
+			this.showKey();
 			return false;
 		});
 		this.app.keymap.pushScope(scope);
@@ -226,8 +296,10 @@ export class EntryEditorModal extends Modal {
 	}
 
 	private submit(): void {
-		if (this.rawKey.trim().length === 0) {
-			this.showError("Set a key first.");
+		this.syncKeyFromField();
+		const keyError = validateKeyAndIcon(this.device, this.rawKey, this.icon);
+		if (keyError !== null) {
+			this.showError(keyError);
 			return;
 		}
 		if (this.kind === "command" && this.command.trim().length === 0) {

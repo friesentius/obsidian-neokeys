@@ -1,6 +1,6 @@
 import { parseKeyString } from "../src/keys";
 import { parseKeymapSource } from "../src/keymap";
-import { breadcrumbTrail, entryLabel, findEntry, sortEntries } from "../src/tree";
+import { breadcrumbTrail, entryLabel, entryPopupIcon, findEntry, sortEntries } from "../src/tree";
 import { moveEntry } from "../src/treeOps";
 import type { GroupNode } from "../src/types";
 
@@ -115,5 +115,22 @@ items:
 		const file = findEntry(root, parseKeyString("f"))!.node as GroupNode;
 		const orphan: GroupNode = { kind: "group", entries: [] };
 		expect(breadcrumbTrail([root, file, orphan])).toEqual(["File", "?"]);
+	});
+});
+
+describe("entryPopupIcon", () => {
+	const known = (id: string) => id === "star" || id === "folder";
+	const root = parseKeymapSource("items:\n  a:\n    command: editor:toggle-bold\n    icon: star\n  b: editor:toggle-italics\n  c:\n    command: editor:toggle-code\n    icon: not-an-icon\n  g:\n    title: Group\n    icon: folder\n    items:\n      x: file-explorer:new-file\n");
+
+	it("gives the popup an entry's icon beside its key, for a command and for a group", () => {
+		const byKey = (key: string) => root.entries.find((e) => e.rawKey === key)!;
+		expect(entryPopupIcon(byKey("a"), known)).toBe("star");
+		expect(entryPopupIcon(byKey("g"), known)).toBe("folder");
+	});
+
+	it("leaves an entry with no icon, or one Obsidian does not know, as it was", () => {
+		const byKey = (key: string) => root.entries.find((e) => e.rawKey === key)!;
+		expect(entryPopupIcon(byKey("b"), known)).toBeNull();
+		expect(entryPopupIcon(byKey("c"), known)).toBeNull();
 	});
 });

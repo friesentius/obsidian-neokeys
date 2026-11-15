@@ -1,7 +1,8 @@
-import { App, ButtonComponent, ExtraButtonComponent, getIcon, setIcon } from "obsidian";
+import { App, ButtonComponent, ExtraButtonComponent, getIcon, Platform, setIcon } from "obsidian";
 import { nodeFromDraft } from "../entryDraft";
+import { deviceFromPlatform, entryNeeds } from "../entryValidation";
 import { getCommandName, hasCommand } from "../obsidianCommands";
-import { entryLabel } from "../tree";
+import { entryKeyText, entryLabel } from "../tree";
 import {
 	addEntry,
 	countEntries,
@@ -120,7 +121,10 @@ export class TreeEditorView {
 				});
 		}
 
-		row.createSpan({ cls: "neokeys-tree-key", text: entry.rawKey });
+		// An entry with no key (made on a phone) shows "No key" where the key goes, and a note when this device needs one.
+		const keyless = entry.key === null;
+		row.createSpan({ cls: "neokeys-tree-key" + (keyless ? " neokeys-tree-key-none" : ""), text: entryKeyText(entry) });
+		const needs = entryNeeds(deviceFromPlatform(Platform), !keyless, entry.node.icon);
 		// An entry's icon, small, before its name: the dial shows it in place of the key.
 		if (entry.node.icon !== undefined && getIcon(entry.node.icon) !== null) {
 			setIcon(row.createSpan({ cls: "neokeys-tree-icon", attr: { "aria-label": `Icon: ${entry.node.icon}` } }), entry.node.icon);
@@ -130,6 +134,7 @@ export class TreeEditorView {
 			text: label,
 		});
 		if (invalid) row.createSpan({ cls: "neokeys-invalid-badge", text: "Unknown command" });
+		if (needs !== null) row.createSpan({ cls: "neokeys-invalid-badge", text: needs });
 
 		const controls = row.createDiv({ cls: "neokeys-tree-row-controls" });
 		new ExtraButtonComponent(controls)
@@ -173,7 +178,7 @@ export class TreeEditorView {
 		}
 		const count = countEntries(entry.node);
 		const items = count === 1 ? "1 item" : `${count} items`;
-		const name = entry.node.title ? `"${entry.rawKey}" (${entry.node.title})` : `"${entry.rawKey}"`;
+		const name = entry.key === null ? `"${entryLabel(entry)}"` : entry.node.title ? `"${entry.rawKey}" (${entry.node.title})` : `"${entry.rawKey}"`;
 		openModalInWindow(
 			new ConfirmDeleteModal(
 				this.app,

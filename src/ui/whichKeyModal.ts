@@ -1,9 +1,9 @@
-import { App, Modal, Notice } from "obsidian";
+import { App, getIcon, Modal, Notice, setIcon } from "obsidian";
 import { ShowDelayGate } from "../delay";
-import { keyFromEvent, keyGlyph } from "../keys";
+import { keyFromEvent } from "../keys";
 import { commandUnavailableMessage } from "../messages";
 import { getCommandName, hasCommand } from "../obsidianCommands";
-import { breadcrumbTrail, entryLabel, findEntry, sortEntries } from "../tree";
+import { breadcrumbTrail, entryKeyGlyph, entryLabel, entryPopupIcon, findEntry, keyedEntries, keylessGroupNote, sortEntries } from "../tree";
 import type { GroupNode } from "../types";
 
 export interface WhichKeyCallbacks {
@@ -93,12 +93,21 @@ export class WhichKeyModal extends Modal {
 		});
 
 		this.gridEl.empty();
-		for (const entry of sortEntries(group)) {
+		// A keyless entry (made on a phone) has no key to press, so the keyboard popup leaves it out.
+		const shown = keyedEntries(sortEntries(group));
+		const iconOf = (entry: (typeof shown)[number]) => entryPopupIcon(entry, (id) => getIcon(id) !== null);
+		// When any entry in the group has an icon, an entry without one gets an empty slot of the same size so the labels line up.
+		const anyIcon = shown.some((entry) => iconOf(entry) !== null);
+		for (const entry of shown) {
 			const invalid = entry.node.kind === "command" && !hasCommand(this.app, entry.node.command);
 			const row = this.gridEl.createDiv({
 				cls: `neokeys-row neokeys-row-${entry.node.kind}${invalid ? " neokeys-row-invalid" : ""}`,
 			});
-			row.createSpan({ text: keyGlyph(entry.key), cls: "neokeys-key" });
+			row.createSpan({ text: entryKeyGlyph(entry), cls: "neokeys-key" });
+			// An entry's icon sits right after its key.
+			const icon = iconOf(entry);
+			if (icon !== null) setIcon(row.createSpan({ cls: "neokeys-icon", attr: { "aria-hidden": "true" } }), icon);
+			else if (anyIcon) row.createSpan({ cls: "neokeys-icon neokeys-icon-empty", attr: { "aria-hidden": "true" } });
 			const label = entryLabel(entry, (id) => getCommandName(this.app, id));
 			row.createSpan({
 				text: entry.node.kind === "group" ? `+${label}` : label,
@@ -108,6 +117,8 @@ export class WhichKeyModal extends Modal {
 				row.createSpan({ text: "Unknown command", cls: "neokeys-invalid-badge" });
 			}
 		}
+		const note = keylessGroupNote(group.entries);
+		if (note) this.gridEl.createDiv({ text: note, cls: "neokeys-keyless-note" });
 	}
 
 	/**

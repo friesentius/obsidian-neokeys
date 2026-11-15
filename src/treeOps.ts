@@ -1,5 +1,6 @@
 import { KeyParseError, parseKeyString } from "./keys";
-import type { GroupNode, KeymapNode } from "./types";
+import { isKeylessId, nextKeylessId } from "./keyless";
+import type { GroupEntry, GroupNode, KeymapNode } from "./types";
 
 export type TreeOpResult = { ok: true; root: GroupNode } | { ok: false; error: string };
 
@@ -79,25 +80,58 @@ function checkKeyAvailable(
 	return null;
 }
 
-/** Add a new entry (group, command, or file node) as the last child of the group at `path`. */
+/**
+ * The entry that `rawKey` stands for in `group`: a keyed one after the usual availability and
+ * parse checks, or, for an empty `rawKey`, a keyless one (made on a phone). A keyless entry is
+ * stored under a `nokeyN` token (see keyless.ts) - `keep`, when it already had one, else a fresh
+ * one - and must have an icon, since the icon is all that names it on the dial.
+ */
+function resolveEntryKey(
+	group: GroupNode,
+	rawKey: string,
+	node: KeymapNode,
+	skipIndex: number | null,
+	keep: string | null,
+): { error: string } | Pick<GroupEntry, "rawKey" | "key"> {
+	if (rawKey === "") {
+		if (node.icon === undefined || node.icon.length === 0) {
+			return { error: "An item with no key needs an icon" };
+		}
+		if (keep !== null && isKeylessId(keep)) return { rawKey: keep, key: null };
+		const taken = group.entries.filter((_, i) => i !== skipIndex).map((e) => e.rawKey);
+		return { rawKey: nextKeylessId(taken), key: null };
+	}
+
+	if (isKeylessId(rawKey)) {
+		return { error: `"${rawKey}" is reserved for items with no key; leave the key empty instead` };
+	}
+	const conflict = checkKeyAvailable(group, rawKey, skipIndex);
+	if (conflict) return conflict;
+	try {
+		return { rawKey, key: parseKeyString(rawKey) };
+	} catch (e) {
+		if (e instanceof KeyParseError) return { error: e.message };
+		throw e;
+	}
+}
+
+/**
+ * Add a new entry (group, command, or file node) as the last child of the group at `path`. An
+ * empty `rawKey` adds a keyless entry, which needs an icon on `node`.
+ */
 export function addEntry(root: GroupNode, path: string[], rawKey: string, node: KeymapNode): TreeOpResult {
 	return replaceGroupAtPath(root, path, (group) => {
-		const conflict = checkKeyAvailable(group, rawKey, null);
-		if (conflict) return conflict;
-
-		let key;
-		try {
-			key = parseKeyString(rawKey);
-		} catch (e) {
-			if (e instanceof KeyParseError) return { error: e.message };
-			throw e;
-		}
-
-		return { ...group, entries: [...group.entries, { rawKey, key, node }] };
+		const resolved = resolveEntryKey(group, rawKey, node, null, null);
+		if ("error" in resolved) return resolved;
+		return { ...group, entries: [...group.entries, { ...resolved, node }] };
 	});
 }
 
-/** Replace the entry `oldRawKey` in the group at `path` with a new key and/or node, in place. */
+/**
+ * Replace the entry `oldRawKey` in the group at `path` with a new key and/or node, in place. An
+ * empty `newRawKey` makes the entry keyless (it needs an icon on `node`), keeping its token when
+ * it already was.
+ */
 export function updateEntry(
 	root: GroupNode,
 	path: string[],
@@ -109,19 +143,11 @@ export function updateEntry(
 		const index = group.entries.findIndex((e) => e.rawKey === oldRawKey);
 		if (index === -1) return { error: `No entry "${oldRawKey}" in this group` };
 
-		const conflict = checkKeyAvailable(group, newRawKey, index);
-		if (conflict) return conflict;
-
-		let key;
-		try {
-			key = parseKeyString(newRawKey);
-		} catch (e) {
-			if (e instanceof KeyParseError) return { error: e.message };
-			throw e;
-		}
+		const resolved = resolveEntryKey(group, newRawKey, node, index, oldRawKey);
+		if ("error" in resolved) return resolved;
 
 		const entries = [...group.entries];
-		entries[index] = { rawKey: newRawKey, key, node };
+		entries[index] = { ...resolved, node };
 		return { ...group, entries };
 	});
 }

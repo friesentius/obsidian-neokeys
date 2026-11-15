@@ -1,6 +1,6 @@
-import { keyFromEvent, keyGlyph, type KeyboardEventLike } from "../keys";
+import { keyFromEvent, type KeyboardEventLike } from "../keys";
 import { commandUnavailableMessage, dialEmptyMessage } from "../messages";
-import { breadcrumbTrail, entryLabel, findEntry, sortEntries } from "../tree";
+import { breadcrumbTrail, entryKeyGlyph, entryLabel, findEntry, sortEntries } from "../tree";
 import type { GroupEntry, GroupNode } from "../types";
 import {
 	chooseMode,
@@ -42,7 +42,7 @@ export type DialItemKind = "group" | "command" | "file";
 
 export interface DialItemView {
 	kind: DialItemKind;
-	/** The key glyph shown on the item (and in the pill, card and bubble when the item has an icon, which replaces it on the circle). */
+	/** The key glyph shown on the item (and in the pill, card and bubble when the item has an icon, which replaces it on the circle); empty for an item with no key. */
 	key: string;
 	/** The item's icon id from the keymap, shown on the circle instead of the key; null when it has none. */
 	icon: string | null;
@@ -628,7 +628,7 @@ export class DialController {
 	private groupDescription(group: GroupNode): string {
 		if (group.description) return group.description;
 		return this.visibleEntries(group)
-			.map((entry) => `${keyGlyph(entry.key)} ${entryLabel(entry, (id) => this.host.resolveCommandName(id))}`)
+			.map((entry) => `${entryKeyGlyph(entry)} ${entryLabel(entry, (id) => this.host.resolveCommandName(id))}`.trim())
 			.join(" · ");
 	}
 
@@ -666,7 +666,7 @@ export class DialController {
 		const position = this.geometry ? slotPosition(this.slots[index], this.geometry, this.rings) : { x: 0, y: 0 };
 		return {
 			kind: target.entry.node.kind,
-			key: keyGlyph(target.entry.key),
+			key: entryKeyGlyph(target.entry),
 			icon: target.entry.node.icon ?? null,
 			label: this.targetLabel(target),
 			identity: target.entry,
@@ -688,7 +688,7 @@ export class DialController {
 		const waiting = open && target.level + 1 >= this.from + this.rings.length;
 		return {
 			kind: node.kind,
-			key: keyGlyph(target.entry.key),
+			key: entryKeyGlyph(target.entry),
 			icon: node.icon ?? null,
 			label: this.targetLabel(target),
 			open,
