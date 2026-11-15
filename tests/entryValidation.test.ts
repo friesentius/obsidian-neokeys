@@ -2,6 +2,7 @@ import {
 	deviceFromPlatform,
 	entryNeeds,
 	hasKeyField,
+	iconDescription,
 	keyDescription,
 	keyIsOptional,
 	validateKeyAndIcon,
@@ -64,17 +65,21 @@ describe("entryNeeds: the tree editor's note on an existing entry", () => {
 });
 
 describe("keyDescription", () => {
-	it("tells a phone that a key labels the circle, works with an attached keyboard and is mainly kept for desktop and tablet", () => {
-		const text = keyDescription("phone");
-		expect(text).toMatch(/^Optional on phones/);
-		expect(text).toMatch(/only labels the circle \(when there is no icon\)/);
-		expect(text).toMatch(/works with an attached keyboard/);
-		expect(text).not.toMatch(/does nothing/);
-		expect(text).toMatch(/mainly kept for your desktop and tablet leader keys after sync/);
+	it("says on a phone that the key is optional with an icon and used by desktop leader keys after sync", () => {
+		expect(keyDescription("phone")).toBe("Optional if you pick an icon. Used by your desktop leader keys after sync.");
 	});
 
-	it("does not call the key optional on a tablet or desktop", () => {
-		expect(keyDescription("tablet")).not.toMatch(/optional on phones/i);
-		expect(keyDescription("desktop")).not.toMatch(/optional on phones/i);
+	it.each(["tablet", "desktop"] as const)("gives a %s the single-key text", (device) => {
+		expect(keyDescription(device)).toBe("A single key, with optional Ctrl/Shift/Alt/Cmd.");
+	});
+});
+
+describe("iconDescription", () => {
+	it("tells a phone the icon replaces the key on the dial and that a key, an icon or both will do", () => {
+		expect(iconDescription("phone")).toBe("Shows on the dial instead of the key. Pick a key, an icon, or both.");
+	});
+
+	it.each(["tablet", "desktop"] as const)("tells a %s the icon is optional and where it shows", (device) => {
+		expect(iconDescription(device)).toBe("Optional. Shows in the whichkey menu and on the radial menu on mobile.");
 	});
 });

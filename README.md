@@ -107,19 +107,23 @@ show a heading for the section you're in. Every entry under `items` is one of:
 
 Any of the three can also carry an optional `icon`: the id of one of Obsidian's icons
 (e.g. `icon: folder` or `icon: lucide-file-plus`). The mobile dial draws it on the item's circle in
-place of the key, and the tree editor shows it beside the entry; the key still shows in the pill
-and in the which-key popup, and an item with no `icon` is unchanged. The **Edit** dialog has an
+place of the key, and the tree editor shows it beside the entry. The which-key popup on desktop
+draws it right after the entry's key; the key still shows in the dial's pill, and an item with no
+`icon` is unchanged. The **Edit** dialog has an
 **Icon** field with a searchable picker of every icon Obsidian ships, and a clear button. An icon
 id Obsidian does not know is kept as written (a plugin's icon may simply not be loaded) and the
 circle falls back to the key. Keymaps written before `icon` existed load unchanged.
 
+![Which-key popup with icons beside the keys, dark theme](docs/screenshots/key-entry/desktop-popup-icons-dark.png)
+
+![Which-key popup with icons beside the keys, light theme](docs/screenshots/key-entry/desktop-popup-icons-light.png)
+
 #### Items with no key
 
 A phone has no hotkeys, and on the dial the key only labels a circle, so on a phone an item needs
-**a key or an icon** (either one is enough). On a phone a key only labels the circle (when the item
-has no icon) and works with an attached keyboard; it is mainly kept so the same item has its leader
-key on your desktop and tablet after the keymap syncs (the **Key** field in the dialog says so). An
-item saved with an icon and no key is stored in the YAML under a placeholder id, `nokey1`, `nokey2`,
+**a key or an icon** (either one is enough). The **Key** field on a phone says "Optional if you pick
+an icon. Used by your desktop leader keys after sync": the key is kept so the same item has its
+leader key on your desktop and tablet after the keymap syncs. An item saved with an icon and no key is stored in the YAML under a placeholder id, `nokey1`, `nokey2`,
 and so on, since a keymap names its items by key:
 
 ```yaml
@@ -362,6 +366,12 @@ key is read from what you typed, not from key events, which soft keyboards do no
 **Record key** stays next to the box on a phone and a tablet alike, for a hardware keyboard, which
 can record a key with Ctrl, Alt or Cmd (whether one is attached cannot be told reliably). A key
 already used by a sibling in the same group is still refused, everywhere.
+
+The help text under each field follows the device. **Key**: on a phone, "Optional if you pick an
+icon. Used by your desktop leader keys after sync."; on a tablet and a desktop, "A single key, with
+optional Ctrl/Shift/Alt/Cmd." **Icon**: on a phone, "Shows on the dial instead of the key. Pick a
+key, an icon, or both."; on a tablet and a desktop, "Optional. Shows in the whichkey menu and on the
+radial menu on mobile."
 
 ![Add item on a phone, a key typed into the Key box, dark theme](docs/screenshots/key-entry/phone-key-typed-keyboard-up-dark.png)
 

@@ -1,6 +1,6 @@
 import { App, ButtonComponent, ExtraButtonComponent, getIcon, Modal, Platform, Scope, setIcon, Setting } from "obsidian";
 import type { EntryDraft, EntryKind } from "../entryDraft";
-import { deviceFromPlatform, hasKeyField, keyDescription, keyIsOptional, validateKeyAndIcon, type EntryDevice } from "../entryValidation";
+import { deviceFromPlatform, hasKeyField, iconDescription, keyDescription, keyIsOptional, validateKeyAndIcon, type EntryDevice } from "../entryValidation";
 import { keyFromEvent, keyToString } from "../keys";
 import { isKeylessId } from "../keyless";
 import { keyFromTyped } from "../typedKey";
@@ -223,9 +223,7 @@ export class EntryEditorModal extends Modal {
 			.setName("Icon")
 			.setDesc(
 				known
-					? this.device === "phone"
-						? "Shown on the dial's circle in place of the key (the key still shows in the pill and descriptions). Needed when the item has no key."
-						: "Shown on the mobile dial's circle in place of the key (the key still shows in the pill and descriptions). Optional."
+					? iconDescription(this.device)
 					: "Obsidian has no icon with this name, so the mobile dial shows the key instead. Pick another, or clear it.",
 			);
 		const pictureEl = setting.controlEl.createSpan({ cls: "neokeys-entry-icon-picture" });

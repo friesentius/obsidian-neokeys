@@ -1,4 +1,5 @@
 import { keyGlyph, keysEqual } from "./keys";
+import { shownIcon } from "./icons";
 import { isKeylessId } from "./keyless";
 import type { GroupEntry, GroupNode, ParsedKey } from "./types";
 
@@ -16,6 +17,11 @@ export function keyedEntries(entries: GroupEntry[]): GroupEntry[] {
 export function keylessGroupNote(entries: GroupEntry[]): string | null {
 	if (entries.length === 0 || keyedEntries(entries).length > 0) return null;
 	return "These items have no key yet. Give them one in Settings → Neokeys.";
+}
+
+/** The icon the keyboard popup draws beside an entry's key, or null for none: the entry's icon when `known` says Obsidian has it, so an entry with no icon or an unknown one is drawn as before. */
+export function entryPopupIcon(entry: GroupEntry, known: (id: string) => boolean): string | null {
+	return shownIcon(entry.node.icon ?? null, known);
 }
 
 /** An entry's key as the grid and the dial write it ("f", "Ctrl+J"), or "" for an entry with no key. */

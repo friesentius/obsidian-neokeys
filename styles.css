@@ -147,6 +147,30 @@
 	flex-shrink: 0;
 }
 
+.neokeys-icon {
+	--icon-size: var(--icon-s);
+	display: inline-flex;
+	align-items: center;
+	flex-shrink: 0;
+	color: var(--text-muted);
+}
+
+.neokeys-icon-empty {
+	width: var(--icon-s);
+}
+
+.neokeys-row-group .neokeys-icon {
+	color: var(--text-accent);
+}
+
+.neokeys-row-file .neokeys-icon {
+	color: var(--text-success);
+}
+
+.neokeys-row-invalid .neokeys-icon {
+	color: var(--text-error);
+}
+
 .neokeys-label {
 	color: var(--text-normal);
 	overflow-wrap: break-word;

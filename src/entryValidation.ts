@@ -27,19 +27,16 @@ export function keyIsOptional(device: EntryDevice): boolean {
 	return device === "phone";
 }
 
-/**
- * The help text under the Key field. On a phone it says that a key only labels the dial's circle
- * (when the item has no icon) and works with an attached keyboard, and is mainly kept for the
- * desktop and tablet leader keys once the keymap syncs.
- */
+/** The help text under the Key field: a phone's key is optional with an icon and only matters once the keymap syncs to a desktop; a tablet and a desktop take a single key. */
 export function keyDescription(device: EntryDevice): string {
-	if (device === "phone") {
-		return "Optional on phones. On a phone a key only labels the circle (when there is no icon) and works with an attached keyboard; it is mainly kept for your desktop and tablet leader keys after sync. One character, typed or recorded from a hardware keyboard.";
-	}
-	if (device === "tablet") {
-		return "One character, typed on your keyboard, or a key with Ctrl/Shift/Alt/Cmd recorded from a hardware keyboard.";
-	}
+	if (device === "phone") return "Optional if you pick an icon. Used by your desktop leader keys after sync.";
 	return "A single key, with optional Ctrl/Shift/Alt/Cmd.";
+}
+
+/** The help text under the Icon field. */
+export function iconDescription(device: EntryDevice): string {
+	if (device === "phone") return "Shows on the dial instead of the key. Pick a key, an icon, or both.";
+	return "Optional. Shows in the whichkey menu and on the radial menu on mobile.";
 }
 
 /** The inline error for a key/icon pair, or null when the device accepts it. */
