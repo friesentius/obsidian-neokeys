@@ -131,7 +131,8 @@ key, and the tree editor shows **No key** in its place. A keymap with such items
 desktop without breaking anything. On a phone or tablet the item stays on the dial, drawn as its
 icon (or, if the icon is not one Obsidian knows, the first letter of its name). No keyboard can
 reach it: the leader sequence and the dial's hardware-keyboard path skip it, and the keyboard popup
-on desktop does not list it. The tree editor marks it **Needs a key** on a tablet or desktop, and
+on desktop does not list it. A group whose items all lack a key opens in that popup with a short note
+saying they have no key yet and can be given one in Settings → Neokeys. The tree editor marks it **Needs a key** on a tablet or desktop, and
 the **Edit** dialog there will not save it until it has one; on a phone it is fine as it is.
 Neokeys versions from before this one read the placeholder id as a key no keyboard has, so a
 keymap with such items still loads on a device that has not updated yet.

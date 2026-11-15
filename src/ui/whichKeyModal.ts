@@ -3,7 +3,7 @@ import { ShowDelayGate } from "../delay";
 import { keyFromEvent } from "../keys";
 import { commandUnavailableMessage } from "../messages";
 import { getCommandName, hasCommand } from "../obsidianCommands";
-import { breadcrumbTrail, entryKeyGlyph, entryLabel, findEntry, keyedEntries, sortEntries } from "../tree";
+import { breadcrumbTrail, entryKeyGlyph, entryLabel, findEntry, keyedEntries, keylessGroupNote, sortEntries } from "../tree";
 import type { GroupNode } from "../types";
 
 export interface WhichKeyCallbacks {
@@ -109,6 +109,8 @@ export class WhichKeyModal extends Modal {
 				row.createSpan({ text: "Unknown command", cls: "neokeys-invalid-badge" });
 			}
 		}
+		const note = keylessGroupNote(group.entries);
+		if (note) this.gridEl.createDiv({ text: note, cls: "neokeys-keyless-note" });
 	}
 
 	/**

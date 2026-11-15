@@ -2,7 +2,7 @@ import { parseKeymapSource } from "../src/keymap";
 import { serializeKeymap } from "../src/keymapSerialize";
 import { isKeylessId, nextKeylessId } from "../src/keyless";
 import { parseKeyString } from "../src/keys";
-import { entryKeyGlyph, entryLabel, findEntry, keyedEntries, sortEntries } from "../src/tree";
+import { entryKeyGlyph, entryLabel, findEntry, keyedEntries, keylessGroupNote, sortEntries } from "../src/tree";
 import { addEntry, getGroupAtPath, moveEntry, removeEntry, updateEntry } from "../src/treeOps";
 import type { CommandNode, GroupNode } from "../src/types";
 
@@ -93,6 +93,28 @@ describe("a keyless item on a device with a keyboard", () => {
 		const group = root();
 		expect(keyedEntries(sortEntries(group)).map((e) => e.rawKey)).toEqual(["f"]);
 		expect(sortEntries(group).map((e) => e.rawKey)).toEqual(["nokey2", "f", "nokey1"]);
+	});
+
+	it("explains, in place of an empty list, a group whose items all lack a key", () => {
+		const group = parseKeymapSource(`
+items:
+  g:
+    title: Phone only
+    items:
+      nokey1:
+        command: editor:toggle-bold
+        icon: bold
+      nokey2:
+        command: editor:toggle-italics
+        icon: italic
+`).entries[0].node as GroupNode;
+		expect(keyedEntries(sortEntries(group))).toEqual([]);
+		expect(keylessGroupNote(group.entries)).toBe("These items have no key yet. Give them one in Settings → Neokeys.");
+	});
+
+	it("adds no note to a group with a keyed item, or to an empty group", () => {
+		expect(keylessGroupNote(root().entries)).toBeNull();
+		expect(keylessGroupNote([])).toBeNull();
 	});
 
 	it("has no key glyph, and a label that is never its token", () => {

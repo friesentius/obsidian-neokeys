@@ -12,6 +12,12 @@ export function keyedEntries(entries: GroupEntry[]): GroupEntry[] {
 	return entries.filter((entry) => entry.key !== null);
 }
 
+/** The note the keyboard popup shows in place of an empty grid when a group has items but none of them has a key, or null when there is nothing to explain. */
+export function keylessGroupNote(entries: GroupEntry[]): string | null {
+	if (entries.length === 0 || keyedEntries(entries).length > 0) return null;
+	return "These items have no key yet. Give them one in Settings → Neokeys.";
+}
+
 /** An entry's key as the grid and the dial write it ("f", "Ctrl+J"), or "" for an entry with no key. */
 export function entryKeyGlyph(entry: GroupEntry): string {
 	return entry.key === null ? "" : keyGlyph(entry.key);
