@@ -38,9 +38,20 @@ function optionalString(value: unknown, path: string[], field: string): string |
 	return requireString(value, path, field);
 }
 
-const GROUP_KEYS = new Set(["title", "description", "items"]);
-const COMMAND_KEYS = new Set(["command", "description"]);
-const FILE_KEYS = new Set(["file", "description"]);
+const GROUP_KEYS = new Set(["title", "description", "icon", "items"]);
+const COMMAND_KEYS = new Set(["command", "description", "icon"]);
+const FILE_KEYS = new Set(["file", "description", "icon"]);
+
+/**
+ * An entry's optional icon: a string naming one of Obsidian's icons, trimmed, and absent when
+ * empty. Whether the name is one Obsidian knows is not checked here: the parser has no app to ask,
+ * a keymap written for a newer Obsidian (or a plugin's icon) must still load, and the dial falls
+ * back to the entry's key when the icon does not resolve.
+ */
+function optionalIcon(value: unknown, path: string[]): string | undefined {
+	const icon = optionalString(value, path, "icon")?.trim();
+	return icon === undefined || icon.length === 0 ? undefined : icon;
+}
 
 function checkUnknownKeys(obj: Map<unknown, unknown>, allowed: Set<string>, path: string[]): void {
 	for (const key of obj.keys()) {
@@ -95,16 +106,20 @@ function parseNode(value: unknown, path: string[]): KeymapNode {
 		checkUnknownKeys(value, COMMAND_KEYS, path);
 		const command = requireString(value.get("command"), path, "command");
 		const description = optionalString(value.get("description"), path, "description");
+		const icon = optionalIcon(value.get("icon"), path);
 		const node: CommandNode = { kind: "command", command };
 		if (description !== undefined) node.description = description;
+		if (icon !== undefined) node.icon = icon;
 		return node;
 	}
 
 	checkUnknownKeys(value, FILE_KEYS, path);
 	const file = requireString(value.get("file"), path, "file");
 	const description = optionalString(value.get("description"), path, "description");
+	const icon = optionalIcon(value.get("icon"), path);
 	const node: FileNode = { kind: "file", file };
 	if (description !== undefined) node.description = description;
+	if (icon !== undefined) node.icon = icon;
 	return node;
 }
 
@@ -117,6 +132,7 @@ export function parseGroup(value: unknown, path: string[] = []): GroupNode {
 
 	const title = optionalString(value.get("title"), path, "title");
 	const description = optionalString(value.get("description"), path, "description");
+	const icon = optionalIcon(value.get("icon"), path);
 	const items = value.get("items");
 
 	if (!isYamlMap(items)) {
@@ -159,6 +175,7 @@ export function parseGroup(value: unknown, path: string[] = []): GroupNode {
 	const group: GroupNode = { kind: "group", entries };
 	if (title !== undefined) group.title = title;
 	if (description !== undefined) group.description = description;
+	if (icon !== undefined) group.icon = icon;
 	return group;
 }
 

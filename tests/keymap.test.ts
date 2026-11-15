@@ -1,5 +1,6 @@
 import { KeymapParseError, parseKeymapSource } from "../src/keymap";
 import { DEFAULT_KEYMAP_YAML } from "../src/sampleKeymap";
+import type { CommandNode, FileNode, GroupNode } from "../src/types";
 
 describe("parseKeymapSource: valid input", () => {
 	it("parses the bundled default keymap without error", () => {
@@ -137,5 +138,60 @@ describe("parseKeymapSource: invalid input produces clear, located errors", () =
 
 	it("rejects a non-string title", () => {
 		expect(() => parseKeymapSource("title: 5\nitems: {}\n")).toThrow(/"title" must be a string/);
+	});
+});
+
+describe("parseKeymapSource: icons", () => {
+	const SOURCE = `
+items:
+  f:
+    title: File
+    icon: folder
+    items:
+      n:
+        command: file-explorer:new-file
+        description: New file
+        icon: file-plus
+      o:
+        file: Inbox/Today
+        icon: calendar
+      s: editor:save-file Save
+`;
+
+	it("reads an icon from a group, a command and a file, and none from the shorthand", () => {
+		const root = parseKeymapSource(SOURCE);
+		const file = root.entries[0].node;
+		if (file.kind !== "group") throw new Error("expected a group");
+		expect(file.icon).toBe("folder");
+		expect(file.entries.map((entry) => entry.node.icon)).toEqual(["file-plus", "calendar", undefined]);
+		expect(file.entries[0].node).toEqual({ kind: "command", command: "file-explorer:new-file", description: "New file", icon: "file-plus" });
+	});
+
+	it("loads an older keymap, written before icons existed, with no icon on any node", () => {
+		const walk = (node: GroupNode | CommandNode | FileNode): void => {
+			expect("icon" in node).toBe(false);
+			if (node.kind === "group") node.entries.forEach((entry) => walk(entry.node));
+		};
+		walk(parseKeymapSource(DEFAULT_KEYMAP_YAML));
+	});
+
+	it("trims the name and treats an empty one as no icon", () => {
+		const root = parseKeymapSource('items:\n  a:\n    command: x\n    icon: "  star  "\n  b:\n    command: y\n    icon: ""\n  c:\n    command: z\n    icon: "   "\n');
+		expect(root.entries.map((entry) => entry.node.icon)).toEqual(["star", undefined, undefined]);
+		expect("icon" in root.entries[1].node).toBe(false);
+	});
+
+	it("accepts a name Obsidian may not know: a keymap written for a newer Obsidian or a plugin's icon still loads", () => {
+		const root = parseKeymapSource("items:\n  a:\n    command: x\n    icon: some-plugin-icon-that-does-not-exist\n");
+		expect(root.entries[0].node.icon).toBe("some-plugin-icon-that-does-not-exist");
+	});
+
+	it("rejects an icon that is not a string, with the entry's place in the tree", () => {
+		expect(() => parseKeymapSource("items:\n  a:\n    command: x\n    icon: 5\n")).toThrow(/"icon" must be a string \(at items\.a\)/);
+		expect(() => parseKeymapSource("items:\n  g:\n    icon: [a]\n    items: {}\n")).toThrow(/"icon" must be a string/);
+	});
+
+	it("still rejects other unknown fields next to an icon", () => {
+		expect(() => parseKeymapSource("items:\n  a:\n    command: x\n    icon: star\n    colour: red\n")).toThrow(/Unknown field "colour"/);
 	});
 });

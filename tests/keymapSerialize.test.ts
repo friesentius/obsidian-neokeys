@@ -85,4 +85,36 @@ items:
 		const { root, reparsed } = roundTrip("items: {}\n");
 		expect(reparsed).toEqual(root);
 	});
+
+	it("round-trips icons on groups, commands and files, written after the description", () => {
+		const source = `
+title: Root
+items:
+  f:
+    title: File
+    description: File things
+    icon: folder
+    items:
+      n:
+        command: file-explorer:new-file
+        description: New file
+        icon: file-plus
+      o:
+        file: Inbox/Today
+        icon: calendar
+      s:
+        command: editor:save-file
+`;
+		const { root, serialized, reparsed } = roundTrip(source);
+		expect(reparsed).toEqual(root);
+		expect(serialized.indexOf("icon: folder")).toBeGreaterThan(serialized.indexOf("description: File things"));
+		expect(serialized.indexOf("icon: folder")).toBeLessThan(serialized.indexOf("items:\n      n:"));
+		expect(serialized.indexOf("icon: file-plus")).toBeGreaterThan(serialized.indexOf("description: New file"));
+	});
+
+	it("writes a node without an icon exactly as before, and no icon line at all", () => {
+		const root = parseKeymapSource("items:\n  n:\n    command: file-explorer:new-file\n    description: New file\n  w: workspace:new-tab\n");
+		expect(serializeKeymap(root)).toBe("items:\n  n:\n    command: file-explorer:new-file\n    description: New file\n  w:\n    command: workspace:new-tab\n");
+		expect(serializeKeymap(parseKeymapSource(DEFAULT_KEYMAP_YAML))).not.toContain("icon");
+	});
 });

@@ -18,6 +18,7 @@ import {
 	ringUnder,
 	slotPosition,
 	type DialArc,
+	type DialBounds,
 	type DialGeometry,
 	type DialLayoutMode,
 	type DialPoint,
@@ -41,8 +42,10 @@ export type DialItemKind = "group" | "command" | "file";
 
 export interface DialItemView {
 	kind: DialItemKind;
-	/** The key glyph shown on the item. */
+	/** The key glyph shown on the item (and in the pill, card and bubble when the item has an icon, which replaces it on the circle). */
 	key: string;
+	/** The item's icon id from the keymap, shown on the circle instead of the key; null when it has none. */
+	icon: string | null;
 	label: string;
 	/** What identifies the item across renders: its keymap entry. */
 	identity: GroupEntry;
@@ -55,6 +58,8 @@ export interface DialItemView {
 	size: number;
 	/** How far inside the lens the circle is, 0 to 1, so a grown circle is drawn above the ones it crowds. */
 	weight: number;
+	/** How much of the circle is there, 0 to 1: below 1 it is fading out (the far circles of a level too big for its ring while the lens is on it), drawn that transparent with `size` shrunk by as much, and at 0 it is gone: not drawn, not hit. */
+	presence: number;
 }
 
 export interface DialRingView {
@@ -71,6 +76,8 @@ export interface DialRingView {
 export interface DialArmedView {
 	kind: DialItemKind;
 	key: string;
+	/** The item's icon id from the keymap, which stands in for its key on its circle when Obsidian knows it (the pill then shows the key itself); null when it has none. */
+	icon: string | null;
 	label: string;
 	/** A group that is in the path: its ring is open outside its own, or waiting for the release to open. Its crumb is the last of the trail. */
 	open: boolean;
@@ -103,6 +110,8 @@ export interface DialView {
 	arcs: DialArc[];
 	/** Where the breadcrumb pill sits for this opening. */
 	mode: DialLayoutMode;
+	/** The rectangle every circle stays inside: the screen less the breadcrumb pill, and above whatever the anchor keeps clear of. Anything else drawn beside the rings stays inside it too. */
+	bounds: DialBounds;
 }
 
 /**
@@ -381,6 +390,7 @@ export class DialController {
 			rings: this.opened ? this.rings.map((ring, index) => this.ringView(ring, index)) : [],
 			arcs: this.opened && this.geometry ? ringArcs(this.geometry, this.rings, this.slots) : [],
 			mode: this.mode,
+			bounds: this.geometry?.bounds ?? { left: 0, top: 0, right: 0, bottom: 0 },
 		};
 	}
 
@@ -657,6 +667,7 @@ export class DialController {
 		return {
 			kind: target.entry.node.kind,
 			key: keyGlyph(target.entry.key),
+			icon: target.entry.node.icon ?? null,
 			label: this.targetLabel(target),
 			identity: target.entry,
 			armed: sameKey(this.keyOf(index), this.armed),
@@ -665,6 +676,7 @@ export class DialController {
 			y: position.y,
 			size: this.slots[index].size,
 			weight: this.slots[index].weight,
+			presence: this.slots[index].presence,
 		};
 	}
 
@@ -677,6 +689,7 @@ export class DialController {
 		return {
 			kind: node.kind,
 			key: keyGlyph(target.entry.key),
+			icon: node.icon ?? null,
 			label: this.targetLabel(target),
 			open,
 			waiting,

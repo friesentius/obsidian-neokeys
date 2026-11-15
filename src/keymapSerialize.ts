@@ -12,6 +12,7 @@ function nodeToYamlValue(node: KeymapNode): unknown {
 		map.set("file", node.file);
 	}
 	if (node.description !== undefined) map.set("description", node.description);
+	if (node.icon !== undefined) map.set("icon", node.icon);
 	return map;
 }
 
@@ -19,6 +20,7 @@ function groupToYamlValue(group: GroupNode): Map<string, unknown> {
 	const map = new Map<string, unknown>();
 	if (group.title !== undefined) map.set("title", group.title);
 	if (group.description !== undefined) map.set("description", group.description);
+	if (group.icon !== undefined) map.set("icon", group.icon);
 
 	const items = new Map<string, unknown>();
 	for (const entry of group.entries) {

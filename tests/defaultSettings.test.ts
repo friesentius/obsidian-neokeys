@@ -45,6 +45,10 @@ describe("resolveSettings", () => {
 		});
 	});
 
+	it("loads a file that still holds a dial setting no longer offered, leaving the offered ones as stored", () => {
+		expect(resolveSettings({ mobileDialItemSize: 48, mobileDialMinItemSize: 18 })).toMatchObject({ ...DIAL_DEFAULTS, mobileDialItemSize: 48 });
+	});
+
 	it("falls back to the defaults for hand-edited values it does not understand", () => {
 		expect(
 			resolveSettings({ mobileDialEnabled: "yes", mobileDialCorner: "top-left", mobileDialItemSize: "big", mobileDialDescription: "everywhere", mobileDialRadiusRule: "loose", mobileDialLensPeak: "huge", mobileDialRingAnimation: "sure", mobileDialRingAnimationStyle: "spin" }),

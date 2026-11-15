@@ -10,6 +10,7 @@ import {
 	setGroupMeta,
 	updateEntry,
 } from "../src/treeOps";
+import { nodeFromDraft, type EntryDraft } from "../src/entryDraft";
 import type { CommandNode, GroupNode } from "../src/types";
 
 const SOURCE = `
@@ -246,5 +247,54 @@ describe("countEntries", () => {
 
 	it("is zero for an empty group", () => {
 		expect(countEntries({ kind: "group", entries: [] })).toBe(0);
+	});
+});
+
+describe("icons through the editor's operations", () => {
+	const draft = (over: Partial<EntryDraft>): EntryDraft => ({ rawKey: "x", kind: "command", title: "", description: "", icon: "", command: "app:zoom", commandName: "", file: "", ...over });
+
+	it("nodeFromDraft writes an icon only when one is set, for every kind of entry", () => {
+		expect(nodeFromDraft(draft({ icon: "zoom-in" }), null)).toEqual({ kind: "command", command: "app:zoom", icon: "zoom-in" });
+		expect(nodeFromDraft(draft({}), null)).toEqual({ kind: "command", command: "app:zoom" });
+		expect(nodeFromDraft(draft({ kind: "file", file: "Inbox", icon: "inbox", description: "Inbox note" }), null)).toEqual({ kind: "file", file: "Inbox", description: "Inbox note", icon: "inbox" });
+		const group = root().entries[0].node;
+		if (group.kind !== "group") throw new Error("expected a group");
+		const made = nodeFromDraft(draft({ kind: "group", title: "File", icon: "folder" }), group.entries);
+		expect(made).toEqual({ kind: "group", title: "File", icon: "folder", entries: group.entries });
+		expect("icon" in nodeFromDraft(draft({ kind: "group", title: "File" }), group.entries)).toBe(false);
+	});
+
+	it("adds, edits, clears and keeps an icon through addEntry, updateEntry, moveEntry and setGroupMeta, and the YAML round-trips it", () => {
+		let current = root();
+		const added = addEntry(current, ["f"], "z", nodeFromDraft(draft({ rawKey: "z", icon: "zoom-in" }), null));
+		if (!added.ok) throw new Error(added.error);
+		current = added.root;
+		const reparsed = (): GroupNode => parseKeymapSource(serializeKeymap(current));
+		expect(getGroupAtPath(reparsed(), ["f"])?.entries.map((entry) => entry.node.icon)).toEqual([undefined, undefined, "zoom-in"]);
+
+		// Editing the group's own title (setGroupMeta) and moving a sibling keep the icon.
+		const meta = setGroupMeta(current, ["f"], { title: "Files" });
+		if (!meta.ok) throw new Error(meta.error);
+		const moved = moveEntry(meta.root, ["f"], "z", -1);
+		if (!moved.ok) throw new Error(moved.error);
+		current = moved.root;
+		expect(getGroupAtPath(reparsed(), ["f"])?.entries.map((entry) => `${entry.rawKey}:${entry.node.icon ?? "-"}`)).toEqual(["n:-", "z:zoom-in", "s:-"]);
+
+		// Changing the icon in the form replaces it; clearing it removes the line.
+		const changed = updateEntry(current, ["f"], "z", "z", nodeFromDraft(draft({ rawKey: "z", icon: "search" }), null));
+		if (!changed.ok) throw new Error(changed.error);
+		expect(getGroupAtPath(parseKeymapSource(serializeKeymap(changed.root)), ["f"])?.entries[1].node.icon).toBe("search");
+		const cleared = updateEntry(changed.root, ["f"], "z", "z", nodeFromDraft(draft({ rawKey: "z" }), null));
+		if (!cleared.ok) throw new Error(cleared.error);
+		expect(serializeKeymap(cleared.root)).not.toContain("icon");
+	});
+
+	it("keeps a group's icon when its title is edited from the form and its items are kept", () => {
+		const start = parseKeymapSource("items:\n  g:\n    title: Old\n    icon: folder\n    items:\n      a: app:zoom Zoom\n");
+		const group = start.entries[0].node;
+		if (group.kind !== "group") throw new Error("expected a group");
+		const result = updateEntry(start, [], "g", "g", nodeFromDraft(draft({ rawKey: "g", kind: "group", title: "New", icon: group.icon ?? "" }), group.entries));
+		if (!result.ok) throw new Error(result.error);
+		expect(serializeKeymap(result.root)).toBe("items:\n  g:\n    title: New\n    icon: folder\n    items:\n      a:\n        command: app:zoom\n        description: Zoom\n");
 	});
 });

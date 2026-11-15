@@ -1,5 +1,5 @@
 import { DialController, type DialHost } from "../src/dial/controller";
-import { BEAD_FLOOR, DEFAULT_RING_PARAMS, edgeRoom, LEAST_DIAL_ITEM_SIZE, peakSize, planRings, ringParamsFor, ringSlots, ringStep, slotPosition, TAP_FOCUS_BELOW, type DialGeometry } from "../src/dial/layout";
+import { BEAD_FLOOR, DEFAULT_RING_PARAMS, READABLE_SIZE, edgeRoom, LEAST_DIAL_ITEM_SIZE, peakSize, planRings, ringParamsFor, ringSlots, ringStep, slotPosition, TAP_FOCUS_BELOW, type DialGeometry } from "../src/dial/layout";
 import { parseKeymapSource } from "../src/keymap";
 
 const SOURCE = `
@@ -1043,14 +1043,20 @@ describe("DialController lens", () => {
 		controller.moveTo(itemAt(controller, "Window"));
 		const ring = controller.view().rings[1];
 		const sizes = ring.items.map((bead) => bead.size);
-		const grown = sizes.indexOf(Math.max(...sizes));
 		expect(Math.max(...sizes)).toBeGreaterThan(44);
-		expect(Math.abs(angleOf(ring.items[grown]) - angleOf(itemAt(controller, "Window")))).toBeLessThan(90 / 11);
+		// The finger's angle is within a circle's width of one of the two circles the lens grew most (the arc may shift a little to make room for them).
+		const finger = itemAt(controller, "Window");
+		const biggest = ring.items.map((bead) => bead).sort((a, b) => b.size - a.size).slice(0, 2);
+		const nearest = Math.min(...biggest.map((bead) => Math.abs(angleOf(bead) - angleOf(finger))));
+		expect(biggest[0].size).toBeGreaterThan(TAP_FOCUS_BELOW);
+		expect(nearest).toBeLessThan(90 / 11);
+		// The circles the lens does not reach, at the far end, shrink to the readable size and no further, or fade out instead: the farther from the finger, the smaller.
 		expect(sizes[11]).toBeLessThan(TAP_FOCUS_BELOW);
-		expect(sizes[11]).toBe(sizes[10]);
-		// Straight out from the finger, at its angle, is the grown bead.
-		controller.moveTo(polar(PHONE, 167, 30));
-		expect(controller.view().armed?.label).toBe(ring.items[grown].label);
+		expect(sizes[11]).toBeLessThanOrEqual(sizes[10]);
+		expect(sizes[11] === 0 || sizes[11] >= READABLE_SIZE).toBe(true);
+		// Straight out from the finger, at its angle, is one of the two grown beads.
+		controller.moveTo(polar(PHONE, 167, angleOf(finger)));
+		expect(biggest.map((bead) => bead.label)).toContain(controller.view().armed?.label);
 		expect(item(controller, "Window").size).toBeGreaterThan(56);
 		expect(item(controller, "Window").armed).toBe(false);
 	});
@@ -1090,7 +1096,7 @@ describe("DialController lens", () => {
 		const finger = itemAt(controller, "Window");
 		controller.moveTo(finger);
 		dragTo(controller, finger, "Split down");
-		expect(item(controller, "Split down").size).toBeGreaterThan(44);
+		expect(item(controller, "Split down").size).toBeGreaterThan(TAP_FOCUS_BELOW);
 		controller.moveTo(itemAt(controller, "File"));
 		expect(controller.view().rings[1].group.title).toBe("File");
 		controller.moveTo(itemAt(controller, "Window"));
@@ -1249,5 +1255,198 @@ describe("DialController descriptions", () => {
 		controller.release();
 		controller.pressAt(itemAt(controller, "Daily template"));
 		expect(controller.view().armed).toMatchObject({ kind: "file", label: "Daily template", description: "Templates/Daily" });
+	});
+});
+
+describe("DialController icons and bounds", () => {
+	const ICON_SOURCE = `
+items:
+  f:
+    title: File
+    icon: folder
+    items:
+      n:
+        command: file-explorer:new-file
+        icon: file-plus
+      o:
+        file: Inbox/Today
+        description: Today's inbox
+        icon: inbox
+  z: app:zoom Zoom
+`;
+
+	function iconSetup() {
+		const root = parseKeymapSource(ICON_SOURCE);
+		const { host } = makeHost();
+		host.resolveCommandName = (id) => (id === "file-explorer:new-file" ? "New file" : undefined);
+		const controller = new DialController(host, () => PHONE);
+		return { root, controller };
+	}
+
+	it("exposes each item's icon id, or null when it has none, so the dial can draw it instead of the key", () => {
+		const { root, controller } = iconSetup();
+		controller.open(root);
+		expect(item(controller, "File").icon).toBe("folder");
+		expect(item(controller, "Zoom").icon).toBeNull();
+		controller.pressAt(itemAt(controller, "File"));
+		controller.release();
+		expect(item(controller, "New file").icon).toBe("file-plus");
+		expect(item(controller, "Today's inbox").icon).toBe("inbox");
+		// The key stays on the item, which is what the pill shows beside an icon.
+		expect(item(controller, "New file").key).toBe("n");
+	});
+
+	it("exposes the armed item's icon, so the pill shows its key as a chip", () => {
+		const { root, controller } = iconSetup();
+		controller.open(root);
+		controller.pressAt(itemAt(controller, "File"));
+		controller.release();
+		controller.pressAt(itemAt(controller, "New file"));
+		expect(controller.view().armed).toMatchObject({ label: "New file", key: "n", icon: "file-plus" });
+		controller.cancelPress();
+		controller.pressAt(itemAt(controller, "Today's inbox"));
+		expect(controller.view().armed?.icon).toBe("inbox");
+	});
+
+	it("exposes the box the dial lays out in, so the description bubble can stay inside it", () => {
+		const { root, controller } = iconSetup();
+		expect(controller.view().bounds).toEqual({ left: 0, top: 0, right: 0, bottom: 0 });
+		controller.open(root);
+		expect(controller.view().bounds).toEqual(PHONE.bounds);
+	});
+});
+
+describe("DialController on a level too big for its ring", () => {
+	/** A root of `count` items on the first ring, which the 390x844 phone holds four of at full size. */
+	function crowdedRoot(count: number) {
+		const lines = Array.from({ length: count }, (_, i) => `  ${String.fromCharCode(97 + i)}: workspace:new-tab Item ${i + 1}`);
+		const root = parseKeymapSource(`items:\n${lines.join("\n")}\n`);
+		const { host, calls } = makeHost();
+		const controller = new DialController(host, () => PHONE);
+		return { root, controller, calls };
+	}
+
+	/** The finger on the first ring `degrees` into the sweep. */
+	const onRing = (degrees: number) => polar(PHONE, 97, degrees);
+	const DEGREES = Array.from({ length: 91 }, (_, i) => i);
+
+	it.each([[16], [24]])("%i root items: sweeping the finger along the ring from one end to the other and back arms every item, each a circle that shows its key, with no two drawn circles overlapping and the far ones gone from the view", (count) => {
+		const { root, controller } = crowdedRoot(count);
+		controller.pressAnchor(root);
+		const reached = new Set<string>();
+		const problems: string[] = [];
+		for (const degrees of [...DEGREES, ...[...DEGREES].reverse()]) {
+			controller.moveTo(onRing(degrees));
+			const view = controller.view();
+			const armed = view.armed;
+			if (!armed) {
+				problems.push(`at ${degrees}°: nothing armed`);
+				continue;
+			}
+			reached.add(armed.label);
+			if (armed.size < 18) problems.push(`at ${degrees}°: ${armed.label} is armed at ${armed.size.toFixed(1)}px, too small to show its key`);
+			const ring = view.rings[0].items;
+			const there = ring.filter((circle) => circle.presence > 0);
+			if (ring.find((circle) => circle.label === armed.label)!.presence < 0.5) problems.push(`at ${degrees}°: ${armed.label} is armed though mostly gone`);
+			for (let i = 0; i < there.length && problems.length < 5; i++) {
+				for (let j = i + 1; j < there.length; j++) {
+					const distance = Math.hypot(there[i].x - there[j].x, there[i].y - there[j].y);
+					if (distance < (there[i].size + there[j].size) / 2 - 1e-6) problems.push(`at ${degrees}°: ${there[i].label} and ${there[j].label} overlap`);
+				}
+			}
+			if (ring.some((circle) => circle.presence === 0)) expect(ring.filter((circle) => circle.presence === 0).every((circle) => circle.size === 0)).toBe(true);
+		}
+		expect(problems.slice(0, 5)).toEqual([]);
+		expect(reached.size).toBe(count);
+	});
+
+	it("runs the item under the finger when it is let go at either end of the ring, the far end's circles being gone", () => {
+		const { root, controller, calls } = crowdedRoot(24);
+		controller.pressAnchor(root);
+		controller.moveTo(onRing(0));
+		expect(controller.view().armed?.label).toBe("Item 1");
+		controller.moveTo(onRing(90));
+		expect(controller.view().armed?.label).toBe("Item 24");
+		controller.release();
+		expect(calls.executed).toEqual(["workspace:new-tab"]);
+		// With the finger at the first end the last item is gone from the view; at rest nothing is.
+		const rest = crowdedRoot(24);
+		rest.controller.open(rest.root);
+		expect(rest.controller.view().rings[0].items.every((circle) => circle.presence === 1)).toBe(true);
+		const start = crowdedRoot(24);
+		start.controller.pressAnchor(start.root);
+		start.controller.moveTo(onRing(0));
+		const ring = start.controller.view().rings[0].items;
+		expect(ring[23].presence).toBe(0);
+		expect(ring[0].presence).toBe(1);
+		expect(ring[0].size).toBeGreaterThan(56);
+	});
+
+	it("a tap in the stretch of the ring where circles are gone runs nothing and brings the nearest circle that is there into the lens, so the window of circles moves toward the tap; a drag there reaches the end", () => {
+		const { root, controller, calls } = crowdedRoot(24);
+		controller.open(root);
+		const dot = controller.view().rings[0].items[11];
+		controller.pressAt({ x: dot.x, y: dot.y });
+		controller.release();
+		const lastThere = () => controller.view().rings[0].items.reduce((last, circle, i) => (circle.presence > 0 ? i : last), -1);
+		const before = lastThere();
+		expect(before).toBeLessThan(23);
+		// Tap where the last item sits at rest, which is out of reach now: the circle nearest it that is drawn is armed by the press and, being a dot, comes into the lens on the release.
+		controller.pressAt(onRing(89));
+		expect(controller.view().armed?.label).not.toBe("Item 24");
+		controller.release();
+		expect(calls.executed).toEqual([]);
+		expect(lastThere()).toBeGreaterThan(before);
+		// Sliding on from the press reaches the end item.
+		controller.pressAt(onRing(60));
+		for (let degrees = 60; degrees <= 90; degrees += 3) controller.moveTo(onRing(degrees));
+		expect(controller.view().armed?.label).toBe("Item 24");
+	});
+
+	it("as an inner ring, with a group of it open outside, a level too big for its ring still has every item reachable by sliding along it, from the group out to both ends; a flick straight into the gone stretch lands on a circle that is there, never on a gone one", () => {
+		const lines = Array.from({ length: 16 }, (_, i) =>
+			i === 7 ? "  h:\n    title: Group H\n    items:\n      x: workspace:new-tab Child X\n      y: workspace:new-tab Child Y" : `  ${String.fromCharCode(97 + i + (i > 7 ? 1 : 0))}: workspace:new-tab Item ${i + 1}`,
+		);
+		const root = parseKeymapSource(`items:\n${lines.join("\n")}\n`);
+		const controller = new DialController(makeHost().host, () => PHONE);
+		controller.pressAnchor(root);
+		// Open the group: slide along the ring until it is armed, then the ring outside it is there and the root ring is an inner one.
+		for (let degrees = 0; degrees <= 90 && controller.view().armed?.label !== "Group H"; degrees += 1) controller.moveTo(onRing(degrees));
+		expect(controller.view().armed?.label).toBe("Group H");
+		expect(controller.view().rings).toHaveLength(2);
+		const reached = new Set<string>();
+		for (const sweep of [DEGREES, [...DEGREES].reverse()]) {
+			for (const degrees of sweep) {
+				controller.moveTo(onRing(degrees));
+				const armed = controller.view().armed;
+				if (armed) reached.add(armed.label);
+			}
+		}
+		// Every item of the root level has been under the finger, from the group out to either end.
+		expect([...reached].filter((label) => label.startsWith("Item")).sort()).toEqual(Array.from({ length: 16 }, (_, i) => i + 1).filter((n) => n !== 8).map((n) => `Item ${n}`).sort());
+		// A flick from one end to the other lands on a circle that is drawn, never on a gone one.
+		for (const degrees of [88, 2, 88, 45, 2]) {
+			controller.moveTo(onRing(degrees));
+			const armed = controller.view().armed;
+			if (!armed) continue;
+			const circle = controller.view().rings[0].items.find((item) => item.label === armed.label) ?? controller.view().rings[1]?.items.find((item) => item.label === armed.label);
+			expect(circle?.presence ?? 1).toBeGreaterThanOrEqual(0.5);
+		}
+	});
+
+	it("a tap on a dot of a level too big for its ring brings it into the lens, where it is whole and shows its key, instead of running it; a second tap runs it", () => {
+		const { root, controller, calls } = crowdedRoot(16);
+		controller.open(root);
+		const dot = controller.view().rings[0].items[9];
+		expect(dot.size).toBeLessThan(TAP_FOCUS_BELOW);
+		controller.pressAt({ x: dot.x, y: dot.y });
+		controller.release();
+		expect(calls.executed).toEqual([]);
+		const lens = controller.view().rings[0].items[9];
+		expect(lens.presence).toBe(1);
+		expect(lens.size).toBeGreaterThan(56);
+		controller.pressAt({ x: lens.x, y: lens.y });
+		controller.release();
+		expect(calls.executed).toEqual(["workspace:new-tab"]);
 	});
 });
