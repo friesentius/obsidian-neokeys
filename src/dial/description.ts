@@ -210,8 +210,8 @@ export function placeBubble(
 
 /** The weight of the circles the bubble must not cover: the anchor, and the armed circle's neighbours on its ring, which the thumb moves on to next. */
 const WEIGHT_MUST_STAY = 2;
-/** The weight of any other circle that shows a key or icon: the bubble may cover it where that keeps the bubble beside the thumb, but it would rather not. */
-const WEIGHT_OTHER_KEY = 0.06;
+/** The weight of any other circle that shows a key or icon: the bubble may cover it where that keeps the bubble beside the thumb (more circles show a key now that a crowded ring keeps the ones beside the thumb readable), but it would rather not. */
+const WEIGHT_OTHER_KEY = 0.03;
 /** The weight of any other circle too small to show a key (a bead): there is nothing there to hide. */
 const WEIGHT_OTHER_DOT = 0.01;
 /** A circle less than this much there (see `DialItemView.presence`) is not counted: it is nearly gone. */

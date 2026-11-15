@@ -126,7 +126,7 @@ export const LENS_WIDTH = 1.5;
 /** Edge-to-edge gap kept between two circles that are both inside the lens. */
 const LENS_GAP = 4;
 
-/** The smallest a circle shrinks to on a ring that cannot hold its level at full size. Below DIAL_LEGIBLE_SIZE a circle is only a dot: it shows no key until the lens grows it. */
+/** The smallest a circle shrinks to at rest on a ring that cannot hold its level at full size. Below DIAL_LEGIBLE_SIZE a circle is only a dot: it shows no key until the lens grows it. */
 export const BEAD_FLOOR = 10;
 
 /** Edge-to-edge gap between circles on a crowded ring. */
@@ -144,14 +144,14 @@ const FALLOFF_SHAPE = 1.5;
 export const DIAL_LEGIBLE_SIZE = 18;
 
 /**
- * The size a circle half an item from the finger (the nearer of the two when the finger is
- * between them) is kept at least, on a ring too crowded to give the lens more: well above
- * DIAL_LEGIBLE_SIZE, so that the circle under the finger shows its key even where it is partly
- * faded out at an end of the sweep.
+ * The smallest a circle is while the finger is on a crowded ring and it is drawn at all: well
+ * above DIAL_LEGIBLE_SIZE, so that every circle beside the finger shows its key (or icon). A
+ * circle that cannot be that large for want of room is not shrunk to a blank dot but fades out
+ * (see `crowdedLayout`).
  */
-const FINGER_READABLE_SIZE = DIAL_LEGIBLE_SIZE + 6;
+export const READABLE_SIZE = DIAL_LEGIBLE_SIZE + 6;
 
-/** How far up toward the lens peak that circle half an item from the finger is kept, as a share of the way from BEAD_FLOOR, so the lens does not pulse as the finger passes from one circle to the next. */
+/** How far up toward the lens peak that circle half an item from the finger is kept, as a share of the way from READABLE_SIZE, so the lens does not pulse as the finger passes from one circle to the next. */
 const HALF_ITEM_SHARE = 0.35;
 
 /** How much a level may miss fitting its ring, in degrees of the sweep, before the shift that was fitting it has faded out altogether. */
@@ -368,13 +368,15 @@ export interface LensLayout {
  * A crowded ring, with a finger on it, has no room to spare, so the farther a circle is from
  * the finger the more it shrinks (see `crowdedLayout`): the circle under the finger grows to
  * the peak, and each circle past it is a constant fraction smaller than the one before, down to
- * BEAD_FLOOR, by as little as lets every circle fit on the ring's own radius without touching
- * its neighbours. The level still spans the whole sweep with the finger on the circle it grew.
- * A level too big even for that (every circle at the floor, the lens circle at its peak, does
- * not fit) loses the circles far from the finger instead: they fade out past the ends of the
- * sweep (`presences`, see `crowdedLayout`), so what is there never overlaps and the circle under
- * the finger keeps the lens. At rest nothing fades: a level with more circles than the ring
- * holds even at the floor size overlaps there, as it must.
+ * READABLE_SIZE (a key still reads there), by as little as lets every circle fit on the ring's
+ * own radius without touching its neighbours. The level still spans the whole sweep with the
+ * finger on the circle it grew. A level too big even for that (every circle at the readable
+ * size, the lens circle at its peak, does not fit) loses the circles far from the finger
+ * instead of drawing them as blank dots: they fade out past the ends of the sweep
+ * (`presences`, see `crowdedLayout`), so the circles beside the finger are always readable,
+ * what is there never overlaps and the circle under the finger keeps the lens. At rest nothing
+ * fades: a level with more circles than the ring holds even at the floor size overlaps there,
+ * as it must.
  */
 export function lensLayout(count: number, capacity: number, radius: number, params: DialRingParams, peak: number, focus: number | null, edgeRoom = Number.POSITIVE_INFINITY): LensLayout {
 	const full = params.itemSize;
@@ -517,16 +519,15 @@ function largest(fits: (x: number) => boolean): number | null {
 
 /**
  * The falloff a crowded ring under the finger keeps at the least, for a lens whose top is `top`:
- * so small that the circles far from the finger are at BEAD_FLOOR, but large enough that the
+ * so small that the circles far from the finger are at READABLE_SIZE, but large enough that the
  * circle half an item from the finger (the nearer of the two when the finger is between them)
- * is still HALF_ITEM_SHARE of the way up to the peak, and FINGER_READABLE_SIZE at the least:
- * the circle under the finger is readable wherever it is, and the lens does not pulse as the
- * finger passes from one circle to the next.
+ * is still HALF_ITEM_SHARE of the way up to the peak: the lens does not pulse as the finger
+ * passes from one circle to the next.
  */
 function leastFalloff(top: number): number {
-	const half = Math.max(FINGER_READABLE_SIZE, BEAD_FLOOR + HALF_ITEM_SHARE * (top - BEAD_FLOOR));
-	if (top <= half) return 1;
-	return ((half - BEAD_FLOOR) / (top - BEAD_FLOOR)) ** (1 / 0.5 ** FALLOFF_SHAPE);
+	if (top <= READABLE_SIZE) return 1;
+	const half = READABLE_SIZE + HALF_ITEM_SHARE * (top - READABLE_SIZE);
+	return ((half - READABLE_SIZE) / (top - READABLE_SIZE)) ** (1 / 0.5 ** FALLOFF_SHAPE);
 }
 
 /** What is there of a crowded level with the finger right on each of its circles (see `crowdedLayout`), by level and ring: it does not depend on the finger, so it is worked out once. */
@@ -544,12 +545,12 @@ const CROWDED_ENDS_MARGIN = 0.12;
  * between two circles when it is in a gap). Every circle stays on the ring; the farther a circle
  * is from the finger the more it shrinks: the circle at distance k from the position is
  *
- *     BEAD_FLOOR + (top - BEAD_FLOOR) * falloff^(k^FALLOFF_SHAPE)
+ *     READABLE_SIZE + (top - READABLE_SIZE) * falloff^(k^FALLOFF_SHAPE)
  *
  * where `top` is the lens peak (growth 1) and `falloff`, between `leastFalloff(top)` and 1, is
  * as large as lets every circle fit (`distance` is raised to FALLOFF_SHAPE first). The farther a
- * circle is from the finger, the smaller it is, down to the floor; the nearer the finger, the
- * closer a circle is to the peak.
+ * circle is from the finger, the smaller it is, down to READABLE_SIZE; the nearer the finger,
+ * the closer a circle is to the peak.
  *
  * Neighbours sit exactly as far apart as their sizes need (see `clearance`), scaled up evenly
  * on each side of the finger so the level spans the whole sweep, and the finger keeps its
@@ -560,8 +561,9 @@ const CROWDED_ENDS_MARGIN = 0.12;
  * the circles need the room.
  *
  * When the circles do not all fit even at that least falloff (the level is too big for its ring
- * with the lens on it), the circles far from the finger go instead, so the ones that stay never
- * overlap and the circle under the finger keeps the lens: they are packed outward from the
+ * with the lens on it), the circles far from the finger go instead of shrinking to blank dots,
+ * so the ones that stay are readable, never overlap, and the circle under the finger keeps the
+ * lens: they are packed outward from the
  * finger as close as their sizes allow, and where the sweep ends the circles past it fade out
  * over the width of one more circle (`presences`), shrinking as they go, and are gone beyond
  * that. As the finger sweeps along the ring they come back in at the end it is moving toward and
@@ -634,7 +636,7 @@ function crowdedPlacement(count: number, radius: number, peak: number, theta: nu
 	const topFor = (growth: number): number => base + (Math.max(peak, base) - base) * growth;
 	const sizesFor = (falloff: number, growth: number): number[] => {
 		const top = topFor(growth);
-		return distances.map((distance) => BEAD_FLOOR + (top - BEAD_FLOOR) * falloff ** distance ** FALLOFF_SHAPE);
+		return distances.map((distance) => READABLE_SIZE + (top - READABLE_SIZE) * falloff ** distance ** FALLOFF_SHAPE);
 	};
 	const here = (): number[] => Array.from({ length: count }, () => 1);
 	const sum = (values: readonly number[], from = 0, to = values.length): number => values.slice(from, to).reduce((total, value) => total + value, 0);

@@ -1,5 +1,5 @@
 import { DialController, type DialHost } from "../src/dial/controller";
-import { BEAD_FLOOR, DEFAULT_RING_PARAMS, edgeRoom, LEAST_DIAL_ITEM_SIZE, peakSize, planRings, ringParamsFor, ringSlots, ringStep, slotPosition, TAP_FOCUS_BELOW, type DialGeometry } from "../src/dial/layout";
+import { BEAD_FLOOR, DEFAULT_RING_PARAMS, READABLE_SIZE, edgeRoom, LEAST_DIAL_ITEM_SIZE, peakSize, planRings, ringParamsFor, ringSlots, ringStep, slotPosition, TAP_FOCUS_BELOW, type DialGeometry } from "../src/dial/layout";
 import { parseKeymapSource } from "../src/keymap";
 
 const SOURCE = `
@@ -1050,10 +1050,10 @@ describe("DialController lens", () => {
 		const nearest = Math.min(...biggest.map((bead) => Math.abs(angleOf(bead) - angleOf(finger))));
 		expect(biggest[0].size).toBeGreaterThan(TAP_FOCUS_BELOW);
 		expect(nearest).toBeLessThan(90 / 11);
-		// The circles the lens does not reach, at the far end, shrink to the floor and no further: the farther from the finger, the smaller.
+		// The circles the lens does not reach, at the far end, shrink to the readable size and no further, or fade out instead: the farther from the finger, the smaller.
 		expect(sizes[11]).toBeLessThan(TAP_FOCUS_BELOW);
 		expect(sizes[11]).toBeLessThanOrEqual(sizes[10]);
-		expect(sizes[11]).toBeGreaterThanOrEqual(BEAD_FLOOR);
+		expect(sizes[11] === 0 || sizes[11] >= READABLE_SIZE).toBe(true);
 		// Straight out from the finger, at its angle, is one of the two grown beads.
 		controller.moveTo(polar(PHONE, 167, angleOf(finger)));
 		expect(biggest.map((bead) => bead.label)).toContain(controller.view().armed?.label);

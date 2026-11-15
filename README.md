@@ -213,9 +213,11 @@ running anything.
 The rings are always in the same places: the first where four circles fit, each next ring far
 enough out that a circle grown by the lens never reaches a circle on the next ring, so the hand
 learns where each level is. A level with more items than its ring holds at full size keeps every
-one of them on the ring's own radius and shrinks the circles the farther they are from your thumb,
-down to 10px, so the few near it stay easy to hit and the far end is still there, reached by
-bringing it into the lens. The circle under your thumb
+circle on the ring's own radius, and while your thumb is on the ring it shrinks the circles the
+farther they are from it, but never below a readable 24px: a circle that cannot be that large for
+want of room is not drawn as a blank dot, it fades out. So the circle under your thumb and a few
+beside it always show their keys, and the rest of the level waits out of sight until you slide
+toward it. The circle under your thumb
 grows, up to one and a half times the circle size by default, its neighbours a little less: a
 **lens** that follows the thumb along every ring, so a crowded ring reads as you pass over it and
 the grown circle doubles as the highlight. While your thumb is on a ring, no two circles ever
@@ -223,16 +225,19 @@ overlap. On a ring that is not
 crowded the lens takes its room from the other gaps on the ring, which close up as far as keeps
 their circles apart (the root ring, full with four circles, gets most of the lens mid-ring, all of
 it at its ends); on a crowded one the circles under the thumb stay big and the sizes fall away on
-either side, and the arc may run a few degrees past the ends of its quarter turn. A level too big
-even for that (about ten items on the first ring, twenty on the second, thirty on the third, at the
-default circle size) cannot keep all of its circles apart with the lens on, so the circles far from your thumb fade out and
-are gone, neither drawn nor tappable, while the ones near it stay whole and the circle under your
-thumb keeps its key. They come back as you slide toward them and the ones at the other end drop
-out, so every item can still be brought under your thumb by sliding along the ring. A ring your
-thumb has not been on yet, at rest, shows all of its circles, shrunk to fit as far as 10px (a ring
-that big at rest, 17 or more items on the first ring, lets the circles touch). A ring you have
-left keeps its lens where your thumb left it, so the path you took stays large and the far circles
-of a level that big stay gone.
+either side, and the arc may run a few degrees past the ends of its quarter turn. A level that
+cannot show all of its circles at the readable size (more than about five items on the first ring,
+nine on the second, fourteen on the third and nineteen on the fourth, at the default circle size
+on a 390px-wide phone) loses the circles far from your thumb instead: they fade out and are gone,
+neither drawn nor tappable, while the ones near it stay whole and the circle under your thumb
+keeps its key. They come back as you slide toward them and the ones at the other end drop out, so
+every item can still be brought under your thumb by sliding along the ring. Near an end of a ring
+there is room beside the circle under your thumb on one side only, so fewer circles show there. A
+ring your thumb has not been on yet, at rest, shows all of its circles, shrunk to fit as far as
+10px, and they grow to the readable size as your thumb arrives (a ring that big at rest, 17 or
+more items on the first ring, lets the circles touch). A ring you have left keeps its lens where
+your thumb left it, so the path you took stays large and the far circles of a level that big stay
+gone.
 
 Dragging from a group to a sibling group on the same ring (File to Text, say) swaps the child ring
 in place: the old ring fades or flies away while the new one comes in, in the style you chose below,
@@ -294,8 +299,8 @@ nowhere else (the default), on a card between the pill and the rings, or in a bu
 thumb. The bubble always sits next to the thumb, never under it, and keeps off the hand as far as
 the screen allows, at either end of a ring included, in either corner, at any ring depth and with
 the keyboard up. It keeps off the anchor and the circles either side of the one under your thumb,
-which you slide to next, but it may cover the keys of the circles beyond them (the dots of a
-crowded ring, mostly) rather than move away from your finger. Where it could not sit beside the
+which you slide to next, but it may cover the keys of the circles beyond them (the far circles of
+a crowded ring, or a group's children) rather than move away from your finger. Where it could not sit beside the
 thumb in full (a small phone with its keyboard up, or a ring crowded close around the thumb) it
 shrinks to the key and label, since the pill shows the description too.
 
