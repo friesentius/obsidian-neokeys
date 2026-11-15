@@ -10,7 +10,7 @@ import obsidianmd from "eslint-plugin-obsidianmd";
 // Revisit this pin once the scanner (or its documented plugin version) moves
 // past that behavior.
 //
-// typescript is pinned to ^6.0.3 (typescript-eslint supports <6.1.0): the
+// typescript is held to ~6.0.3 (typescript-eslint supports <6.1.0): the
 // scanner type-checks with TypeScript 6, whose lib.dom types an `input` event
 // as InputEvent (5.9 types it as Event). On 5.9, local lint missed the
 // scanner's @typescript-eslint/no-unnecessary-type-assertion findings on
