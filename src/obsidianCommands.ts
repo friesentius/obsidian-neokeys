@@ -1,10 +1,12 @@
 import type { App, Hotkey } from "obsidian";
 import { Platform } from "obsidian";
 import { hotkeyToParsedKey, type CommandKeyBinding } from "./hotkeyConflict";
+import { macroCommandLabel } from "./macros/model";
 import type { ParsedKey } from "./types";
 
 interface CommandsApi {
 	executeCommandById(id: string): boolean;
+	findCommand(id: string): { checkCallback?: (checking: boolean) => unknown } | undefined;
 	commands: Record<string, { id: string; name?: string } | undefined>;
 }
 
@@ -38,8 +40,24 @@ export function executeCommandById(app: App, id: string): boolean {
 	return commandsApi(app).executeCommandById(id);
 }
 
+/**
+ * Whether a command can run right now, asked the way Obsidian's own command palette asks before
+ * listing it: `checkCallback(true)`. Obsidian wraps every editor command in a checkCallback that
+ * says no when no note is open; `executeCommandById` itself never asks and reports success anyway.
+ */
+export function canRunCommand(app: App, id: string): boolean {
+	const command = commandsApi(app).findCommand(id);
+	if (!command) return false;
+	return command.checkCallback ? Boolean(command.checkCallback(true)) : true;
+}
+
+/**
+ * A command's name as a keymap item shows it. Obsidian names a plugin's commands
+ * "<plugin>: <name>"; a Neokeys macro is shown by its own name, as the user called it.
+ */
 export function getCommandName(app: App, id: string): string | undefined {
-	return commandsApi(app).commands[id]?.name;
+	const name = commandsApi(app).commands[id]?.name;
+	return name === undefined ? undefined : macroCommandLabel(id, name);
 }
 
 export function hasCommand(app: App, id: string): boolean {

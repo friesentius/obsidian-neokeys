@@ -19,6 +19,20 @@ function readJson(path) {
 	}
 }
 
+/** Compares dotted version strings numerically ("1.10.0" is newer than "1.9.3"). */
+function compareVersions(a, b) {
+	const pa = String(a).split(".").map(Number);
+	const pb = String(b).split(".").map(Number);
+	for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+		const diff = (pa[i] ?? 0) - (pb[i] ?? 0);
+		if (diff !== 0) return diff;
+	}
+	return 0;
+}
+
+// Cutting a release passes --tag; CI on a branch between releases does not.
+const releasing = process.argv.includes("--tag");
+
 const manifest = readJson("manifest.json");
 const versions = readJson("versions.json");
 
@@ -78,12 +92,20 @@ if (manifest) {
 	}
 
 	if (versions && typeof manifest.version === "string") {
+		const recorded = versions[manifest.version];
 		if (!Object.prototype.hasOwnProperty.call(versions, manifest.version)) {
 			errors.push(`versions.json has no entry for manifest.json's version "${manifest.version}"`);
-		} else if (versions[manifest.version] !== manifest.minAppVersion) {
-			errors.push(
-				`versions.json["${manifest.version}"] (${versions[manifest.version]}) does not match manifest.json's minAppVersion (${manifest.minAppVersion})`,
-			);
+		} else if (recorded !== manifest.minAppVersion) {
+			// Between releases manifest.json still names the last release while minAppVersion may
+			// already be raised for the next one: versions.json keeps what each released version
+			// truly needs, and `npm version` records the new minimum when the next release is cut.
+			// A release itself (--tag) must match exactly.
+			const raisedAhead = !releasing && compareVersions(manifest.minAppVersion, recorded) > 0;
+			if (!raisedAhead) {
+				errors.push(
+					`versions.json["${manifest.version}"] (${recorded}) does not match manifest.json's minAppVersion (${manifest.minAppVersion})`,
+				);
+			}
 		}
 	}
 }

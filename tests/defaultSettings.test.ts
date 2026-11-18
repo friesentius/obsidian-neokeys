@@ -15,7 +15,7 @@ const DIAL_DEFAULTS = {
 describe("resolveSettings", () => {
 	it("fills in the dial settings for a file saved before the dial existed", () => {
 		const saved = { keymapSource: "title: X\nitems: {}\n", showDelayMs: 50, comboLeader: "c-j", animationsEnabled: false, animationDurationMs: 90 };
-		expect(resolveSettings(saved)).toEqual({ ...saved, ...DIAL_DEFAULTS });
+		expect(resolveSettings(saved)).toEqual({ ...saved, ...DIAL_DEFAULTS, macros: [] });
 	});
 
 	it("fills in the item size for a file saved by a release whose dial had one size", () => {
@@ -47,6 +47,25 @@ describe("resolveSettings", () => {
 
 	it("loads a file that still holds a dial setting no longer offered, leaving the offered ones as stored", () => {
 		expect(resolveSettings({ mobileDialItemSize: 48, mobileDialMinItemSize: 18 })).toMatchObject({ ...DIAL_DEFAULTS, mobileDialItemSize: 48 });
+	});
+
+	it("starts with no macros for a file saved before macros existed, and keeps stored ones", () => {
+		expect(resolveSettings({ keymapSource: "title: X\nitems: {}\n" }).macros).toEqual([]);
+		const macros = [{ id: "tidy", name: "Tidy", steps: [{ type: "command", command: "editor:toggle-bold" }] }];
+		expect(resolveSettings({ macros }).macros).toEqual(macros);
+	});
+
+	it("sanitises a hand-edited macros list, keeping what a newer Neokeys stored", () => {
+		const settings = resolveSettings({ macros: [{ id: "x", name: "X", steps: [{ type: "wait", ms: 9 }, { type: "text" }] }, { id: "BAD" }, 7] });
+		expect(settings.macros).toEqual([{ id: "x", name: "X", steps: [{ type: "wait", ms: 9 }] }]);
+		expect(resolveSettings({ macros: "none" }).macros).toEqual([]);
+	});
+
+	it("never shares the default macros list between two loads", () => {
+		const first = resolveSettings({});
+		first.macros.push({ id: "a", name: "A", steps: [] });
+		expect(resolveSettings({}).macros).toEqual([]);
+		expect(DEFAULT_SETTINGS.macros).toEqual([]);
 	});
 
 	it("falls back to the defaults for hand-edited values it does not understand", () => {
