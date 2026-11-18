@@ -373,10 +373,11 @@ Dragging from a group to a sibling group on the same ring (File to Text, say) sw
 in place: the old ring fades or flies away while the new one comes in, in the style you chose below,
 rather than the new ring popping in over the old.
 
-A pill just below Obsidian's header names what you are on: the path of open groups, the item under
-your thumb at its end, and on a second line what that item does: a group's description (or its
-keys and labels, when it has none), a command's name in Obsidian when the keymap labels it
-something else, a file's path; the text is centred in the pill whether it has one line or two. On
+A pill just below Obsidian's header, and below the note's title when the note shows one, names
+what you are on: the path of open groups, the item under your thumb at its end, and on a second line
+what that item does: a group's description (or its keys and labels, when it has none), a command's
+name in Obsidian when the keymap labels it something else, a file's path; the text is centred in the
+pill whether it has one line or two. On
 a narrow phone the start of the path gives way to an ellipsis, so the item under your thumb is the
 last thing ever shortened. Back and Close buttons sit at either end. An item with an icon (see
 below) shows its key in the pill as a small chip, since its circle shows the icon instead.

@@ -583,7 +583,8 @@ body:not(.is-phone) .neokeys-entry-editor input[type="text"].neokeys-entry-key-i
 /*
  * The breadcrumb pill sits just below the active note's view header and its inline title so it
  * never covers the header's buttons or the title (the plugin measures the header into
- * --neokeys-dial-header-top/bottom and the title into --neokeys-dial-title-bottom, since tablets put a tab strip above it and define no header offset variable); when the keymap's
+ * --neokeys-dial-header-top/bottom, since tablets put a tab strip above it and define no header
+ * offset variable, and the title into --neokeys-dial-title-bottom); when the keymap's
  * deepest path needs the room (a phone with its keyboard up), the plugin raises it over the
  * header instead (.neokeys-dial-raised). Neither ever goes above the safe area. It stacks above
  * the rings, which may reach up behind it on a very short screen.
