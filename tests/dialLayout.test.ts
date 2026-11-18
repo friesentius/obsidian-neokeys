@@ -1145,19 +1145,24 @@ describe("pillClearance", () => {
 	const box = (top: number, bottom: number, width = 330) => ({ top, bottom, height: bottom - top, width });
 
 	it("clears a title that sits below the header", () => {
-		expect(pillClearance(104, box(119, 225))).toBe(225);
+		expect(pillClearance(104, [box(119, 225)])).toBe(225);
 	});
 
 	it("keeps the header's bottom when there is no title", () => {
-		expect(pillClearance(104, null)).toBe(104);
+		expect(pillClearance(104, [])).toBe(104);
 	});
 
 	it("keeps the header's bottom for a hidden or empty title", () => {
-		expect(pillClearance(104, box(0, 0, 0))).toBe(104);
-		expect(pillClearance(104, box(119, 119))).toBe(104);
+		expect(pillClearance(104, [box(0, 0, 0)])).toBe(104);
+		expect(pillClearance(104, [box(119, 119)])).toBe(104);
+	});
+
+	it("clears the showing title when the hidden view's title comes first", () => {
+		expect(pillClearance(104, [box(0, 0, 0), box(119, 225)])).toBe(225);
+		expect(pillClearance(104, [box(119, 225), box(0, 0, 0)])).toBe(225);
 	});
 
 	it("keeps the header's bottom when the title has scrolled up under the header", () => {
-		expect(pillClearance(104, box(-60, 40))).toBe(104);
+		expect(pillClearance(104, [box(-60, 40)])).toBe(104);
 	});
 });

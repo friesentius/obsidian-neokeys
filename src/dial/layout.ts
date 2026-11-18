@@ -955,10 +955,11 @@ export function chooseMode(
 /**
  * Where the pill's top edge may start when it sits below the view header: the header's bottom,
  * or the bottom of the note's inline title when that is on screen below the header, so the pill
- * never covers the title. A title that is empty, hidden or scrolled up under the header leaves
- * the header's bottom.
+ * never covers the title. `titles` are every inline title in the leaf, in document order: a
+ * Markdown leaf holds one for editing and one for reading, and only the showing one has a size.
+ * No visible title, or one scrolled up under the header, leaves the header's bottom.
  */
-export function pillClearance(headerBottom: number, title: { top: number; bottom: number; height: number; width: number } | null): number {
-	if (title === null || title.width <= 0 || title.height <= 0) return headerBottom;
-	return Math.max(headerBottom, title.bottom);
+export function pillClearance(headerBottom: number, titles: readonly { bottom: number; height: number; width: number }[]): number {
+	const title = titles.find((rect) => rect.width > 0 && rect.height > 0);
+	return title ? Math.max(headerBottom, title.bottom) : headerBottom;
 }

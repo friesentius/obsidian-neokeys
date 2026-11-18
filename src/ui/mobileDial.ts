@@ -426,10 +426,9 @@ export class MobileDial {
 		const header = active && visible(active) ? active : Array.from(body.querySelectorAll(".mod-root .view-header")).find(visible);
 		const rect = header?.getBoundingClientRect();
 		// The note's inline title sits right under the header, so a pill hung just below the header would cover it.
-		const titleEl = header?.closest(".workspace-leaf")?.querySelector(".inline-title");
-		const title = titleEl ? titleEl.getBoundingClientRect() : null;
+		const titles = Array.from(header?.closest(".workspace-leaf")?.querySelectorAll(".inline-title") ?? [], (el) => el.getBoundingClientRect());
 		this.layerEl.setCssProps({
-			"--neokeys-dial-title-bottom": rect && title ? `${Math.round(pillClearance(rect.bottom, title))}px` : "0px",
+			"--neokeys-dial-title-bottom": rect ? `${Math.round(pillClearance(rect.bottom, titles))}px` : "0px",
 			"--neokeys-dial-header-top": rect ? `${Math.round(rect.top)}px` : HEADER_TOP_FALLBACK,
 			"--neokeys-dial-header-bottom": rect ? `${Math.round(rect.bottom)}px` : HEADER_BOTTOM_FALLBACK,
 		});
