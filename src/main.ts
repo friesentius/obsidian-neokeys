@@ -5,6 +5,9 @@ import { ComboLeaderError, parseComboLeaderString } from "./comboLeader";
 import { applyHeadingLevelToEditor } from "./headingLevel";
 import { KeymapParseError, parseKeymapSource } from "./keymap";
 import { keyFromEvent, keysEqual } from "./keys";
+import { macroLocalCommandId, type Macro } from "./macros/model";
+import { obsidianMacroHost } from "./macros/obsidianHost";
+import { MacroRunner } from "./macros/runner";
 import { executeCommandById } from "./obsidianCommands";
 import { DEFAULT_SETTINGS, resolveSettings } from "./defaultSettings";
 import { NeokeysSettingTab } from "./settings";
@@ -17,9 +20,15 @@ export default class NeokeysPlugin extends Plugin {
 	private comboHandler: KeymapEventHandler | null = null;
 	/** The pinned mobile dial; null on desktop or when the setting is off. */
 	private dial: MobileDial | null = null;
+	/** Runs every macro, whichever way it was triggered; set up in onload. */
+	private macroRunner!: MacroRunner;
+	/** Each registered macro command's name and icon (as one string), by macro id, to tell when it must be registered again. */
+	private readonly macroCommands = new Map<string, string>();
 
 	async onload(): Promise<void> {
 		await this.loadSettings();
+		this.macroRunner = new MacroRunner(obsidianMacroHost(this.app, () => this.settings.macros));
+		this.syncMacroCommands();
 
 		this.addCommand({
 			id: "leader",
@@ -56,6 +65,51 @@ export default class NeokeysPlugin extends Plugin {
 
 	async saveSettings(): Promise<void> {
 		await this.saveData(this.settings);
+	}
+
+	/** Add `macro`, or replace the one with its id, then save and register its command. */
+	async saveMacro(macro: Macro): Promise<void> {
+		const at = this.settings.macros.findIndex((existing) => existing.id === macro.id);
+		if (at === -1) this.settings.macros.push(macro);
+		else this.settings.macros[at] = macro;
+		await this.saveSettings();
+		this.syncMacroCommands();
+	}
+
+	/** Delete a macro and its command. Keymap items and other macros that ran it are left as they are and show it as unknown. */
+	async deleteMacro(id: string): Promise<void> {
+		this.settings.macros = this.settings.macros.filter((macro) => macro.id !== id);
+		await this.saveSettings();
+		this.syncMacroCommands();
+	}
+
+	/**
+	 * Make the registered macro commands match `settings.macros`: one command per macro, under an
+	 * id fixed when the macro was made, so hotkeys and keymap items keep working across renames. A
+	 * renamed or re-iconed macro is registered again under the same id; a deleted one is removed.
+	 * Call after any change to the macros. (Obsidian also removes them all when the plugin unloads.)
+	 */
+	syncMacroCommands(): void {
+		const wanted = new Map(this.settings.macros.map((macro) => [macro.id, macro]));
+		for (const id of [...this.macroCommands.keys()]) {
+			if (wanted.has(id)) continue;
+			this.removeCommand(macroLocalCommandId(id));
+			this.macroCommands.delete(id);
+		}
+		for (const macro of wanted.values()) {
+			const signature = JSON.stringify([macro.name, macro.icon ?? null]);
+			if (this.macroCommands.get(macro.id) === signature) continue;
+			if (this.macroCommands.has(macro.id)) this.removeCommand(macroLocalCommandId(macro.id));
+			this.addCommand({
+				id: macroLocalCommandId(macro.id),
+				name: macro.name,
+				...(macro.icon ? { icon: macro.icon } : {}),
+				callback: () => {
+					this.macroRunner.run(macro.id);
+				},
+			});
+			this.macroCommands.set(macro.id, signature);
+		}
 	}
 
 	/**

@@ -251,6 +251,82 @@ in), so a sequence you already know by muscle memory never flashes it. There is 
 abandon-timeout: a half-typed sequence waits indefinitely until it resolves, dead-ends, is
 backspaced away, or you press Esc.
 
+## Macros
+
+A macro runs a list of steps in order: Obsidian commands, and text put into the open note. Make one
+in Settings → Neokeys → **Macros** with **New macro**. Each macro becomes an Obsidian command named
+"Neokeys: <name>", so a keymap item, a hotkey, the command palette or the mobile toolbar can run
+it. The list shows each macro's steps and where the keymap runs it; **Edit** reopens the editor, and
+**Delete** asks first, naming any keymap items, hotkey and other macros that run it.
+
+![Settings → Neokeys → Macros, listing two macros with their steps and where the keymap runs them, dark theme](docs/screenshots/macros/desktop-macros-list-dark.png)
+
+![The Macros list, light theme](docs/screenshots/macros/desktop-macros-list-light.png)
+
+The macro editor has a name, an optional icon (shown in the list, and wherever Obsidian shows a
+command's icon, such as the mobile toolbar) and the steps, each with move up, move down, edit and
+delete, like the keymap's tree editor. There are two kinds of step:
+
+- **Command** - picked with the same searchable picker as the keymap. Any command works, including
+  another macro, or a QuickAdd, Templater or JS Engine command. The Leader can't be a step.
+- **Text** - replaces the selection in the open note, written in its own small dialog. It can use
+  `{{selection}}` (the selected text, empty when nothing is selected), `{{cursor}}` (where the
+  cursor ends up; without one it ends after the text) and `{{date:YYYY-MM-DD}}` (the date and time
+  in any [moment.js format](https://momentjs.com/docs/#/displaying/format/); `{{date}}` alone is
+  `YYYY-MM-DD`). The buttons under the text box put a placeholder in at the caret. A text step is
+  one edit, so one undo takes it back.
+
+![The macro editor with a text step and a command step, dark theme](docs/screenshots/macros/desktop-macro-editor-dark.png)
+
+![The text step dialog with its placeholder help and buttons, light theme](docs/screenshots/macros/desktop-text-step-dialog-light.png)
+
+![The macro editor on a phone, dark theme](docs/screenshots/macros/phone-macro-editor-dark.png)
+
+![The Macros list on a phone, light theme](docs/screenshots/macros/phone-macros-list-light.png)
+
+To put a macro in the keymap, add an item and choose **Macro** as its kind, then pick the macro, or
+make one there with **New macro...**. The popup and the dial label the item with the macro's name.
+The keymap stores it as an ordinary command item, `command: neokeys:macro-<id>`, so it can also be
+written by hand in the YAML view; the macros themselves are kept in Neokeys' settings, not in the
+keymap.
+
+![Add item with kind Macro, light theme](docs/screenshots/macros/desktop-add-item-macro-light.png)
+
+![Add item with kind Macro on a phone, dark theme](docs/screenshots/macros/phone-add-item-macro-dark.png)
+
+![The which-key popup in a Macros group, listing the macros by name, dark theme](docs/screenshots/macros/desktop-popup-macros-dark.png)
+
+![The dial with the Stamp today macro armed in a Macros group, its name in the pill, dark theme](docs/screenshots/macros/phone-dial-macro-dark.png)
+
+When a macro can't run, a notice says why:
+
+- **Before it starts**, the whole macro is refused, and nothing changes, when a step's command does
+  not exist (say its plugin is off), when it would run itself (`Loop A → Loop B → Loop A`), when a
+  step is the Leader, or when a step was saved by a newer Neokeys than this device has.
+- **During a run**, a step that can't run at its turn stops the macro there, for example an editor
+  command with no note open (`"Bold italic" stopped at step 1 of 2: "Toggle bold" can't run here`),
+  or a text step with no note open or the note in reading view (`text needs a note open for
+  editing`). The steps before it stay done.
+- **When you save**, the editor refuses a macro that would run itself, naming the loop.
+
+Macros can run other macros up to 8 deep, and one run takes at most 200 steps; past either limit
+the macro stops with a notice.
+
+![The macro editor refusing to save a macro that would run itself, dark theme](docs/screenshots/macros/desktop-macro-editor-loop-refused-dark.png)
+
+![The notice when a macro stops at a step that can't run, dark theme](docs/screenshots/macros/desktop-notice-stopped-dark.png)
+
+![Confirmation before deleting a macro that another macro runs, light theme](docs/screenshots/macros/desktop-delete-macro-confirm-light.png)
+
+Undo works as it does for the commands a macro runs: Obsidian often groups a quick run into one
+undo, but a macro whose steps each change the note can take a press per step.
+
+Neokeys never runs JavaScript you write. For a scripted step, add a command step that runs a
+QuickAdd macro, a Templater template or a JS Engine snippet.
+
+A device still on a Neokeys from before macros keeps them when it saves its settings, and shows a
+macro item in the keymap as an unknown command until it updates.
+
 ## Mobile
 
 On phones and tablets, Neokeys replaces typing with a **dial**: a leader button (a `>_` prompt)
@@ -416,9 +492,10 @@ unaffected either way.
 
 ## Compatibility
 
-Desktop and mobile. On desktop the leader opens the keyboard-driven which-key popup; on mobile the
-pinned dial above is the way in, and the Leader command (from the command palette, or a combo
-leader or hotkey on a hardware keyboard) opens that same dial, which the keyboard can then drive.
+Requires Obsidian 1.7.2 or later. Desktop and mobile. On desktop the leader opens the
+keyboard-driven which-key popup; on mobile the pinned dial above is the way in, and the Leader
+command (from the command palette, or a combo leader or hotkey on a hardware keyboard) opens that
+same dial, which the keyboard can then drive.
 
 ## Development
 
@@ -430,12 +507,16 @@ leader or hotkey on a hardware keyboard) opens that same dial, which the keyboar
   validation, breadcrumb building, hotkey-conflict detection, animation settings, heading-level
   increase/decrease, entry icons, the default keymap's icons, items with no key and the per-device key/icon rules of the
   add/edit dialog, the typed-key reader, the mobile dial's ring layout, description-bubble
-  placement and sibling-ring swap diff, and its drag/arm/release state machine)
+  placement and sibling-ring swap diff, and its drag/arm/release state machine, and macros: their
+  ids and settings sanitising, text placeholders, the runner's refusals and stops, and the
+  save-time loop check)
 - `npm run lint` - ESLint with `eslint-plugin-obsidianmd`'s recommended config, plus
   `@eslint/css`'s `no-important` on `styles.css`, mirroring the community directory's source and
   CSS scans (see `eslint.config.mjs` for why the plugin version is pinned)
 - `npm run validate` - mirrors the parts of Obsidian's community-plugin submission checks that
-  don't require a live GitHub release (manifest/versions shape, `id`/`version` format)
+  don't require a live GitHub release (manifest/versions shape, `id`/`version` format). Between
+  releases `manifest.json`'s `minAppVersion` may be ahead of the last `versions.json` entry; with
+  `--tag`, as the release workflow runs it, the two must match
 
 ### Branching and releases
 

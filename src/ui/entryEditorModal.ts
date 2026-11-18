@@ -1,11 +1,14 @@
-import { App, ButtonComponent, ExtraButtonComponent, getIcon, Modal, Platform, Scope, setIcon, Setting } from "obsidian";
-import type { EntryDraft, EntryKind } from "../entryDraft";
+import { App, ButtonComponent, Modal, Platform, Scope, Setting } from "obsidian";
+import { entryKindOf, type EntryDraft, type EntryKind } from "../entryDraft";
 import { deviceFromPlatform, hasKeyField, iconDescription, keyDescription, keyIsOptional, validateKeyAndIcon, type EntryDevice } from "../entryValidation";
 import { keyFromEvent, keyToString } from "../keys";
 import { isKeylessId } from "../keyless";
 import { keyFromTyped } from "../typedKey";
 import { CommandPickerModal } from "./commandPickerModal";
-import { IconPickerModal } from "./iconPickerModal";
+import { renderIconSetting } from "./iconSetting";
+import { MacroEditorModal, type MacroStore } from "./macroEditorModal";
+import { macroIdFromCommand } from "../macros/model";
+import { macroStepsLine } from "../macros/summary";
 import { getCommandName } from "../obsidianCommands";
 import { openModalInWindow } from "./modalWindow";
 import type { KeymapNode } from "../types";
@@ -26,6 +29,8 @@ export class EntryEditorModal extends Modal {
 	private command = "";
 	private commandName = "";
 	private file = "";
+	/** The id of the macro a macro item runs, "" when none is chosen yet. */
+	private macro = "";
 	private errorEl: HTMLElement | null = null;
 	private buttonContainerEl!: HTMLElement;
 	private keyDisplayEl: HTMLElement | null = null;
@@ -39,10 +44,11 @@ export class EntryEditorModal extends Modal {
 		private readonly heading: string,
 		initial: { rawKey: string; node: KeymapNode } | null,
 		private readonly onSubmit: (draft: EntryDraft) => string | null,
+		private readonly macroStore: MacroStore,
 		private readonly kindLockedReason?: string,
 	) {
 		super(app);
-		this.kind = initial?.node.kind ?? "command";
+		this.kind = initial ? entryKindOf(initial.node) : "command";
 		// An item with no key is stored under a bookkeeping token; the form shows it as an empty key.
 		this.rawKey = initial === null || isKeylessId(initial.rawKey) ? "" : initial.rawKey;
 		this.icon = initial?.node.icon ?? "";
@@ -52,6 +58,7 @@ export class EntryEditorModal extends Modal {
 		} else if (initial?.node.kind === "command") {
 			this.command = initial.node.command;
 			this.commandName = getCommandName(app, initial.node.command) ?? "";
+			this.macro = macroIdFromCommand(initial.node.command) ?? "";
 			this.description = initial.node.description ?? "";
 		} else if (initial?.node.kind === "file") {
 			this.file = initial.node.file;
@@ -86,6 +93,7 @@ export class EntryEditorModal extends Modal {
 				.addOption("group", "Group (submenu)")
 				.addOption("command", "Command")
 				.addOption("file", "File")
+				.addOption("macro", "Macro")
 				.setValue(this.kind)
 				.setDisabled(this.kindLockedReason !== undefined)
 				.onChange((value) => {
@@ -122,6 +130,8 @@ export class EntryEditorModal extends Modal {
 				);
 		}
 
+		if (this.kind === "macro") this.renderMacroSetting(contentEl);
+
 		if (this.kind === "file") {
 			new Setting(contentEl)
 				.setName("File path")
@@ -132,7 +142,7 @@ export class EntryEditorModal extends Modal {
 			.setName("Description")
 			.addTextArea((text) => {
 				text
-					.setPlaceholder("Optional description")
+					.setPlaceholder(this.kind === "macro" ? "Optional. Defaults to the macro's name." : "Optional description")
 					.setValue(this.description)
 					.onChange((value) => (this.description = value));
 				// A textarea wraps, so long existing descriptions are shown in full instead of cut off.
@@ -146,6 +156,41 @@ export class EntryEditorModal extends Modal {
 			.setButtonText("Save")
 			.setCta()
 			.onClick(() => this.submit());
+	}
+
+	/**
+	 * The Macro row: a dropdown of the saved macros, and "New macro..." to make one in the macro
+	 * editor and come back with it chosen. The item is stored as a command item running the macro.
+	 */
+	private renderMacroSetting(contentEl: HTMLElement): void {
+		const macros = this.macroStore.macros();
+		const chosen = macros.find((macro) => macro.id === this.macro);
+		const desc = chosen
+			? macroStepsLine(chosen, (id) => getCommandName(this.app, id))
+			: this.macro !== ""
+				? `The macro "${this.macro}" no longer exists. Choose another, or make a new one.`
+				: "Choose one of your macros, or make a new one.";
+		const setting = new Setting(contentEl).setName("Macro").setDesc(desc).setClass("neokeys-entry-macro");
+		setting.addDropdown((dropdown) => {
+			dropdown.addOption("", macros.length === 0 ? "No macros yet" : "Choose a macro...");
+			for (const macro of macros) dropdown.addOption(macro.id, macro.name);
+			if (this.macro !== "" && !chosen) dropdown.addOption(this.macro, `${this.macro} (missing)`);
+			dropdown.setValue(this.macro).onChange((value) => {
+				this.macro = value;
+				this.render();
+			});
+		});
+		setting.addButton((button) =>
+			button.setButtonText("New macro...").onClick(() => {
+				openModalInWindow(
+					new MacroEditorModal(this.app, null, this.macroStore, (macro) => {
+						this.macro = macro.id;
+						this.render();
+					}),
+					this.contentEl.win,
+				);
+			}),
+		);
 	}
 
 	/**
@@ -218,39 +263,19 @@ export class EntryEditorModal extends Modal {
 
 	/** The icon row: its picture and name, a picker over Obsidian's icons, and a clear button. */
 	private renderIconSetting(contentEl: HTMLElement): void {
-		const known = this.icon === "" || getIcon(this.icon) !== null;
-		const setting = new Setting(contentEl)
-			.setName("Icon")
-			.setDesc(
-				known
-					? iconDescription(this.device)
-					: "Obsidian has no icon with this name, so the mobile dial shows the key instead. Pick another, or clear it.",
-			);
-		const pictureEl = setting.controlEl.createSpan({ cls: "neokeys-entry-icon-picture" });
-		if (this.icon !== "" && known) setIcon(pictureEl, this.icon);
-		setting.controlEl.createSpan({ cls: "neokeys-entry-key-display", text: this.icon || "None" });
-		setting.addButton((button) =>
-			button.setButtonText(this.icon === "" ? "Choose icon..." : "Change icon...").onClick(() => {
-				openModalInWindow(
-					new IconPickerModal(this.app, (picked) => {
-						this.icon = picked;
-						this.render();
-					}),
-					this.contentEl.win,
-				);
-			}),
+		renderIconSetting(
+			this.app,
+			contentEl,
+			this.icon,
+			{
+				known: iconDescription(this.device),
+				unknown: "Obsidian has no icon with this name, so the mobile dial shows the key instead. Pick another, or clear it.",
+			},
+			(icon) => {
+				this.icon = icon;
+				this.render();
+			},
 		);
-		if (this.icon !== "") {
-			setting.addExtraButton((button: ExtraButtonComponent) =>
-				button
-					.setIcon("x")
-					.setTooltip("Clear the icon")
-					.onClick(() => {
-						this.icon = "";
-						this.render();
-					}),
-			);
-		}
 	}
 
 	private showError(message: string): void {
@@ -306,6 +331,14 @@ export class EntryEditorModal extends Modal {
 			this.showError("Choose a command first.");
 			return;
 		}
+		if (this.kind === "macro" && this.macro === "") {
+			this.showError("Choose a macro first, or make a new one.");
+			return;
+		}
+		if (this.kind === "macro" && !this.macroStore.macros().some((macro) => macro.id === this.macro)) {
+			this.showError("That macro no longer exists. Choose another, or make a new one.");
+			return;
+		}
 		if (this.kind === "file" && this.file.trim().length === 0) {
 			this.showError("Set a file path first.");
 			return;
@@ -320,6 +353,7 @@ export class EntryEditorModal extends Modal {
 			command: this.command.trim(),
 			commandName: this.commandName,
 			file: this.file.trim(),
+			macro: this.macro,
 		};
 
 		const error = this.onSubmit(draft);

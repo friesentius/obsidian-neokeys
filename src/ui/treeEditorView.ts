@@ -16,6 +16,7 @@ import {
 import type { GroupEntry, GroupNode } from "../types";
 import { ConfirmDeleteModal } from "./confirmDeleteModal";
 import { EntryEditorModal } from "./entryEditorModal";
+import type { MacroStore } from "./macroEditorModal";
 import { openModalInWindow } from "./modalWindow";
 
 /**
@@ -39,6 +40,8 @@ export class TreeEditorView {
 		private readonly containerEl: HTMLElement,
 		private readonly getRoot: () => GroupNode,
 		private readonly persist: (root: GroupNode) => Promise<void>,
+		/** The macros a "Macro" item can run, and a way to save a new one made from the Add/Edit dialog. */
+		private readonly macroStore: MacroStore,
 	) {}
 
 	render(): void {
@@ -197,7 +200,7 @@ export class TreeEditorView {
 				if (!result.ok) return result.error;
 				void this.persist(result.root);
 				return null;
-			}),
+			}, this.macroStore),
 			this.containerEl.win,
 		);
 	}
@@ -217,6 +220,7 @@ export class TreeEditorView {
 					void this.persist(result.root);
 					return null;
 				},
+				this.macroStore,
 				lockKind ? "Has items; change its items first to switch this away from a group." : undefined,
 			),
 			this.containerEl.win,

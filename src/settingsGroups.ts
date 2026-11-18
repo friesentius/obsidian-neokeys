@@ -10,9 +10,9 @@
  * stays registered if one was set on another device and synced, and the dial settings keep
  * their saved values so they still apply on a phone or tablet the settings sync to.
  */
-export type SettingsGroupId = "leader" | "popup" | "dial" | "keymap";
+export type SettingsGroupId = "leader" | "popup" | "dial" | "macros" | "keymap";
 
-const ALL_GROUPS: readonly SettingsGroupId[] = ["leader", "popup", "dial", "keymap"];
+const ALL_GROUPS: readonly SettingsGroupId[] = ["leader", "popup", "dial", "macros", "keymap"];
 
 /** The setting groups to show, in order, on a device that is (or is not) mobile. */
 export function visibleSettingsGroups(isMobile: boolean): SettingsGroupId[] {

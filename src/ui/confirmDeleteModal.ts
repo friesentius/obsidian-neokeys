@@ -6,12 +6,13 @@ export class ConfirmDeleteModal extends Modal {
 		app: App,
 		private readonly message: string,
 		private readonly onConfirm: () => void,
+		private readonly title = "Delete group?",
 	) {
 		super(app);
 	}
 
 	onOpen(): void {
-		this.titleEl.setText("Delete group?");
+		this.titleEl.setText(this.title);
 		this.contentEl.createEl("p", { text: this.message });
 		const buttons = this.contentEl.createDiv({ cls: "modal-button-container" });
 		new ButtonComponent(buttons).setButtonText("Cancel").onClick(() => this.close());

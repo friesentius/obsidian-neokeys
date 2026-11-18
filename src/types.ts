@@ -1,3 +1,5 @@
+import type { Macro } from "./macros/model";
+
 export interface ParsedKey {
 	key: string;
 	ctrl: boolean;
@@ -88,4 +90,6 @@ export interface NeokeysSettings {
 	/** Whether a ring animates as it opens (never when the OS prefers reduced motion). */
 	mobileDialRingAnimation: boolean;
 	mobileDialRingAnimationStyle: DialRingAnimation;
+	/** Named step lists, each registered as the command "neokeys:macro-<id>" (see macros/model.ts). */
+	macros: Macro[];
 }
