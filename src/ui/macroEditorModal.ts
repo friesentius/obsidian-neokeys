@@ -190,7 +190,7 @@ export class MacroEditorModal extends Modal {
 		if (this.icon.trim().length > 0) macro.icon = this.icon.trim();
 		else delete macro.icon;
 
-		const { error } = checkMacro(macro, saved, (id) => hasCommand(this.app, id));
+		const error = checkMacro(macro, saved);
 		if (error !== null) {
 			this.showError(error);
 			return;
