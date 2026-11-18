@@ -951,3 +951,14 @@ export function chooseMode(
 	}
 	return { mode, geometry, params: shrunk };
 }
+
+/**
+ * Where the pill's top edge may start when it sits below the view header: the header's bottom,
+ * or the bottom of the note's inline title when that is on screen below the header, so the pill
+ * never covers the title. A title that is empty, hidden or scrolled up under the header leaves
+ * the header's bottom.
+ */
+export function pillClearance(headerBottom: number, title: { top: number; bottom: number; height: number; width: number } | null): number {
+	if (title === null || title.width <= 0 || title.height <= 0) return headerBottom;
+	return Math.max(headerBottom, title.bottom);
+}

@@ -9,7 +9,7 @@ import {
 } from "../dial/controller";
 import { BUBBLE_MARGIN, bubbleNeedsShortForm, cardFits, cardTop, coveredCircles, placeBubble, preferShortBubble, type BubblePlacement } from "../dial/description";
 import { shownIcon } from "../icons";
-import { DIAL_LEGIBLE_SIZE, ringParamsFor, type DialArc, type DialGeometry, type DialLayoutMode } from "../dial/layout";
+import { DIAL_LEGIBLE_SIZE, pillClearance, ringParamsFor, type DialArc, type DialGeometry, type DialLayoutMode } from "../dial/layout";
 import { diffRings, swapRing } from "../dial/ringDiff";
 import { getCommandName, hasCommand } from "../obsidianCommands";
 import type { DialCorner, DialDescription, DialRadiusRule, DialRingAnimation, GroupEntry, GroupNode } from "../types";
@@ -425,7 +425,11 @@ export class MobileDial {
 		const active = body.querySelector(".mod-root .workspace-leaf.mod-active .view-header");
 		const header = active && visible(active) ? active : Array.from(body.querySelectorAll(".mod-root .view-header")).find(visible);
 		const rect = header?.getBoundingClientRect();
+		// The note's inline title sits right under the header, so a pill hung just below the header would cover it.
+		const titleEl = header?.closest(".workspace-leaf")?.querySelector(".inline-title");
+		const title = titleEl ? titleEl.getBoundingClientRect() : null;
 		this.layerEl.setCssProps({
+			"--neokeys-dial-title-bottom": rect && title ? `${Math.round(pillClearance(rect.bottom, title))}px` : "0px",
 			"--neokeys-dial-header-top": rect ? `${Math.round(rect.top)}px` : HEADER_TOP_FALLBACK,
 			"--neokeys-dial-header-bottom": rect ? `${Math.round(rect.bottom)}px` : HEADER_BOTTOM_FALLBACK,
 		});
