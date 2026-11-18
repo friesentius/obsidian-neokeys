@@ -1200,6 +1200,12 @@ body.theme-light .neokeys-dial {
 	font-size: var(--font-smaller);
 }
 
+/* A phone has no pointer to drag a text box's grip, and on its rounded fields the grip pokes out of the corner. */
+.is-mobile .neokeys-entry-description-input,
+.is-mobile .neokeys-text-step-input {
+	resize: none;
+}
+
 .neokeys-text-step-placeholders {
 	display: flex;
 	flex-wrap: wrap;
@@ -1207,7 +1213,3 @@ body.theme-light .neokeys-dial {
 	margin: var(--size-4-2) 0;
 }
 
-.neokeys-text-step-placeholders button {
-	font-family: var(--font-monospace);
-	font-size: var(--font-ui-smaller);
-}
