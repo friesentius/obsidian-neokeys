@@ -6,13 +6,17 @@ export class CommandPickerModal extends FuzzySuggestModal<{ id: string; name: st
 	constructor(
 		app: App,
 		private readonly onPick: (command: { id: string; name: string }) => void,
+		/** Commands not to offer (a macro leaves out the Leader and itself). */
+		private readonly exclude: (id: string) => boolean = () => false,
 	) {
 		super(app);
 		this.setPlaceholder("Search for a command...");
 	}
 
 	getItems(): { id: string; name: string }[] {
-		return listCommands(this.app).sort((a, b) => a.name.localeCompare(b.name));
+		return listCommands(this.app)
+			.filter((command) => !this.exclude(command.id))
+			.sort((a, b) => a.name.localeCompare(b.name));
 	}
 
 	getItemText(item: { id: string; name: string }): string {

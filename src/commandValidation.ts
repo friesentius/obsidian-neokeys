@@ -28,3 +28,19 @@ export function findInvalidCommands(root: GroupNode, isKnown: (id: string) => bo
 	walk(root, []);
 	return invalid;
 }
+
+/** The key paths of every item in `root` that runs `commandId`, in keymap order (e.g. [["i", "d"]]). */
+export function findCommandUses(root: GroupNode, commandId: string): string[][] {
+	const uses: string[][] = [];
+
+	function walk(group: GroupNode, path: string[]): void {
+		for (const entry of group.entries) {
+			const entryPath = [...path, entryKeyText(entry)];
+			if (entry.node.kind === "group") walk(entry.node, entryPath);
+			else if (entry.node.kind === "command" && entry.node.command === commandId) uses.push(entryPath);
+		}
+	}
+
+	walk(root, []);
+	return uses;
+}

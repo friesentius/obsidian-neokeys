@@ -5,7 +5,7 @@ import { ComboLeaderError, parseComboLeaderString } from "./comboLeader";
 import { applyHeadingLevelToEditor } from "./headingLevel";
 import { KeymapParseError, parseKeymapSource } from "./keymap";
 import { keyFromEvent, keysEqual } from "./keys";
-import { macroLocalCommandId } from "./macros/model";
+import { macroLocalCommandId, type Macro } from "./macros/model";
 import { obsidianMacroHost } from "./macros/obsidianHost";
 import { MacroRunner } from "./macros/runner";
 import { executeCommandById } from "./obsidianCommands";
@@ -65,6 +65,22 @@ export default class NeokeysPlugin extends Plugin {
 
 	async saveSettings(): Promise<void> {
 		await this.saveData(this.settings);
+	}
+
+	/** Add `macro`, or replace the one with its id, then save and register its command. */
+	async saveMacro(macro: Macro): Promise<void> {
+		const at = this.settings.macros.findIndex((existing) => existing.id === macro.id);
+		if (at === -1) this.settings.macros.push(macro);
+		else this.settings.macros[at] = macro;
+		await this.saveSettings();
+		this.syncMacroCommands();
+	}
+
+	/** Delete a macro and its command. Keymap items and other macros that ran it are left as they are and show it as unknown. */
+	async deleteMacro(id: string): Promise<void> {
+		this.settings.macros = this.settings.macros.filter((macro) => macro.id !== id);
+		await this.saveSettings();
+		this.syncMacroCommands();
 	}
 
 	/**

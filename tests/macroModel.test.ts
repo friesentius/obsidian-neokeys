@@ -1,4 +1,5 @@
 import { knownStep, macroCommandId, macroCommandLabel, macroIdFromCommand, macroLocalCommandId, newMacroId, sanitizeMacros } from "../src/macros/model";
+import { macroStepsLine, macroUsesLine, stepKindLabel } from "../src/macros/summary";
 import { expandText, positionAfter } from "../src/macros/text";
 
 describe("macro command ids", () => {
@@ -99,5 +100,23 @@ describe("positionAfter", () => {
 		expect(positionAfter({ line: 2, ch: 6 }, "abc")).toEqual({ line: 2, ch: 9 });
 		expect(positionAfter({ line: 2, ch: 6 }, "")).toEqual({ line: 2, ch: 6 });
 		expect(positionAfter({ line: 2, ch: 6 }, "ab\ncd\nef")).toEqual({ line: 4, ch: 2 });
+	});
+});
+
+describe("macro summaries", () => {
+	const names = (id: string) => (id === "editor:toggle-bold" ? "Toggle bold" : undefined);
+
+	it("sums up a macro's steps on one line", () => {
+		const macro = { id: "a", name: "A", steps: [{ type: "command", command: "editor:toggle-bold" }, { type: "text", text: "**{{date}}**\n- " }, { type: "command", command: "x:y" }, { type: "wait", ms: 1 }] };
+		expect(macroStepsLine(macro, names)).toBe("4 steps: Toggle bold, **{{date}}** ⏎ - , x:y, A step from a newer version of Neokeys");
+		expect(macroStepsLine({ ...macro, steps: [macro.steps[0]] }, names)).toBe("1 step: Toggle bold");
+		expect(macroStepsLine({ ...macro, steps: [] }, names)).toBe("No steps yet");
+		expect(macro.steps.map(stepKindLabel)).toEqual(["Command", "Text", "Command", "Newer step"]);
+	});
+
+	it("says where the keymap runs a macro", () => {
+		expect(macroUsesLine([["i", "d"]])).toBe("In the keymap: i › d");
+		expect(macroUsesLine([["i", "d"], ["m"]])).toBe("In the keymap: i › d, m");
+		expect(macroUsesLine([])).toBe("Not in the keymap. Run it from a hotkey or the command palette.");
 	});
 });

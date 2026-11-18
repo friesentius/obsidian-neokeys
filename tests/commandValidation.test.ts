@@ -1,4 +1,4 @@
-import { findInvalidCommands } from "../src/commandValidation";
+import { findCommandUses, findInvalidCommands } from "../src/commandValidation";
 import { parseKeymapSource } from "../src/keymap";
 
 const SOURCE = `
@@ -61,5 +61,25 @@ items:
 		expect(findInvalidCommands(parseKeymapSource(source), () => false)).toEqual([
 			{ path: ["No key", "No key"], command: "missing:command" },
 		]);
+	});
+});
+
+describe("findCommandUses", () => {
+	it("lists every item that runs a command, by key path, in keymap order", () => {
+		const root = parseKeymapSource(`
+items:
+  i:
+    title: Insert
+    items:
+      d:
+        command: neokeys:macro-stamp
+  nokey1:
+    icon: star
+    command: neokeys:macro-stamp
+  s:
+    command: app:zoom
+`);
+		expect(findCommandUses(root, "neokeys:macro-stamp")).toEqual([["i", "d"], ["No key"]]);
+		expect(findCommandUses(root, "neokeys:macro-gone")).toEqual([]);
 	});
 });

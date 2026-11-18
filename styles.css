@@ -1121,3 +1121,93 @@ body.theme-light .neokeys-dial {
 		transform: translate(calc(var(--neokeys-dial-from-x, var(--neokeys-dial-x)) - 50%), calc(var(--neokeys-dial-from-y, var(--neokeys-dial-y)) - 50%)) scale(0.5);
 	}
 }
+
+/* Macros: the list in Settings. */
+.neokeys-macro-name {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--size-4-2);
+}
+
+.neokeys-macro-icon {
+	--icon-size: var(--icon-s);
+	display: inline-flex;
+	color: var(--text-muted);
+}
+
+.neokeys-macro-uses {
+	color: var(--text-faint);
+}
+
+.neokeys-macro-row .setting-item-description {
+	overflow-wrap: anywhere;
+}
+
+/* Macros: the editor. Its rows sit in the modal's flex column, which scrolls: none of them may shrink. */
+.neokeys-macro-editor .modal-content > *,
+.neokeys-text-step-editor .modal-content > * {
+	flex-shrink: 0;
+}
+
+/* A heading inside a dialog lines up with the rows under it, as Obsidian's own dialogs do. */
+.neokeys-macro-editor .setting-item-heading.neokeys-macro-steps-heading {
+	padding-inline: 0;
+	padding-top: var(--size-4-2);
+}
+
+.neokeys-macro-step .setting-item-description {
+	overflow-wrap: anywhere;
+}
+
+.neokeys-macro-step-text {
+	font-family: var(--font-monospace);
+	font-size: var(--font-smaller);
+}
+
+.neokeys-macro-steps-empty {
+	color: var(--text-muted);
+	font-size: var(--font-ui-small);
+	padding: var(--size-4-2) 0;
+}
+
+.neokeys-macro-add-steps .setting-item-info {
+	display: none;
+}
+
+.neokeys-macro-add-steps .setting-item-control {
+	justify-content: flex-start;
+	flex-wrap: wrap;
+}
+
+.is-phone .neokeys-macro-add-steps .setting-item-control button {
+	flex: 1;
+}
+
+/* Macros: a text step's own dialog. The text box takes the dialog's full width, under its help. */
+.neokeys-text-step-setting {
+	flex-direction: column;
+	align-items: stretch;
+}
+
+.neokeys-text-step-setting .setting-item-control {
+	margin-top: var(--size-4-2);
+}
+
+.neokeys-text-step-input {
+	width: 100%;
+	resize: vertical;
+	font-family: var(--font-monospace);
+	font-size: var(--font-smaller);
+}
+
+.neokeys-text-step-placeholders {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--size-4-2);
+	margin: var(--size-4-2) 0;
+}
+
+.neokeys-text-step-placeholders button {
+	font-family: var(--font-monospace);
+	font-size: var(--font-ui-smaller);
+}

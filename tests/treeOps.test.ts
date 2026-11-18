@@ -10,7 +10,7 @@ import {
 	setGroupMeta,
 	updateEntry,
 } from "../src/treeOps";
-import { nodeFromDraft, type EntryDraft } from "../src/entryDraft";
+import { entryKindOf, nodeFromDraft, type EntryDraft } from "../src/entryDraft";
 import type { CommandNode, GroupNode } from "../src/types";
 
 const SOURCE = `
@@ -251,7 +251,19 @@ describe("countEntries", () => {
 });
 
 describe("icons through the editor's operations", () => {
-	const draft = (over: Partial<EntryDraft>): EntryDraft => ({ rawKey: "x", kind: "command", title: "", description: "", icon: "", command: "app:zoom", commandName: "", file: "", ...over });
+	const draft = (over: Partial<EntryDraft>): EntryDraft => ({ rawKey: "x", kind: "command", title: "", description: "", icon: "", command: "app:zoom", commandName: "", file: "", macro: "", ...over });
+
+	it("nodeFromDraft stores a macro item as an ordinary command item running the macro's command", () => {
+		expect(nodeFromDraft(draft({ kind: "macro", macro: "tidy-note", command: "app:zoom", description: "Tidy", icon: "sparkles" }), null)).toEqual({ kind: "command", command: "neokeys:macro-tidy-note", description: "Tidy", icon: "sparkles" });
+		expect(nodeFromDraft(draft({ kind: "macro", macro: "tidy-note" }), null)).toEqual({ kind: "command", command: "neokeys:macro-tidy-note" });
+	});
+
+	it("entryKindOf reads a command item running a macro as a macro item", () => {
+		expect(entryKindOf({ kind: "command", command: "neokeys:macro-tidy-note" })).toBe("macro");
+		expect(entryKindOf({ kind: "command", command: "neokeys:leader" })).toBe("command");
+		expect(entryKindOf({ kind: "file", file: "Inbox" })).toBe("file");
+		expect(entryKindOf({ kind: "group", entries: [] })).toBe("group");
+	});
 
 	it("nodeFromDraft writes an icon only when one is set, for every kind of entry", () => {
 		expect(nodeFromDraft(draft({ icon: "zoom-in" }), null)).toEqual({ kind: "command", command: "app:zoom", icon: "zoom-in" });

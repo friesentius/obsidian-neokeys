@@ -1,6 +1,17 @@
+import { macroCommandId, macroIdFromCommand } from "./macros/model";
 import type { CommandNode, FileNode, GroupEntry, GroupNode, KeymapNode } from "./types";
 
-export type EntryKind = "group" | "command" | "file";
+/**
+ * What the add/edit form offers. A "macro" item is stored as an ordinary command item that runs
+ * the macro's command, so the keymap schema (and any Neokeys that predates macros) is unchanged.
+ */
+export type EntryKind = "group" | "command" | "file" | "macro";
+
+/** The kind the form shows for an existing node: a command item running one of Neokeys' macro commands is a macro item. */
+export function entryKindOf(node: KeymapNode): EntryKind {
+	if (node.kind === "command" && macroIdFromCommand(node.command) !== null) return "macro";
+	return node.kind;
+}
 
 /** What the add/edit form collects for one tree entry. Empty strings mean "not set". */
 export interface EntryDraft {
@@ -13,6 +24,8 @@ export interface EntryDraft {
 	command: string;
 	commandName: string;
 	file: string;
+	/** The id of the macro a macro item runs. */
+	macro: string;
 }
 
 /**
@@ -28,8 +41,8 @@ export function nodeFromDraft(draft: EntryDraft, existingEntries: GroupEntry[] |
 		if (draft.icon.length > 0) node.icon = draft.icon;
 		return node;
 	}
-	if (draft.kind === "command") {
-		const node: CommandNode = { kind: "command", command: draft.command };
+	if (draft.kind === "command" || draft.kind === "macro") {
+		const node: CommandNode = { kind: "command", command: draft.kind === "macro" ? macroCommandId(draft.macro) : draft.command };
 		if (draft.description.length > 0) node.description = draft.description;
 		if (draft.icon.length > 0) node.icon = draft.icon;
 		return node;

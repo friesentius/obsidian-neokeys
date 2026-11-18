@@ -1,17 +1,22 @@
-import { App, ButtonComponent, Notice, Platform, PluginSettingTab, Scope, Setting } from "obsidian";
+import { App, ButtonComponent, Notice, Platform, PluginSettingTab, Scope, setIcon, Setting } from "obsidian";
 import type { SettingDefinitionItem } from "obsidian";
 import { DEFAULT_ANIMATION_DURATION_MS, parseAnimationDurationInput } from "./animation";
 import { ComboLeaderError, describeComboLeader, parseComboLeaderString } from "./comboLeader";
-import { findInvalidCommands } from "./commandValidation";
+import { findCommandUses, findInvalidCommands } from "./commandValidation";
 import { findHotkeyConflicts } from "./hotkeyConflict";
 import { KeymapParseError, parseKeymapSource } from "./keymap";
 import { serializeKeymap } from "./keymapSerialize";
 import { visibleSettingsGroups, type SettingsGroupId } from "./settingsGroups";
 import { keyFromEvent, keyToString } from "./keys";
-import { getCommandHotkeys, hasCommand, listOtherCommandHotkeys } from "./obsidianCommands";
+import { knownStep, macroCommandId, macroIdFromCommand, type Macro } from "./macros/model";
+import { macroStepsLine, macroUsesLine } from "./macros/summary";
+import { getCommandHotkeys, getCommandName, hasCommand, listOtherCommandHotkeys } from "./obsidianCommands";
 import { parseDialCorner, parseDialDescription, parseDialItemSize, parseDialLensPeak, parseDialRadiusRule, parseDialRingAnimation } from "./defaultSettings";
 import { DEFAULT_DIAL_ITEM_SIZE, DEFAULT_LENS_PEAK, LENS_PEAK_STEP, MAX_DIAL_ITEM_SIZE, MAX_LENS_PEAK, MIN_DIAL_ITEM_SIZE, MIN_LENS_PEAK } from "./dial/layout";
 import type { GroupNode } from "./types";
+import { ConfirmDeleteModal } from "./ui/confirmDeleteModal";
+import { MacroEditorModal, type MacroStore } from "./ui/macroEditorModal";
+import { openModalInWindow } from "./ui/modalWindow";
 import { TreeEditorView } from "./ui/treeEditorView";
 import type NeokeysPlugin from "./main";
 
@@ -50,6 +55,9 @@ const MOBILE_DIAL_RING_ANIMATION_DESC =
 	"Animate a ring as it opens. Off when Animations is off, and always off when your OS's reduced-motion accessibility preference is on, regardless of this toggle.";
 const MOBILE_DIAL_RING_ANIMATION_STYLE_NAME = "Dial ring animation style";
 const MOBILE_DIAL_RING_ANIMATION_STYLE_DESC = "Fade the ring in, or fly its circles out from the group they belong to.";
+const MACROS_NAME = "Macros";
+const MACROS_DESC =
+	'A macro runs its steps in order: commands and text. Each one becomes an Obsidian command named "Neokeys: <name>", so a keymap item, a hotkey, the command palette or the mobile toolbar can run it.';
 const KEYMAP_DESC =
 	'Edit the keymap as a tree, or use "Edit as YAML/JSON" for the raw, Spacekeys-compatible source (each group has items; each item is a group, a command ("command: <id>" or the short form "<id> <description>"), or a file ("file: <path>")). Both views edit the same stored keymap - switching away from the YAML view saves it first, and an invalid edit there is never silently discarded.';
 const YAML_NOTE =
@@ -82,6 +90,9 @@ export class NeokeysSettingTab extends PluginSettingTab {
 	private invalidCommandsEl: HTMLElement | null = null;
 	private hotkeyConflictsEl: HTMLElement | null = null;
 	private stopRecordingCombo: (() => void) | null = null;
+	/** The Macros row the macro rows follow, and the rows drawn after it. */
+	private macrosAnchorEl: HTMLElement | null = null;
+	private macroRowEls: HTMLElement[] = [];
 
 	constructor(
 		app: App,
@@ -192,6 +203,18 @@ export class NeokeysSettingTab extends PluginSettingTab {
 					},
 				],
 			},
+			macros: {
+				type: "group",
+				heading: "Macros",
+				items: [
+					{
+						name: MACROS_NAME,
+						desc: MACROS_DESC,
+						aliases: ["macro", "sequence", "chain", "snippet", "text", "steps"],
+						render: (setting) => this.renderMacros(setting),
+					},
+				],
+			},
 			keymap: {
 				type: "group",
 				heading: "Keymap",
@@ -244,6 +267,9 @@ export class NeokeysSettingTab extends PluginSettingTab {
 			this.renderMobileDialRingAnimation(new Setting(containerEl));
 			this.renderMobileDialRingAnimationStyle(new Setting(containerEl));
 		}
+
+		new Setting(containerEl).setName("Macros").setHeading();
+		this.renderMacros(new Setting(containerEl));
 
 		new Setting(containerEl).setName("Keymap").setHeading();
 		this.renderKeymapEditor(new Setting(containerEl));
@@ -616,6 +642,7 @@ export class NeokeysSettingTab extends PluginSettingTab {
 			this.treeContainerEl,
 			() => parseKeymapSource(this.plugin.settings.keymapSource),
 			(root) => this.persistTree(root),
+			this.macroStore,
 		);
 
 		this.applyViewMode();
@@ -673,6 +700,7 @@ export class NeokeysSettingTab extends PluginSettingTab {
 		await this.plugin.saveSettings();
 		this.clearKeymapError();
 		this.updateInvalidCommands();
+		this.renderMacroRows();
 		return true;
 	}
 
@@ -688,6 +716,7 @@ export class NeokeysSettingTab extends PluginSettingTab {
 		if (this.keymapTextAreaEl) this.keymapTextAreaEl.value = this.plugin.settings.keymapSource;
 		this.clearKeymapError();
 		this.updateInvalidCommands();
+		this.renderMacroRows();
 		this.treeEditorView?.render();
 	}
 
@@ -702,6 +731,129 @@ export class NeokeysSettingTab extends PluginSettingTab {
 		if (!this.errorEl) return;
 		this.errorEl.setText("");
 		this.errorEl.removeClass("neokeys-keymap-error-active");
+	}
+
+	/** The macros as the editors see them: saving one also refreshes every view that shows macros. */
+	private get macroStore(): MacroStore {
+		return {
+			macros: () => this.plugin.settings.macros,
+			save: async (macro) => {
+				await this.plugin.saveMacro(macro);
+				this.afterMacrosChanged();
+			},
+		};
+	}
+
+	/** The macro list, the invalid-command list and the tree's labels all depend on the macros. */
+	private afterMacrosChanged(): void {
+		this.renderMacroRows();
+		this.updateInvalidCommands();
+		if (this.viewMode === "tree") this.applyViewMode();
+	}
+
+	private renderMacros(setting: Setting): void {
+		setting
+			.setName(MACROS_NAME)
+			.setDesc(MACROS_DESC)
+			.setClass("neokeys-macros-intro")
+			.addButton((button) =>
+				button
+					.setButtonText("New macro")
+					.setCta()
+					.onClick(() => this.openMacroEditor(null)),
+			);
+		this.macrosAnchorEl = setting.settingEl;
+		this.macroRowEls = [];
+		// The rows go right after this one, as siblings, so they read as one list with Obsidian's
+		// dividers. Obsidian 1.13+ settles a group's rows after rendering them (dropping any it did
+		// not make), so the rows are added once that is done.
+		const anchor = setting.settingEl;
+		const place = (tries: number): void => {
+			if (anchor !== this.macrosAnchorEl) return;
+			if (anchor.isConnected) this.renderMacroRows();
+			else if (tries > 0) anchor.win.setTimeout(() => place(tries - 1), 20);
+		};
+		anchor.win.setTimeout(() => place(50), 0);
+	}
+
+	/** One row per macro after the Macros row: its icon and name, its steps, where the keymap runs it, edit and delete. */
+	private renderMacroRows(): void {
+		const anchor = this.macrosAnchorEl;
+		if (!anchor?.isConnected) return;
+		for (const el of this.macroRowEls) el.remove();
+		this.macroRowEls = [];
+
+		let root: GroupNode | null = null;
+		try {
+			root = parseKeymapSource(this.plugin.settings.keymapSource);
+		} catch {
+			root = null;
+		}
+		const holder = createDiv();
+		const macros = this.plugin.settings.macros;
+		if (macros.length === 0) {
+			new Setting(holder).setDesc("No macros yet.").setClass("neokeys-macro-row").setClass("neokeys-macro-empty");
+		}
+		for (const macro of macros) {
+			const name = createFragment((fragment) => {
+				const wrap = fragment.createSpan({ cls: "neokeys-macro-name" });
+				if (macro.icon) setIcon(wrap.createSpan({ cls: "neokeys-macro-icon" }), macro.icon);
+				wrap.createSpan({ text: macro.name });
+			});
+			const uses = root ? findCommandUses(root, macroCommandId(macro.id)) : [];
+			const desc = createFragment((fragment) => {
+				fragment.createDiv({ text: macroStepsLine(macro, (id) => getCommandName(this.app, id)) });
+				fragment.createDiv({ cls: "neokeys-macro-uses", text: macroUsesLine(uses) });
+			});
+			new Setting(holder)
+				.setName(name)
+				.setDesc(desc)
+				.setClass("neokeys-macro-row")
+				.addExtraButton((button) =>
+					button
+						.setIcon("pencil")
+						.setTooltip("Edit")
+						.onClick(() => this.openMacroEditor(macro)),
+				)
+				.addExtraButton((button) =>
+					button
+						.setIcon("trash-2")
+						.setTooltip("Delete")
+						.onClick(() => this.confirmDeleteMacro(macro, uses)),
+				);
+		}
+		this.macroRowEls = [...Array.from(holder.children)] as HTMLElement[];
+		anchor.after(...this.macroRowEls);
+	}
+
+	private openMacroEditor(macro: Macro | null): void {
+		openModalInWindow(new MacroEditorModal(this.app, macro, this.macroStore), this.containerEl.win);
+	}
+
+	/** Deleting asks first, saying what still runs the macro: keymap items, a hotkey, other macros. */
+	private confirmDeleteMacro(macro: Macro, uses: string[][]): void {
+		const parts = [`Delete the macro "${macro.name}"?`];
+		if (uses.length > 0) parts.push(`The keymap ${uses.length === 1 ? "item" : "items"} that ${uses.length === 1 ? "runs" : "run"} it (${uses.map((path) => path.join(" › ")).join(", ")}) will show as an unknown command.`);
+		if (getCommandHotkeys(this.app, macroCommandId(macro.id)).length > 0) parts.push("Its hotkey will stop working.");
+		const callers = this.plugin.settings.macros.filter((other) =>
+			other.steps.some((step) => {
+				const known = knownStep(step);
+				return known?.type === "command" && macroIdFromCommand(known.command) === macro.id && other.id !== macro.id;
+			}),
+		);
+		if (callers.length > 0) parts.push(`${callers.map((other) => `"${other.name}"`).join(", ")} ${callers.length === 1 ? "runs" : "run"} it and will not start until changed.`);
+		parts.push("This can't be undone.");
+		openModalInWindow(
+			new ConfirmDeleteModal(
+				this.app,
+				parts.join(" "),
+				() => {
+					void this.plugin.deleteMacro(macro.id).then(() => this.afterMacrosChanged());
+				},
+				"Delete macro?",
+			),
+			this.containerEl.win,
+		);
 	}
 
 	private renderInvalidCommands(setting: Setting): void {
