@@ -492,9 +492,10 @@ unaffected either way.
 
 ## Compatibility
 
-Requires Obsidian 1.7.2 or later. Desktop and mobile. On desktop the leader opens the keyboard-driven which-key popup; on mobile the
-pinned dial above is the way in, and the Leader command (from the command palette, or a combo
-leader or hotkey on a hardware keyboard) opens that same dial, which the keyboard can then drive.
+Requires Obsidian 1.7.2 or later. Desktop and mobile. On desktop the leader opens the
+keyboard-driven which-key popup; on mobile the pinned dial above is the way in, and the Leader
+command (from the command palette, or a combo leader or hotkey on a hardware keyboard) opens that
+same dial, which the keyboard can then drive.
 
 ## Development
 
