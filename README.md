@@ -294,9 +294,9 @@ keymap.
 
 ![Add item with kind Macro on a phone, dark theme](docs/screenshots/macros/phone-add-item-macro-dark.png)
 
-![The which-key popup listing macros by name, dark theme](docs/screenshots/macros/desktop-popup-macros-dark.png)
+![The which-key popup in a Macros group, listing the macros by name, dark theme](docs/screenshots/macros/desktop-popup-macros-dark.png)
 
-![The dial with a macro armed, its name in the pill, dark theme](docs/screenshots/macros/phone-dial-macro-dark.png)
+![The dial with the Stamp today macro armed in a Macros group, its name in the pill, dark theme](docs/screenshots/macros/phone-dial-macro-dark.png)
 
 When a macro can't run, a notice says why:
 
@@ -304,8 +304,9 @@ When a macro can't run, a notice says why:
   not exist (say its plugin is off), when it would run itself (`Loop A → Loop B → Loop A`), when a
   step is the Leader, or when a step was saved by a newer Neokeys than this device has.
 - **During a run**, a step that can't run at its turn stops the macro there, for example an editor
-  command or a text step with no note open: `"Bold italic" stopped at step 1 of 2: "Toggle bold"
-  can't run here`. The steps before it stay done.
+  command with no note open (`"Bold italic" stopped at step 1 of 2: "Toggle bold" can't run here`),
+  or a text step with no note open or the note in reading view (`text needs a note open for
+  editing`). The steps before it stay done.
 - **When you save**, the editor refuses a macro that would run itself, naming the loop.
 
 Macros can run other macros up to 8 deep, and one run takes at most 200 steps; past either limit

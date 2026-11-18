@@ -84,7 +84,7 @@ describe("MacroRunner", () => {
 		const { runner, log, notices } = fakeHost([{ id: "a", name: "Stamp", steps: [cmd("app:go-back"), text("{{date}}"), cmd("app:go-back")] }], { noEditor: true });
 		expect(runner.run("a")).toBe("stopped");
 		expect(log).toEqual(["command app:go-back"]);
-		expect(notices).toEqual(['Neokeys: "Stamp" stopped at step 2 of 3: text needs an open note']);
+		expect(notices).toEqual(['Neokeys: "Stamp" stopped at step 2 of 3: text needs a note open for editing']);
 	});
 
 	it("runs a macro step's macro in place, and stops the outer one when the inner one stops", () => {

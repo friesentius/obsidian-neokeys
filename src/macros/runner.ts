@@ -129,7 +129,7 @@ export class MacroRunner {
 			}
 			if (step.type === "text") {
 				if (!this.host.insertText(step.text)) {
-					this.host.notify(macroStoppedMessage(macro.name, index + 1, total, "text needs an open note"));
+					this.host.notify(macroStoppedMessage(macro.name, index + 1, total, "text needs a note open for editing"));
 					return "stopped";
 				}
 				continue;
