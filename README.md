@@ -377,10 +377,10 @@ A pill just below Obsidian's header, and below the note's title when the note sh
 what you are on: the path of open groups, the item under your thumb at its end, and on a second line
 what that item does: a group's description (or its keys and labels, when it has none), a command's
 name in Obsidian when the keymap labels it something else, a file's path; the text is centred in the
-pill whether it has one line or two. On
-a narrow phone the start of the path gives way to an ellipsis, so the item under your thumb is the
-last thing ever shortened. Back and Close buttons sit at either end. An item with an icon (see
-below) shows its key in the pill as a small chip, since its circle shows the icon instead.
+pill whether it has one line or two. On a narrow phone the start of the path gives way to an
+ellipsis, so the item under your thumb is the last thing ever shortened. Back and Close buttons sit
+at either end. An item with an icon (see below) shows its key in the pill as a small chip, since its
+circle shows the icon instead.
 
 ![Mobile dial mid-drag through Text and Heading to Heading 2, dark theme](docs/screenshots/mobile/dial-heading-dark.png)
 
