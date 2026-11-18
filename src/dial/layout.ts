@@ -951,3 +951,15 @@ export function chooseMode(
 	}
 	return { mode, geometry, params: shrunk };
 }
+
+/**
+ * Where the pill's top edge may start when it sits below the view header: the header's bottom,
+ * or the bottom of the note's inline title when that is on screen below the header, so the pill
+ * never covers the title. `titles` are every inline title in the leaf, in document order: a
+ * Markdown leaf holds one for editing and one for reading, and only the showing one has a size.
+ * No visible title, or one scrolled up under the header, leaves the header's bottom.
+ */
+export function pillClearance(headerBottom: number, titles: readonly { bottom: number; height: number; width: number }[]): number {
+	const title = titles.find((rect) => rect.width > 0 && rect.height > 0);
+	return title ? Math.max(headerBottom, title.bottom) : headerBottom;
+}
