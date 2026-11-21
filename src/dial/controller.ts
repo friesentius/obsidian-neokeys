@@ -31,8 +31,16 @@ import {
 export interface DialHost {
 	isCommandKnown(id: string): boolean;
 	resolveCommandName(id: string): string | undefined;
-	executeCommand(id: string): void;
-	openFile(path: string): void;
+	/** Run a command an item chose; `label` is the item's label, for Repeat to show. */
+	executeCommand(id: string, label: string): void;
+	/** Open a file an item chose; `label` is the item's label, for Repeat to show. */
+	openFile(path: string, label: string): void;
+	/** Whether the deepest group of a navigation stack (the root first) is sticky: it stays open after an item runs. */
+	isSticky(path: readonly GroupNode[]): boolean;
+	/** What the pill says about a command beyond its label, such as what Repeat would run; undefined for nothing special. */
+	commandDetail?(id: string): string | undefined;
+	/** What has the focus right now, compared before and after an item of a sticky group runs: an item that moves it (the quick switcher, a prompt, Rename's title) closes the dial. */
+	focusedElement?(): unknown;
 	notify(message: string): void;
 	/** A short haptic tick when the armed item changes; the caller feature-detects it, so it may be absent. */
 	vibrate?(): void;
@@ -58,6 +66,8 @@ export interface DialItemView {
 	size: number;
 	/** How far inside the lens the circle is, 0 to 1, so a grown circle is drawn above the ones it crowds. */
 	weight: number;
+	/** How many times in a row the item has run while its sticky group stayed open; 0 when it has not. */
+	ran: number;
 	/** How much of the circle is there, 0 to 1: below 1 it is fading out (the far circles of a level too big for its ring while the lens is on it), drawn that transparent with `size` shrunk by as much, and at 0 it is gone: not drawn, not hit. */
 	presence: number;
 }
@@ -104,6 +114,8 @@ export interface DialView {
 	armed: DialArmedView | null;
 	/** What the deepest ring's group has to say for itself, for the pill while nothing is armed. */
 	description: string;
+	/** The deepest open group is sticky: an item run from it leaves the dial open. */
+	sticky: boolean;
 	/** The rings on screen, innermost first. Deeper levels of the path than the first ring's are open but undrawn (a short screen). */
 	rings: DialRingView[];
 	/** A guide arc through the items of each ring that holds more than one. */
@@ -126,6 +138,16 @@ export type DialChange = "structure" | "layout" | "armed" | "lens";
 interface DialTarget {
 	entry: GroupEntry;
 	level: number;
+}
+
+/** The pill's line for a sticky group while nothing is armed: how to leave it. */
+export const STICKY_DESCRIPTION = "Sticky · tap outside to close";
+
+/** What ran in a sticky group that stayed open, and how many times in a row. */
+interface RanKey {
+	level: number;
+	identity: GroupEntry;
+	count: number;
 }
 
 /** What was armed, by identity rather than position, so it survives the rings around it changing. */
@@ -181,6 +203,8 @@ export class DialController {
 	/** Where the current press began, until the pointer has moved past TAP_SLOP from it; null for a press on the anchor. */
 	private pressStart: DialPoint | null = null;
 	private armed: ArmedKey | null = null;
+	/** The item that last ran while its sticky group stayed open; forgotten when that group closes. */
+	private ran: RanKey | null = null;
 	private geometry: DialGeometry | null = null;
 	private mode: DialLayoutMode = "normal";
 	/** The ring layout for this opening: the settings' params, or the same shrunk to fit a screen too short for the first ring (see `chooseMode`). */
@@ -228,6 +252,7 @@ export class DialController {
 		this.pressing = null;
 		this.lastPoint = null;
 		this.armed = null;
+		this.ran = null;
 		this.emit("structure");
 	}
 
@@ -241,6 +266,7 @@ export class DialController {
 		this.path.pop();
 		this.focus.length = this.path.length;
 		this.armed = null;
+		if (this.ran !== null && this.ran.level >= this.path.length) this.ran = null;
 		this.plan();
 		this.emit("structure");
 	}
@@ -380,13 +406,15 @@ export class DialController {
 		const armedIndex = this.armed ? this.indexOf(this.armed) : -1;
 		const outermost = this.rings.length > 0 ? this.from + this.rings.length - 1 : null;
 		const deepest = outermost !== null ? this.path[outermost] : null;
+		const sticky = this.opened && this.host.isSticky(this.path);
 		return {
 			open: this.opened,
 			pressing: this.pressing !== null,
 			title: root?.title ?? "Neokeys",
 			crumbs: this.opened ? breadcrumbTrail(this.path, (id) => this.host.resolveCommandName(id)) : [],
 			armed: armedIndex !== -1 ? this.armedView(armedIndex) : null,
-			description: deepest ? this.groupDescription(deepest) : "",
+			description: sticky ? STICKY_DESCRIPTION : deepest ? this.groupDescription(deepest) : "",
+			sticky,
 			rings: this.opened ? this.rings.map((ring, index) => this.ringView(ring, index)) : [],
 			arcs: this.opened && this.geometry ? ringArcs(this.geometry, this.rings, this.slots) : [],
 			mode: this.mode,
@@ -404,6 +432,7 @@ export class DialController {
 		this.from = 0;
 		this.opened = true;
 		this.armed = null;
+		this.ran = null;
 		this.pressing = pressing;
 		this.lastPoint = null;
 		this.pressStart = null;
@@ -575,6 +604,7 @@ export class DialController {
 		if (changed !== -1) {
 			this.focus.length = Math.min(this.focus.length, changed);
 			for (let level = changed; level < next.length; level++) this.focus[level] = this.fingerFocus();
+			if (this.ran !== null && this.ran.level >= changed) this.ran = null;
 		}
 		this.path = next;
 	}
@@ -612,12 +642,32 @@ export class DialController {
 			return;
 		}
 
-		this.close();
-		if (node.kind === "command") {
-			this.host.executeCommand(node.command);
-		} else {
-			this.host.openFile(node.file);
+		const label = this.targetLabel(target);
+		const group = this.path.slice(0, target.level + 1);
+		if (!this.host.isSticky(group)) {
+			this.close();
+			this.run(node, label);
+			return;
 		}
+
+		// A sticky group stays open: the item runs with its ring left where it is, and lights up.
+		const before = this.targets;
+		this.usePath(group);
+		this.plan();
+		const focusBefore = this.host.focusedElement?.();
+		this.run(node, label);
+		if (this.host.focusedElement !== undefined && this.host.focusedElement() !== focusBefore) {
+			this.close();
+			return;
+		}
+		const count = this.ran !== null && this.ran.level === target.level && this.ran.identity === target.entry ? this.ran.count + 1 : 1;
+		this.ran = { level: target.level, identity: target.entry, count };
+		this.emit(sameTargets(before, this.targets) ? "armed" : "structure");
+	}
+
+	private run(node: GroupEntry["node"], label: string): void {
+		if (node.kind === "command") this.host.executeCommand(node.command, label);
+		else if (node.kind === "file") this.host.openFile(node.file, label);
 	}
 
 	private targetLabel(target: DialTarget): string {
@@ -646,6 +696,8 @@ export class DialController {
 			return description === "" ? "Let go to open" : `Let go to open · ${description}`;
 		}
 		if (node.kind === "file") return node.description ? node.file : "";
+		const detail = this.host.commandDetail?.(node.command);
+		if (detail !== undefined) return detail;
 		const name = this.host.resolveCommandName(node.command);
 		return name !== undefined && name !== this.targetLabel(target) ? name : "";
 	}
@@ -676,6 +728,7 @@ export class DialController {
 			y: position.y,
 			size: this.slots[index].size,
 			weight: this.slots[index].weight,
+			ran: this.ran !== null && this.ran.level === target.level && this.ran.identity === target.entry ? this.ran.count : 0,
 			presence: this.slots[index].presence,
 		};
 	}

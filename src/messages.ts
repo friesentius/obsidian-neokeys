@@ -10,6 +10,16 @@ export function commandUnavailableMessage(commandId: string): string {
 	return `Neokeys: command "${commandId}" is not available`;
 }
 
+/** "Repeat last action" before any keymap item has run since Obsidian started. */
+export function nothingToRepeatMessage(): string {
+	return "Neokeys: nothing to repeat yet";
+}
+
+/** A macro step would repeat the last action, which a macro may not do: the last action can be the macro itself. */
+export function macroRepeatMessage(macroName: string): string {
+	return macroRefused(macroName, "a macro can't repeat the last action");
+}
+
 /** A macro that did not start: `reason` says what in it cannot run. */
 function macroRefused(macroName: string, reason: string): string {
 	return `Neokeys: "${macroName}" did not run: ${reason}`;

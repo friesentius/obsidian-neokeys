@@ -52,6 +52,10 @@ describe("checkMacro", () => {
 		expect(checkMacro({ id: "n", name: "New", steps: [cmd("neokeys:leader")] }, existing)).toBe("Step 1 opens the Leader, which a macro can't do.");
 	});
 
+	it("refuses Repeat last action, which could be the macro itself", () => {
+		expect(checkMacro({ id: "n", name: "New", steps: [cmd("app:go-back"), cmd("neokeys:repeat-last")] }, existing)).toBe("Step 2 repeats the last action, which a macro can't do: it could be the macro itself.");
+	});
+
 	it("refuses a step that closes a loop, judging the edited macro rather than its saved copy", () => {
 		const edited = { id: "b", name: "Tidy", steps: [cmd("neokeys:macro-a")] };
 		expect(checkMacro(edited, existing)).toBe('"Tidy" would run itself: Tidy → Daily setup → Tidy. Remove the step that leads back to it.');

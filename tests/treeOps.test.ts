@@ -251,7 +251,7 @@ describe("countEntries", () => {
 });
 
 describe("icons through the editor's operations", () => {
-	const draft = (over: Partial<EntryDraft>): EntryDraft => ({ rawKey: "x", kind: "command", title: "", description: "", icon: "", command: "app:zoom", commandName: "", file: "", macro: "", ...over });
+	const draft = (over: Partial<EntryDraft>): EntryDraft => ({ rawKey: "x", kind: "command", title: "", description: "", icon: "", command: "app:zoom", commandName: "", file: "", macro: "", sticky: false, ...over });
 
 	it("nodeFromDraft stores a macro item as an ordinary command item running the macro's command", () => {
 		expect(nodeFromDraft(draft({ kind: "macro", macro: "tidy-note", command: "app:zoom", description: "Tidy", icon: "sparkles" }), null)).toEqual({ kind: "command", command: "neokeys:macro-tidy-note", description: "Tidy", icon: "sparkles" });

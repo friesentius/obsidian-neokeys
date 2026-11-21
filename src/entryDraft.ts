@@ -26,6 +26,8 @@ export interface EntryDraft {
 	file: string;
 	/** The id of the macro a macro item runs. */
 	macro: string;
+	/** For a group: it stays open after one of its items runs. Stored in the settings, not in the keymap (see sticky.ts). */
+	sticky: boolean;
 }
 
 /**

@@ -2,6 +2,7 @@ import type { App, Hotkey } from "obsidian";
 import { Platform } from "obsidian";
 import { hotkeyToParsedKey, type CommandKeyBinding } from "./hotkeyConflict";
 import { macroCommandLabel } from "./macros/model";
+import { REPEAT_COMMAND_ID, REPEAT_ITEM_LABEL } from "./repeat";
 import type { ParsedKey } from "./types";
 
 interface CommandsApi {
@@ -53,9 +54,11 @@ export function canRunCommand(app: App, id: string): boolean {
 
 /**
  * A command's name as a keymap item shows it. Obsidian names a plugin's commands
- * "<plugin>: <name>"; a Neokeys macro is shown by its own name, as the user called it.
+ * "<plugin>: <name>"; a Neokeys macro is shown by its own name, as the user called it, and
+ * "Repeat last action" as "Repeat" (the item adds what it would repeat after it).
  */
 export function getCommandName(app: App, id: string): string | undefined {
+	if (id === REPEAT_COMMAND_ID && hasCommand(app, id)) return REPEAT_ITEM_LABEL;
 	const name = commandsApi(app).commands[id]?.name;
 	return name === undefined ? undefined : macroCommandLabel(id, name);
 }

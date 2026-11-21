@@ -1,3 +1,4 @@
+import { REPEAT_COMMAND_ID } from "../repeat";
 import { knownStep, LEADER_COMMAND_ID, macroIdFromCommand, type Macro } from "./model";
 
 /**
@@ -49,6 +50,7 @@ export function checkMacro(macro: Macro, others: readonly Macro[]): string | nul
 			continue;
 		}
 		if (step.command === LEADER_COMMAND_ID) return `Step ${index + 1} opens the Leader, which a macro can't do.`;
+		if (step.command === REPEAT_COMMAND_ID) return `Step ${index + 1} repeats the last action, which a macro can't do: it could be the macro itself.`;
 	}
 
 	const loop = findMacroLoop([...rest, { ...macro, name }], macro.id);

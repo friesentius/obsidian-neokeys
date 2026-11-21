@@ -92,4 +92,6 @@ export interface NeokeysSettings {
 	mobileDialRingAnimationStyle: DialRingAnimation;
 	/** Named step lists, each registered as the command "neokeys:macro-<id>" (see macros/model.ts). */
 	macros: Macro[];
+	/** Groups that stay open after one of their items runs, by key path from the root (see sticky.ts). */
+	stickyGroups: string[][];
 }

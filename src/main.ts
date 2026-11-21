@@ -8,7 +8,10 @@ import { keyFromEvent, keysEqual } from "./keys";
 import { macroLocalCommandId, type Macro } from "./macros/model";
 import { obsidianMacroHost } from "./macros/obsidianHost";
 import { MacroRunner } from "./macros/runner";
-import { executeCommandById } from "./obsidianCommands";
+import { commandUnavailableMessage, nothingToRepeatMessage } from "./messages";
+import { executeCommandById, hasCommand } from "./obsidianCommands";
+import { REPEAT_COMMAND_ID, REPEAT_COMMAND_NAME, REPEAT_LOCAL_COMMAND_ID, repeatHint, RepeatTracker } from "./repeat";
+import { isStickyStack } from "./sticky";
 import { DEFAULT_SETTINGS, resolveSettings } from "./defaultSettings";
 import { NeokeysSettingTab } from "./settings";
 import type { GroupNode, NeokeysSettings } from "./types";
@@ -22,6 +25,8 @@ export default class NeokeysPlugin extends Plugin {
 	private dial: MobileDial | null = null;
 	/** Runs every macro, whichever way it was triggered; set up in onload. */
 	private macroRunner!: MacroRunner;
+	/** What the last keymap item run through Neokeys was, for "Repeat last action". In memory only. */
+	private readonly repeat = new RepeatTracker();
 	/** Each registered macro command's name and icon (as one string), by macro id, to tell when it must be registered again. */
 	private readonly macroCommands = new Map<string, string>();
 
@@ -34,6 +39,13 @@ export default class NeokeysPlugin extends Plugin {
 			id: "leader",
 			name: "Leader",
 			callback: () => this.activateLeader(),
+		});
+
+		this.addCommand({
+			id: REPEAT_LOCAL_COMMAND_ID,
+			name: REPEAT_COMMAND_NAME,
+			icon: "repeat",
+			callback: () => this.repeatLast(),
 		});
 
 		this.addCommand({
@@ -189,11 +201,35 @@ export default class NeokeysPlugin extends Plugin {
 
 	private leaderCallbacks(): WhichKeyCallbacks {
 		return {
-			executeCommand: (id) => executeCommandById(this.app, id),
-			openFile: (path) => {
+			executeCommand: (id, label) => {
+				this.repeat.record({ kind: "command", command: id, label });
+				executeCommandById(this.app, id);
+			},
+			openFile: (path, label) => {
+				this.repeat.record({ kind: "file", file: path, label });
 				void this.app.workspace.openLinkText(path, "", false);
 			},
+			isSticky: (path) => isStickyStack(this.settings.stickyGroups, path),
+			commandDetail: (id) => (id === REPEAT_COMMAND_ID ? repeatHint(this.repeat.lastAction) : undefined),
 		};
+	}
+
+	/** Run again the last command or file a keymap item ran (see repeat.ts). */
+	private repeatLast(): void {
+		const last = this.repeat.lastAction;
+		if (last === null) {
+			new Notice(nothingToRepeatMessage(), 4000);
+			return;
+		}
+		if (last.kind === "file") {
+			void this.app.workspace.openLinkText(last.file, "", false);
+			return;
+		}
+		if (!hasCommand(this.app, last.command)) {
+			new Notice(commandUnavailableMessage(last.command), 6000);
+			return;
+		}
+		executeCommandById(this.app, last.command);
 	}
 
 	private activateLeader(): void {

@@ -2,6 +2,7 @@ import { DEFAULT_ANIMATION_DURATION_MS } from "./animation";
 import { DEFAULT_DIAL_ITEM_SIZE, DEFAULT_LENS_PEAK, DEFAULT_RADIUS_RULE, LENS_PEAK_STEP, MAX_DIAL_ITEM_SIZE, MAX_LENS_PEAK, MIN_DIAL_ITEM_SIZE, MIN_LENS_PEAK } from "./dial/layout";
 import { sanitizeMacros } from "./macros/model";
 import { DEFAULT_KEYMAP_YAML } from "./sampleKeymap";
+import { DEFAULT_STICKY_GROUPS, sanitizeStickyGroups } from "./sticky";
 import {
 	DIAL_CORNERS,
 	DIAL_DESCRIPTIONS,
@@ -34,6 +35,7 @@ export const DEFAULT_SETTINGS: NeokeysSettings = {
 	mobileDialRingAnimation: true,
 	mobileDialRingAnimationStyle: "fade",
 	macros: [],
+	stickyGroups: DEFAULT_STICKY_GROUPS,
 };
 
 /** A stored or chosen corner value, falling back to the default for anything unrecognised. */
@@ -79,9 +81,15 @@ export function parseDialLensPeak(value: unknown): number {
 	return Math.round(Math.round(clamped / LENS_PEAK_STEP) * LENS_PEAK_STEP * 100) / 100;
 }
 
-/** The settings to run with, given whatever `loadData()` returned: defaults filled in, dial keys and macros sanitised. */
+/**
+ * The settings to run with, given whatever `loadData()` returned: defaults filled in, dial keys,
+ * macros and sticky groups sanitised. Only a fresh install (no data.json yet) starts with the
+ * default sticky groups: an existing install that saved before sticky groups existed keeps every
+ * group as it was, not sticky.
+ */
 export function resolveSettings(loaded: unknown): NeokeysSettings {
-	const stored = typeof loaded === "object" && loaded !== null ? (loaded as Partial<NeokeysSettings>) : {};
+	const fresh = typeof loaded !== "object" || loaded === null;
+	const stored = fresh ? {} : (loaded as Partial<NeokeysSettings>);
 	const settings: NeokeysSettings = Object.assign({}, DEFAULT_SETTINGS, stored);
 	settings.mobileDialEnabled = typeof stored.mobileDialEnabled === "boolean" ? stored.mobileDialEnabled : DEFAULT_SETTINGS.mobileDialEnabled;
 	settings.mobileDialCorner = parseDialCorner(stored.mobileDialCorner);
@@ -92,5 +100,6 @@ export function resolveSettings(loaded: unknown): NeokeysSettings {
 	settings.mobileDialRingAnimation = typeof stored.mobileDialRingAnimation === "boolean" ? stored.mobileDialRingAnimation : DEFAULT_SETTINGS.mobileDialRingAnimation;
 	settings.mobileDialRingAnimationStyle = parseDialRingAnimation(stored.mobileDialRingAnimationStyle);
 	settings.macros = sanitizeMacros(stored.macros);
+	settings.stickyGroups = fresh ? DEFAULT_STICKY_GROUPS.map((path) => [...path]) : sanitizeStickyGroups(stored.stickyGroups);
 	return settings;
 }
