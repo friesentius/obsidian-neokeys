@@ -380,7 +380,7 @@ items. The row that just ran lights up, with a count from the second run on. To 
 - An item that moves the focus somewhere of its own (the quick switcher, a prompt, the note's title
   for Rename) closes it, so you can carry on there. The dial does the same.
 
-![The sticky Heading group after + ran three times: the popup is still open with "Increase heading level ×3" lit, and "Review the Q4 roadmap" now shows as a heading, dark theme](docs/screenshots/repeat-sticky/desktop-sticky-heading-dark.png)
+![The sticky Heading group after + ran three times: the popup is still open with "Increase heading level ×3" lit, and the note (in Source mode) reads "### Review the Q4 roadmap", dark theme](docs/screenshots/repeat-sticky/desktop-sticky-heading-dark.png)
 
 ![The sticky Heading group, light theme](docs/screenshots/repeat-sticky/desktop-sticky-heading-light.png)
 

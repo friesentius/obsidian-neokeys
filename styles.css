@@ -1284,7 +1284,7 @@ body.theme-light .neokeys-dial {
 	flex-shrink: 0;
 }
 
-.neokeys-dial-sticky {
+body .neokeys-dial.neokeys-dial-sticky {
 	--neokeys-dial-scrim: rgba(0, 0, 0, 0.12);
 }
 
