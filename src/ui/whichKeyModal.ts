@@ -1,5 +1,4 @@
 import { App, getIcon, Modal, Notice, setIcon } from "obsidian";
-import type { RepeatableAction } from "../repeat";
 import { ShowDelayGate } from "../delay";
 import { keyFromEvent } from "../keys";
 import { commandUnavailableMessage } from "../messages";
@@ -26,13 +25,6 @@ const MODIFIER_KEYS = new Set(["Shift", "Control", "Alt", "AltGraph", "Meta", "O
 interface Ran {
 	entry: GroupEntry;
 	count: number;
-}
-
-/** A keymap item's action, as Repeat records it. */
-export function actionOf(node: GroupEntry["node"], label: string): RepeatableAction | null {
-	if (node.kind === "command") return { kind: "command", command: node.command, label };
-	if (node.kind === "file") return { kind: "file", file: node.file, label };
-	return null;
 }
 
 export interface WhichKeyAnimationOptions {

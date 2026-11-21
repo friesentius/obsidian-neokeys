@@ -5,7 +5,6 @@ import {
 	isStickyPath,
 	isStickyStack,
 	keyPathOf,
-	missingStickyPaths,
 	moveStickyPaths,
 	removeStickyPaths,
 	sanitizeStickyGroups,
@@ -48,7 +47,6 @@ function stack(root: GroupNode, keys: string[]): GroupNode[] {
 describe("sticky group paths", () => {
 	it("the default names Text › Heading, which is in the default keymap", () => {
 		expect(DEFAULT_STICKY_GROUPS).toEqual([["t", "h"]]);
-		expect(missingStickyPaths(DEFAULT_STICKY_GROUPS, parseKeymapSource(DEFAULT_KEYMAP_YAML))).toEqual([]);
 		const heading = stack(parseKeymapSource(DEFAULT_KEYMAP_YAML), ["t", "h"]);
 		expect(heading[heading.length - 1].title).toBe("Heading");
 	});
@@ -93,10 +91,5 @@ describe("sticky group paths", () => {
 		expect(isStickyStack(sticky, stack(root, ["t", "f"]))).toBe(false);
 		expect(isStickyStack(sticky, [root])).toBe(false);
 		expect(isStickyPath(sticky, [])).toBe(false);
-	});
-
-	it("lists the paths that name no group: gone, renamed, or a command", () => {
-		const root = parseKeymapSource(SOURCE);
-		expect(missingStickyPaths([["t", "h"], ["t", "x"], ["t", "h", "+"], ["nokey1"], ["q"]], root)).toEqual([["t", "x"], ["t", "h", "+"], ["q"]]);
 	});
 });

@@ -5,7 +5,6 @@ import { ComboLeaderError, describeComboLeader, parseComboLeaderString } from ".
 import { findCommandUses, findInvalidCommands } from "./commandValidation";
 import { findHotkeyConflicts } from "./hotkeyConflict";
 import { KeymapParseError, parseKeymapSource } from "./keymap";
-import { missingStickyPaths, removeStickyPaths } from "./sticky";
 import { serializeKeymap } from "./keymapSerialize";
 import { visibleSettingsGroups, type SettingsGroupId } from "./settingsGroups";
 import { keyFromEvent, keyToString } from "./keys";
@@ -65,7 +64,7 @@ const YAML_NOTE =
 	"Saving here keeps your text exactly as written, comments included. Any edit in the tree editor rewrites this source in a normalized form, dropping comments and expanding the short command form.";
 const INVALID_COMMANDS_NAME = "Invalid commands";
 const INVALID_COMMANDS_DESC =
-	"Command IDs in your keymap that Obsidian doesn't currently recognize (a typo, or a plugin that's disabled). They're marked in the which-key popup too, and show an error instead of doing nothing if pressed. Sticky groups that are no longer in the keymap (a group key changed in the YAML) are listed here too.";
+	"Command IDs in your keymap that Obsidian doesn't currently recognize (a typo, or a plugin that's disabled). They're marked in the which-key popup too, and show an error instead of doing nothing if pressed.";
 const HOTKEY_CONFLICTS_NAME = "Hotkey conflicts";
 const HOTKEY_CONFLICTS_DESC =
 	"Whether the leader hotkey or the combo leader above collides with another command's Obsidian hotkey.";
@@ -880,8 +879,7 @@ export class NeokeysSettingTab extends PluginSettingTab {
 		}
 
 		const invalid = findInvalidCommands(root, (id) => hasCommand(this.app, id));
-		const missingSticky = missingStickyPaths(this.plugin.settings.stickyGroups, root);
-		if (invalid.length === 0 && missingSticky.length === 0) {
+		if (invalid.length === 0) {
 			this.invalidCommandsEl.setText("None");
 			return;
 		}
@@ -889,18 +887,6 @@ export class NeokeysSettingTab extends PluginSettingTab {
 			this.invalidCommandsEl.createDiv({
 				text: `${entry.path.join(" ")}: "${entry.command}" is not a registered command`,
 				cls: "neokeys-invalid-command-row",
-			});
-		}
-		for (const path of missingSticky) {
-			const row = this.invalidCommandsEl.createDiv({
-				text: `${path.join(" ")}: sticky group is no longer in the keymap `,
-				cls: "neokeys-invalid-command-row",
-			});
-			const forget = row.createEl("a", { text: "Forget", href: "#" });
-			forget.addEventListener("click", (evt) => {
-				evt.preventDefault();
-				this.plugin.settings.stickyGroups = removeStickyPaths(this.plugin.settings.stickyGroups, path);
-				void this.plugin.saveSettings().then(() => this.updateInvalidCommands());
 			});
 		}
 	}

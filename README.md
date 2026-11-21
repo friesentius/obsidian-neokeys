@@ -380,7 +380,7 @@ items. The row that just ran lights up, with a count from the second run on. To 
 - An item that moves the focus somewhere of its own (the quick switcher, a prompt, the note's title
   for Rename) closes it, so you can carry on there. The dial does the same.
 
-![The sticky Heading group after + ran three times, the line now a level-3 heading, dark theme](docs/screenshots/repeat-sticky/desktop-sticky-heading-dark.png)
+![The sticky Heading group after + ran three times: the popup is still open with "Increase heading level ×3" lit, and "Review the Q4 roadmap" now shows as a heading, dark theme](docs/screenshots/repeat-sticky/desktop-sticky-heading-dark.png)
 
 ![The sticky Heading group, light theme](docs/screenshots/repeat-sticky/desktop-sticky-heading-light.png)
 
@@ -396,8 +396,7 @@ tap on the anchor goes back a level, as anywhere else.
 Which groups are sticky is kept in Neokeys' settings by key path (`t h`), not in the keymap, so a
 device still on an older Neokeys loads the synced keymap as before; its groups just close as usual
 until it updates. Changing a group's key or deleting it in the tree editor carries its stickiness
-along. A sticky group that is no longer in the keymap (its key changed in the YAML view) is listed
-under **Invalid commands** with a **Forget** link.
+along.
 
 ## Mobile
 

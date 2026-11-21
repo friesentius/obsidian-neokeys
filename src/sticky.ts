@@ -80,18 +80,3 @@ export function isStickyStack(sticky: readonly GroupPath[], path: readonly Group
 	const keys = keyPathOf(path);
 	return keys !== null && isStickyPath(sticky, keys);
 }
-
-/** The sticky paths that name no group in `root` (renamed or deleted by hand in the YAML, or on another device). */
-export function missingStickyPaths(sticky: readonly GroupPath[], root: GroupNode): string[][] {
-	return sticky
-		.filter((path) => {
-			let group: GroupNode | undefined = root;
-			for (const key of path) {
-				const entry: GroupNode["entries"][number] | undefined = group?.entries.find((e) => e.rawKey === key);
-				group = entry?.node.kind === "group" ? entry.node : undefined;
-				if (!group) return true;
-			}
-			return false;
-		})
-		.map((path) => [...path]);
-}
