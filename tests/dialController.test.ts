@@ -101,6 +101,7 @@ function makeHost() {
 		openFile: (path) => {
 			calls.opened.push(path);
 		},
+		isSticky: () => false,
 		notify: (message) => {
 			calls.notices.push(message);
 		},
@@ -1506,5 +1507,105 @@ items:
 		const controller = new DialController(host, () => PHONE);
 		controller.open(parseKeymapSource("items:\n  z: app:zoom Zoom\n  nokey1:\n    command: app:open-help\n    description: Help\n    icon: help-circle\n"));
 		expect(controller.view().description).toBe("z Zoom · Help");
+	});
+});
+
+describe("DialController sticky groups and Repeat", () => {
+	/** Window is sticky; nothing else is. */
+	function stickySetup() {
+		const s = setup();
+		s.host.isSticky = (path) => path[path.length - 1].title === "Window";
+		const labelled: string[] = [];
+		s.host.executeCommand = (id, label) => {
+			s.calls.executed.push(id);
+			labelled.push(label);
+		};
+		return { ...s, labelled };
+	}
+
+	it("an item of a sticky group runs and leaves its ring open, lighting up the item with a count", () => {
+		const { root, controller, calls, labelled } = stickySetup();
+		controller.open(root);
+		controller.typeKey(key("w"));
+		expect(controller.view().sticky).toBe(true);
+		expect(controller.view().description).toBe("Sticky · tap outside to close");
+		controller.typeKey(key("n"));
+		controller.typeKey(key("n"));
+		controller.typeKey(key("n"));
+		expect(calls.executed).toEqual(["workspace:next-tab", "workspace:next-tab", "workspace:next-tab"]);
+		expect(labelled).toEqual(["Next tab", "Next tab", "Next tab"]);
+		const view = controller.view();
+		expect(view.open).toBe(true);
+		expect(view.crumbs).toEqual(["Window"]);
+		expect(item(controller, "Next tab").ran).toBe(3);
+		expect(item(controller, "New tab").ran).toBe(0);
+		controller.typeKey(key("c"));
+		expect(item(controller, "New tab").ran).toBe(1);
+		expect(item(controller, "Next tab").ran).toBe(0);
+	});
+
+	it("a release on an item of a sticky ring runs it and keeps the ring", () => {
+		const { root, controller, calls } = stickySetup();
+		controller.open(root);
+		controller.typeKey(key("w"));
+		const next = item(controller, "Next tab");
+		controller.pressAt({ x: next.x, y: next.y });
+		controller.release(true);
+		expect(calls.executed).toEqual(["workspace:next-tab"]);
+		expect(controller.view().open).toBe(true);
+		expect(item(controller, "Next tab").ran).toBe(1);
+	});
+
+	it("leaving the sticky group forgets what ran; a group that is not sticky closes as before", () => {
+		const { root, controller, calls } = stickySetup();
+		controller.open(root);
+		controller.typeKey(key("w"));
+		controller.typeKey(key("n"));
+		controller.back();
+		expect(controller.view().sticky).toBe(false);
+		controller.typeKey(key("w"));
+		expect(item(controller, "Next tab").ran).toBe(0);
+		controller.back();
+		controller.typeKey(key("z"));
+		expect(calls.executed).toEqual(["workspace:next-tab", "app:zoom"]);
+		expect(controller.view().open).toBe(false);
+	});
+
+	it("an item that opens something taking the focus closes a sticky dial", () => {
+		const { root, controller, host, calls } = stickySetup();
+		host.tookFocus = () => calls.executed.includes("workspace:close");
+		controller.open(root);
+		controller.typeKey(key("w"));
+		controller.typeKey(key("n"));
+		expect(controller.view().open).toBe(true);
+		controller.typeKey(key("x"));
+		expect(controller.view().open).toBe(false);
+	});
+
+	it("an unknown command in a sticky group says so and stays open, as anywhere else", () => {
+		const { root, controller, host, calls } = stickySetup();
+		controller.open(root);
+		controller.typeKey(key("w"));
+		const n = item(controller, "Next tab");
+		// The command goes away after the ring was drawn (a plugin turned off), so the item is still there to pick.
+		host.isCommandKnown = (id) => id !== "workspace:next-tab" && KNOWN.has(id);
+		controller.pressAt({ x: n.x, y: n.y });
+		controller.release(true);
+		expect(controller.view().open).toBe(true);
+		expect(calls.executed).toEqual([]);
+		expect(calls.notices).toEqual(['Neokeys: command "workspace:next-tab" is not available']);
+	});
+
+	it("an armed command says what the host adds about it, such as what Repeat would run", () => {
+		const { root, controller, host } = setup();
+		host.commandDetail = (id) => (id === "app:zoom" ? "Increase heading level" : undefined);
+		controller.open(root);
+		const zoom = item(controller, "Zoom");
+		controller.pressAt({ x: zoom.x, y: zoom.y });
+		expect(controller.view().armed?.description).toBe("Increase heading level");
+		controller.cancelPress();
+		const help = item(controller, "Help");
+		controller.pressAt({ x: help.x, y: help.y });
+		expect(controller.view().armed?.description).toBe("");
 	});
 });

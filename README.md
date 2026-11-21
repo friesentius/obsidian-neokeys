@@ -195,7 +195,8 @@ set heading 1-6, remove heading, and increase/decrease heading level), **Link**
 **Add** (`a`: table, code block, math, footnote, horizontal rule, callout, tag). Window groups
 tab/split/window management, loosely following the terminal multiplexer herdr's tab/pane/workspace
 mnemonics (`c` for new, not `n`, so `n`/`p` stay free for next/previous); splitting is bound
-directly on `v` (split right) and `-` (split down), not through a submenu.
+directly on `v` (split right) and `-` (split down), not through a submenu. Heading starts as a
+[sticky group](#sticky-groups), so `h + + +` raises a heading three levels without reopening the menu.
 
 Every group and item in it carries an `icon` (see above), so the mobile dial and the which-key popup show it from the first run. The tab-by-number commands under Window keep their digit instead, since a ring of eight identical icons would not say which circle is which tab. Icons are part of the keymap you start with: a keymap you have already saved is never changed.
 
@@ -326,6 +327,77 @@ QuickAdd macro, a Templater template or a JS Engine snippet.
 
 A device still on a Neokeys from before macros keeps them when it saves its settings, and shows a
 macro item in the keymap as an unknown command until it updates.
+
+## Repeat last action
+
+**Repeat last action** (`neokeys:repeat-last`) runs again whatever you last ran through Neokeys:
+the last command or file item picked in the which-key popup, on the mobile dial, or in a sticky
+group. A macro item counts, so Repeat runs the whole macro again. Opening a group, the Leader and
+Repeat itself never count, and neither do commands run from the command palette or a hotkey: it
+repeats the last *Neokeys* action, like Vim's `.`. It is forgotten when Obsidian restarts, and it is
+never saved to your settings, so it does not follow you to another device.
+
+It is an ordinary command, so give it a hotkey in Settings → Hotkeys, run it from the command
+palette or the mobile toolbar, or put it in the keymap. The keymap does not have it by default; to
+add it, add an item (for example `.` at the root, as in Vim) of kind **Command** and pick
+"Neokeys: Repeat last action", or in the YAML view:
+
+```yaml
+items:
+  .:
+    command: neokeys:repeat-last
+    icon: repeat
+```
+
+The item is labelled "Repeat" and says what it would run ("Repeat · Increase heading level", or
+"nothing yet" before anything has run). On the dial the pill's second line says the same while the
+item is under your thumb. Run with nothing to repeat, it shows "Neokeys: nothing to repeat yet". A
+macro can't have Repeat as a step, since the last action could be the macro itself.
+
+![The which-key popup's root with Repeat naming what it would run, light theme](docs/screenshots/repeat-sticky/desktop-repeat-root-light.png)
+
+![The which-key popup's root with Repeat, dark theme](docs/screenshots/repeat-sticky/desktop-repeat-root-dark.png)
+
+![The dial with Repeat armed, the pill naming Increase heading level, light theme](docs/screenshots/repeat-sticky/phone-repeat-light.png)
+
+![The dial with Repeat armed, dark theme](docs/screenshots/repeat-sticky/phone-repeat-dark.png)
+
+## Sticky groups
+
+A sticky group stays open after one of its items runs, so `Leader t h + + +` raises a heading three
+levels. Turn it on with **Stay open after an item runs** in a group's Edit dialog; the tree editor
+marks a sticky group with a pin. A fresh install starts with **Text › Heading** sticky; an existing
+install keeps every group as it was.
+
+![A group's Edit dialog with Stay open after an item runs turned on, light theme](docs/screenshots/repeat-sticky/desktop-group-edit-sticky-light.png)
+
+In the which-key popup a sticky group has a **Sticky** badge beside its title and a hint under its
+items. The row that just ran lights up, with a count from the second run on. To leave it:
+
+- **Escape** closes it, and **Backspace** goes up to the group above (which is not sticky unless
+  you made it so).
+- **Any other key** closes it and types into the note, so you can simply carry on writing.
+- An item that opens something of its own (the quick switcher, a prompt) closes it, so only that
+  dialog is left.
+
+![The sticky Heading group after + ran three times, the line now a level-3 heading, dark theme](docs/screenshots/repeat-sticky/desktop-sticky-heading-dark.png)
+
+![The sticky Heading group, light theme](docs/screenshots/repeat-sticky/desktop-sticky-heading-light.png)
+
+On the dial, a release on an item of a sticky group runs it and leaves the ring open: the pill shows
+a pin and "Sticky · tap outside to close", the backdrop is lighter so you can watch the note change,
+and the circle that just ran keeps a ring. A tap outside or the pill's close button closes it, and a
+tap on the anchor goes back a level, as anywhere else.
+
+![The dial's sticky Heading ring after three taps on Increase heading level, light theme](docs/screenshots/repeat-sticky/phone-sticky-heading-light.png)
+
+![The dial's sticky Heading ring, dark theme](docs/screenshots/repeat-sticky/phone-sticky-heading-dark.png)
+
+Which groups are sticky is kept in Neokeys' settings by key path (`t h`), not in the keymap, so a
+device still on an older Neokeys loads the synced keymap as before; its groups just close as usual
+until it updates. Changing a group's key or deleting it in the tree editor carries its stickiness
+along. A sticky group that is no longer in the keymap (its key changed in the YAML view) is listed
+under **Invalid commands** with a **Forget** link.
 
 ## Mobile
 

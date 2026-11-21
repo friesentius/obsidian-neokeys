@@ -31,6 +31,8 @@ export class EntryEditorModal extends Modal {
 	private file = "";
 	/** The id of the macro a macro item runs, "" when none is chosen yet. */
 	private macro = "";
+	/** For a group: whether it stays open after one of its items runs. */
+	private sticky: boolean;
 	private errorEl: HTMLElement | null = null;
 	private buttonContainerEl!: HTMLElement;
 	private keyDisplayEl: HTMLElement | null = null;
@@ -42,7 +44,7 @@ export class EntryEditorModal extends Modal {
 	constructor(
 		app: App,
 		private readonly heading: string,
-		initial: { rawKey: string; node: KeymapNode } | null,
+		initial: { rawKey: string; node: KeymapNode; sticky: boolean } | null,
 		private readonly onSubmit: (draft: EntryDraft) => string | null,
 		private readonly macroStore: MacroStore,
 		private readonly kindLockedReason?: string,
@@ -52,6 +54,7 @@ export class EntryEditorModal extends Modal {
 		// An item with no key is stored under a bookkeeping token; the form shows it as an empty key.
 		this.rawKey = initial === null || isKeylessId(initial.rawKey) ? "" : initial.rawKey;
 		this.icon = initial?.node.icon ?? "";
+		this.sticky = initial?.sticky ?? false;
 		if (initial?.node.kind === "group") {
 			this.title = initial.node.title ?? "";
 			this.description = initial.node.description ?? "";
@@ -149,6 +152,13 @@ export class EntryEditorModal extends Modal {
 				text.inputEl.rows = 2;
 				text.inputEl.addClass("neokeys-entry-description-input");
 			});
+
+		if (this.kind === "group") {
+			new Setting(contentEl)
+				.setName("Stay open after an item runs")
+				.setDesc("Sticky: the group stays open, so an item can run again and again. Escape or a tap outside closes it.")
+				.addToggle((toggle) => toggle.setValue(this.sticky).onChange((value) => (this.sticky = value)));
+		}
 
 		this.buttonContainerEl = contentEl.createDiv({ cls: "modal-button-container" });
 		new ButtonComponent(this.buttonContainerEl).setButtonText("Cancel").onClick(() => this.close());
@@ -354,6 +364,7 @@ export class EntryEditorModal extends Modal {
 			commandName: this.commandName,
 			file: this.file.trim(),
 			macro: this.macro,
+			sticky: this.kind === "group" && this.sticky,
 		};
 
 		const error = this.onSubmit(draft);

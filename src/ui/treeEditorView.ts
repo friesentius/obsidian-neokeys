@@ -13,11 +13,19 @@ import {
 	setGroupMeta,
 	updateEntry,
 } from "../treeOps";
+import { isStickyPath, moveStickyPaths, removeStickyPaths, setStickyPath } from "../sticky";
 import type { GroupEntry, GroupNode } from "../types";
 import { ConfirmDeleteModal } from "./confirmDeleteModal";
 import { EntryEditorModal } from "./entryEditorModal";
 import type { MacroStore } from "./macroEditorModal";
 import { openModalInWindow } from "./modalWindow";
+
+/** The sticky group list in the settings, which follows the tree's edits (a group's key changes, a group is deleted). */
+export interface StickyStore {
+	paths(): readonly string[][];
+	/** Replace the list; the next `persist` saves it with the keymap. */
+	set(paths: string[][]): void;
+}
 
 /**
  * Renders the keymap as an expandable tree of groups/commands/files inside `containerEl`, and
@@ -42,6 +50,7 @@ export class TreeEditorView {
 		private readonly persist: (root: GroupNode) => Promise<void>,
 		/** The macros a "Macro" item can run, and a way to save a new one made from the Add/Edit dialog. */
 		private readonly macroStore: MacroStore,
+		private readonly stickyStore: StickyStore,
 	) {}
 
 	render(): void {
@@ -136,6 +145,9 @@ export class TreeEditorView {
 			cls: "neokeys-tree-label" + (invalid ? " neokeys-tree-label-invalid" : ""),
 			text: label,
 		});
+		if (isGroup && isStickyPath(this.stickyStore.paths(), childPath)) {
+			setIcon(row.createSpan({ cls: "neokeys-tree-sticky", attr: { "aria-label": "Sticky: stays open after an item runs" } }), "pin");
+		}
 		if (invalid) row.createSpan({ cls: "neokeys-invalid-badge", text: "Unknown command" });
 		if (needs !== null) row.createSpan({ cls: "neokeys-invalid-badge", text: needs });
 
@@ -173,7 +185,9 @@ export class TreeEditorView {
 	private deleteEntry(path: string[], entry: GroupEntry): void {
 		const remove = (): void => {
 			const result = removeEntry(this.getRoot(), path, entry.rawKey);
-			if (result.ok) void this.persist(result.root);
+			if (!result.ok) return;
+			this.stickyStore.set(removeStickyPaths(this.stickyStore.paths(), [...path, entry.rawKey]));
+			void this.persist(result.root);
 		};
 		if (entry.node.kind !== "group" || entry.node.entries.length === 0) {
 			remove();
@@ -198,6 +212,10 @@ export class TreeEditorView {
 				const node = nodeFromDraft(draft, null);
 				const result = addEntry(this.getRoot(), path, draft.rawKey, node);
 				if (!result.ok) return result.error;
+				// The new entry is the group's last; its key may be a fresh `nokeyN` token.
+				const siblings = getGroupAtPath(result.root, path)?.entries ?? [];
+				const added = siblings[siblings.length - 1];
+				if (added && node.kind === "group") this.stickyStore.set(setStickyPath(this.stickyStore.paths(), [...path, added.rawKey], draft.sticky));
 				void this.persist(result.root);
 				return null;
 			}, this.macroStore),
@@ -212,11 +230,20 @@ export class TreeEditorView {
 			new EntryEditorModal(
 				this.app,
 				"Edit item",
-				{ rawKey: entry.rawKey, node: entry.node },
+				{ rawKey: entry.rawKey, node: entry.node, sticky: isStickyPath(this.stickyStore.paths(), [...path, entry.rawKey]) },
 				(draft) => {
 					const node = nodeFromDraft(draft, existingEntries);
 					const result = updateEntry(this.getRoot(), path, entry.rawKey, draft.rawKey, node);
 					if (!result.ok) return result.error;
+					// The entry keeps its place; its key (and so the key path of it and every group inside it) may have changed.
+					const index = getGroupAtPath(this.getRoot(), path)?.entries.findIndex((e) => e.rawKey === entry.rawKey) ?? -1;
+					const updated = index === -1 ? undefined : getGroupAtPath(result.root, path)?.entries[index];
+					const from = [...path, entry.rawKey];
+					let sticky = removeStickyPaths(this.stickyStore.paths(), from);
+					if (updated && node.kind === "group") {
+						sticky = setStickyPath(moveStickyPaths(this.stickyStore.paths(), from, [...path, updated.rawKey]), [...path, updated.rawKey], draft.sticky);
+					}
+					this.stickyStore.set(sticky);
 					void this.persist(result.root);
 					return null;
 				},

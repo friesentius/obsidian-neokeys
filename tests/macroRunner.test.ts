@@ -135,6 +135,13 @@ describe("MacroRunner", () => {
 		expect(notices).toEqual(['Neokeys: "A" did not run: a macro can\'t open the Leader']);
 	});
 
+	it("refuses a step that repeats the last action, which could be this macro", () => {
+		const { runner, log, notices } = fakeHost([{ id: "a", name: "A", steps: [text("1"), cmd("neokeys:repeat-last")] }], { commands: ["neokeys:repeat-last"] });
+		expect(runner.run("a")).toBe("refused");
+		expect(log).toEqual([]);
+		expect(notices).toEqual(['Neokeys: "A" did not run: a macro can\'t repeat the last action']);
+	});
+
 	it("refuses a step kind saved by a newer Neokeys instead of skipping it", () => {
 		const macros: Macro[] = [{ id: "a", name: "A", steps: [text("1"), { type: "wait", ms: 200 }] }];
 		const { runner, log, notices } = fakeHost(macros);

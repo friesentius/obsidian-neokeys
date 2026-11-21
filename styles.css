@@ -1214,3 +1214,97 @@ body.theme-light .neokeys-dial {
 	margin: var(--size-4-2) 0;
 }
 
+
+/*
+ * Repeat last action and sticky groups. A command item's detail (what Repeat would run) follows
+ * its label, muted. A sticky group's popup has a badge beside its title, a hint line under the
+ * grid, and the row that just ran lit up (with a count from the second run on); on the dial the
+ * pill carries a pin, the scrim is lighter so the note's change shows through, and the circle that
+ * just ran keeps a ring.
+ */
+.neokeys-label-detail {
+	color: var(--text-faint);
+	font-weight: var(--font-normal);
+}
+
+.neokeys-sticky-badge {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--size-2-1);
+	margin-left: var(--size-4-2);
+	padding: 0 var(--size-4-2) 0 var(--size-2-3);
+	border-radius: var(--radius-m);
+	background-color: hsla(var(--accent-h), var(--accent-s), var(--accent-l), 0.14);
+	color: var(--text-accent);
+	font-size: var(--font-ui-smaller);
+	font-weight: var(--font-normal);
+	vertical-align: 3px;
+	line-height: 1.6;
+}
+
+.neokeys-sticky-badge-icon {
+	--icon-size: 13px;
+	display: inline-flex;
+}
+
+.neokeys-sticky-hint {
+	margin-top: var(--size-4-2);
+	color: var(--text-faint);
+	font-size: var(--font-ui-smaller);
+}
+
+.neokeys-sticky-hint kbd {
+	font-family: var(--font-monospace);
+	padding: 0 var(--size-2-1);
+	border-radius: var(--radius-s);
+	background-color: var(--background-modifier-hover);
+	color: var(--text-muted);
+}
+
+.neokeys-row-ran {
+	border-radius: var(--radius-s);
+	background-color: hsla(var(--accent-h), var(--accent-s), var(--accent-l), 0.16);
+	box-shadow: 0 0 0 3px hsla(var(--accent-h), var(--accent-s), var(--accent-l), 0.16);
+}
+
+.neokeys-animate .neokeys-row-ran {
+	animation: neokeys-ran-flash var(--neokeys-anim-duration, 150ms) ease-out;
+}
+
+@keyframes neokeys-ran-flash {
+	from {
+		background-color: hsla(var(--accent-h), var(--accent-s), var(--accent-l), 0.4);
+	}
+}
+
+.neokeys-ran-count {
+	color: var(--text-accent);
+	font-size: var(--font-ui-smaller);
+	font-variant-numeric: tabular-nums;
+	flex-shrink: 0;
+}
+
+.neokeys-dial-sticky {
+	--neokeys-dial-scrim: rgba(0, 0, 0, 0.12);
+}
+
+.neokeys-dial-sticky-pin {
+	--icon-size: 12px;
+	display: inline-flex;
+	align-self: center;
+	flex-shrink: 0;
+	margin-right: var(--size-2-2);
+	color: var(--text-accent);
+}
+
+.neokeys-dial-item-ran:not(.neokeys-dial-item-armed) {
+	box-shadow: 0 0 0 4px hsla(var(--accent-h), var(--accent-s), var(--accent-l), 0.45);
+}
+
+.neokeys-tree-sticky {
+	--icon-size: var(--icon-xs);
+	display: inline-flex;
+	align-items: center;
+	flex-shrink: 0;
+	color: var(--text-accent);
+}

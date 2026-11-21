@@ -13,9 +13,26 @@ const DIAL_DEFAULTS = {
 };
 
 describe("resolveSettings", () => {
+	it("starts a fresh install with Text › Heading sticky", () => {
+		expect(resolveSettings(null).stickyGroups).toEqual([["t", "h"]]);
+		expect(resolveSettings(undefined).stickyGroups).toEqual([["t", "h"]]);
+		// Each load gets its own list, so editing one never changes the defaults.
+		resolveSettings(null).stickyGroups.push(["w"]);
+		expect(DEFAULT_SETTINGS.stickyGroups).toEqual([["t", "h"]]);
+	});
+
+	it("leaves every group of an existing install as it was, not sticky", () => {
+		expect(resolveSettings({ keymapSource: "title: X\nitems: {}\n" }).stickyGroups).toEqual([]);
+	});
+
+	it("keeps stored sticky groups, sanitised", () => {
+		expect(resolveSettings({ stickyGroups: [["w"], ["t", "h"], ["w"], [1]] }).stickyGroups).toEqual([["w"], ["t", "h"]]);
+		expect(resolveSettings({ stickyGroups: [] }).stickyGroups).toEqual([]);
+	});
+
 	it("fills in the dial settings for a file saved before the dial existed", () => {
 		const saved = { keymapSource: "title: X\nitems: {}\n", showDelayMs: 50, comboLeader: "c-j", animationsEnabled: false, animationDurationMs: 90 };
-		expect(resolveSettings(saved)).toEqual({ ...saved, ...DIAL_DEFAULTS, macros: [] });
+		expect(resolveSettings(saved)).toEqual({ ...saved, ...DIAL_DEFAULTS, macros: [], stickyGroups: [] });
 	});
 
 	it("fills in the item size for a file saved by a release whose dial had one size", () => {

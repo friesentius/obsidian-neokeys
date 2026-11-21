@@ -2,6 +2,7 @@ import {
 	macroDepthMessage,
 	macroEmptyMessage,
 	macroLeaderMessage,
+	macroRepeatMessage,
 	macroLoopMessage,
 	macroMissingCommandMessage,
 	macroNeedsNewerMessage,
@@ -9,6 +10,7 @@ import {
 	macroStepLimitMessage,
 	macroStoppedMessage,
 } from "../messages";
+import { REPEAT_COMMAND_ID } from "../repeat";
 import { knownStep, LEADER_COMMAND_ID, macroIdFromCommand, MAX_MACRO_DEPTH, MAX_MACRO_STEPS, type Macro } from "./model";
 
 /**
@@ -102,6 +104,7 @@ export class MacroRunner {
 			if (step === null) return macroNeedsNewerMessage(path[0].name, macro.name, index + 1);
 			if (step.type !== "command") continue;
 			if (step.command === LEADER_COMMAND_ID) return macroLeaderMessage(path[0].name);
+			if (step.command === REPEAT_COMMAND_ID) return macroRepeatMessage(path[0].name);
 			const nested = this.nestedMacro(step.command);
 			if (nested) {
 				if (path.some((m) => m.id === nested.id)) return macroLoopMessage([...path.slice(path.findIndex((m) => m.id === nested.id)), nested].map((m) => m.name));

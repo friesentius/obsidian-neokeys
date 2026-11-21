@@ -34,7 +34,7 @@ export default defineConfig([
 						"scripts/*.mjs",
 					],
 					// Default is 8; the tests/*.ts glob alone now exceeds that as the suite grows.
-					maximumDefaultProjectFileMatchCount_THIS_WILL_SLOW_DOWN_LINTING: 32,
+					maximumDefaultProjectFileMatchCount_THIS_WILL_SLOW_DOWN_LINTING: 64,
 				},
 			},
 		},
