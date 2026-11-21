@@ -4,11 +4,27 @@ import { keyFromEvent } from "../keys";
 import { commandUnavailableMessage } from "../messages";
 import { getCommandName, hasCommand } from "../obsidianCommands";
 import { breadcrumbTrail, entryKeyGlyph, entryLabel, entryPopupIcon, findEntry, keyedEntries, keylessGroupNote, sortEntries } from "../tree";
-import type { GroupNode } from "../types";
+import type { GroupEntry, GroupNode } from "../types";
 
+/** What the popup and the dial need from the plugin to act on a chosen item. */
 export interface WhichKeyCallbacks {
-	executeCommand(id: string): void;
-	openFile(path: string): void;
+	/** Run the command a keymap item chose; `label` is the item's label, for Repeat to show. */
+	executeCommand(id: string, label: string): void;
+	/** Open the file a keymap item chose; `label` is the item's label, for Repeat to show. */
+	openFile(path: string, label: string): void;
+	/** Whether the deepest group of a navigation stack (the root first) is sticky: it stays open after an item runs. */
+	isSticky(path: readonly GroupNode[]): boolean;
+	/** Extra words a command's row shows after its label, such as what Repeat would run; undefined for none. */
+	commandDetail(id: string): string | undefined;
+}
+
+/** Modifier keys pressed on their own: they never close a sticky group (they start a combination). */
+const MODIFIER_KEYS = new Set(["Shift", "Control", "Alt", "AltGraph", "Meta", "OS", "CapsLock", "Fn"]);
+
+/** What ran in the open sticky group: the entry, and how many times in a row. */
+interface Ran {
+	entry: GroupEntry;
+	count: number;
 }
 
 export interface WhichKeyAnimationOptions {
@@ -24,8 +40,17 @@ export class WhichKeyModal extends Modal {
 	private headerTitleEl!: HTMLElement;
 	private descEl!: HTMLElement;
 	private gridEl!: HTMLElement;
+	private hintEl!: HTMLElement;
 	/** Bumped on every navigation so a deferred crossfade step can detect it has been superseded. */
 	private crossfadeToken = 0;
+	/** The item that last ran while this sticky group stayed open; forgotten on navigation. */
+	private ran: Ran | null = null;
+	/**
+	 * Set while the popup opens again after a sticky group's item ran: "shown" when it was showing
+	 * (it comes back at once, without sliding in), "hidden" when its show delay had not run out yet
+	 * (it keeps waiting, so a fast sequence still never flashes it).
+	 */
+	private reopening: "shown" | "hidden" | null = null;
 
 	constructor(
 		app: App,
@@ -36,10 +61,14 @@ export class WhichKeyModal extends Modal {
 	) {
 		super(app);
 		this.path = [root];
+		this.scope.register(null, null, (evt) => this.handleKey(evt));
 	}
 
 	onOpen(): void {
-		this.containerEl.addClass("neokeys-modal-container", "neokeys-modal-collapsed");
+		const shown = this.reopening === "shown";
+		this.reopening = null;
+		this.containerEl.addClass("neokeys-modal-container");
+		if (!shown) this.containerEl.addClass("neokeys-modal-collapsed");
 		this.modalEl.addClass("neokeys-modal");
 		if (this.animation.enabled) {
 			this.containerEl.addClass("neokeys-animate");
@@ -52,8 +81,7 @@ export class WhichKeyModal extends Modal {
 		this.descEl = header.createDiv({ cls: "neokeys-header-desc" });
 		this.breadcrumbEl = this.contentWrapperEl.createDiv({ cls: "neokeys-breadcrumb" });
 		this.gridEl = this.contentWrapperEl.createDiv({ cls: "neokeys-grid" });
-
-		this.scope.register(null, null, (evt) => this.handleKey(evt));
+		this.hintEl = this.contentWrapperEl.createDiv({ cls: "neokeys-sticky-hint" });
 
 		this.render();
 
@@ -62,7 +90,7 @@ export class WhichKeyModal extends Modal {
 		// from, instead of the add+remove collapsing into a no-op the browser never renders.
 		if (this.animation.enabled) void this.containerEl.offsetHeight;
 
-		this.delayGate = new ShowDelayGate(this.showDelayMs, () => {
+		this.delayGate = new ShowDelayGate(shown ? 0 : this.showDelayMs, () => {
 			this.containerEl.removeClass("neokeys-modal-collapsed");
 		});
 		this.delayGate.poke();
@@ -78,9 +106,28 @@ export class WhichKeyModal extends Modal {
 		return this.path[this.path.length - 1];
 	}
 
+	private get sticky(): boolean {
+		return this.callbacks.isSticky(this.path);
+	}
+
 	private render(): void {
 		const group = this.currentGroup;
+		const sticky = this.sticky;
 		this.headerTitleEl.setText(group.title ?? "Neokeys");
+		if (sticky) {
+			const badge = this.headerTitleEl.createSpan({ cls: "neokeys-sticky-badge" });
+			setIcon(badge.createSpan({ cls: "neokeys-sticky-badge-icon", attr: { "aria-hidden": "true" } }), "pin");
+			badge.appendText("Sticky");
+		}
+		this.hintEl.empty();
+		this.hintEl.toggleClass("neokeys-hidden", !sticky);
+		if (sticky) {
+			this.hintEl.appendText("Stays open after each item. ");
+			this.hintEl.createEl("kbd", { text: "Esc" });
+			this.hintEl.appendText(" closes, ");
+			this.hintEl.createEl("kbd", { text: "Backspace" });
+			this.hintEl.appendText(" goes up, any other key closes and types into the note.");
+		}
 		this.descEl.setText(group.description ?? "");
 		this.descEl.toggleClass("neokeys-hidden", !group.description);
 
@@ -100,8 +147,9 @@ export class WhichKeyModal extends Modal {
 		const anyIcon = shown.some((entry) => iconOf(entry) !== null);
 		for (const entry of shown) {
 			const invalid = entry.node.kind === "command" && !hasCommand(this.app, entry.node.command);
+			const ran = this.ran !== null && this.ran.entry === entry ? this.ran.count : 0;
 			const row = this.gridEl.createDiv({
-				cls: `neokeys-row neokeys-row-${entry.node.kind}${invalid ? " neokeys-row-invalid" : ""}`,
+				cls: `neokeys-row neokeys-row-${entry.node.kind}${invalid ? " neokeys-row-invalid" : ""}${ran > 0 ? " neokeys-row-ran" : ""}`,
 			});
 			row.createSpan({ text: entryKeyGlyph(entry), cls: "neokeys-key" });
 			// An entry's icon sits right after its key.
@@ -109,10 +157,13 @@ export class WhichKeyModal extends Modal {
 			if (icon !== null) setIcon(row.createSpan({ cls: "neokeys-icon", attr: { "aria-hidden": "true" } }), icon);
 			else if (anyIcon) row.createSpan({ cls: "neokeys-icon neokeys-icon-empty", attr: { "aria-hidden": "true" } });
 			const label = entryLabel(entry, (id) => getCommandName(this.app, id));
-			row.createSpan({
+			const labelEl = row.createSpan({
 				text: entry.node.kind === "group" ? `+${label}` : label,
 				cls: "neokeys-label",
 			});
+			const detail = entry.node.kind === "command" && !invalid ? this.callbacks.commandDetail(entry.node.command) : undefined;
+			if (detail !== undefined) labelEl.createSpan({ text: ` · ${detail}`, cls: "neokeys-label-detail" });
+			if (ran > 1) row.createSpan({ text: `×${ran}`, cls: "neokeys-ran-count" });
 			if (invalid) {
 				row.createSpan({ text: "Unknown command", cls: "neokeys-invalid-badge" });
 			}
@@ -153,7 +204,8 @@ export class WhichKeyModal extends Modal {
 		}, halfDuration);
 	}
 
-	private handleKey(evt: KeyboardEvent): false {
+	/** False consumes the key; true lets it through to the note (a sticky group closing as the user types on). */
+	private handleKey(evt: KeyboardEvent): boolean {
 		if (evt.isComposing) {
 			return false;
 		}
@@ -166,6 +218,7 @@ export class WhichKeyModal extends Modal {
 		if (evt.key === "Backspace") {
 			if (this.path.length > 1) {
 				this.path.pop();
+				this.ran = null;
 				this.renderCrossfade();
 			} else {
 				this.close();
@@ -176,6 +229,15 @@ export class WhichKeyModal extends Modal {
 		const pressed = keyFromEvent(evt);
 		const entry = findEntry(this.currentGroup, pressed);
 		if (!entry) {
+			// A sticky group is left by just carrying on typing: the popup closes and the key goes
+			// through to the note (the editor has its focus back by the time the key lands).
+			if (this.sticky && !MODIFIER_KEYS.has(evt.key)) {
+				this.close();
+				// Closing hands the focus back to the note, but the editor's own selection only comes
+				// back with its focus(): without it the key would land at the start of the note.
+				this.app.workspace.activeEditor?.editor?.focus();
+				return true;
+			}
 			return false;
 		}
 
@@ -183,6 +245,7 @@ export class WhichKeyModal extends Modal {
 
 		if (entry.node.kind === "group") {
 			this.path.push(entry.node);
+			this.ran = null;
 			this.renderCrossfade();
 			return false;
 		}
@@ -192,12 +255,51 @@ export class WhichKeyModal extends Modal {
 			return false;
 		}
 
-		this.close();
-		if (entry.node.kind === "command") {
-			this.callbacks.executeCommand(entry.node.command);
-		} else {
-			this.callbacks.openFile(entry.node.file);
+		if (this.sticky) {
+			this.runSticky(entry);
+			return false;
 		}
+
+		this.close();
+		this.run(entry);
 		return false;
+	}
+
+	private run(entry: GroupEntry): void {
+		const label = entryLabel(entry, (id) => getCommandName(this.app, id));
+		if (entry.node.kind === "command") {
+			this.callbacks.executeCommand(entry.node.command, label);
+		} else if (entry.node.kind === "file") {
+			this.callbacks.openFile(entry.node.file, label);
+		}
+	}
+
+	/**
+	 * Run an item of a sticky group exactly as any item runs (the popup closes first, so the note
+	 * has the focus), then open the popup again on the same group with the item's row lit up. An
+	 * item that moves the focus somewhere of its own (the quick switcher, a prompt, the note's
+	 * title for Rename) is left to it: the popup stays closed. The popup cannot run the item while
+	 * open instead: Obsidian keeps the rest of the window inert behind a modal, so such an item
+	 * could not take the focus at all.
+	 */
+	private runSticky(entry: GroupEntry): void {
+		const doc = this.containerEl.doc;
+		this.ran = { entry, count: this.ran !== null && this.ran.entry === entry ? this.ran.count + 1 : 1 };
+		const shown = this.delayGate.isShown;
+		this.close();
+		const focusBefore = doc.activeElement;
+		this.run(entry);
+		if (doc.activeElement !== focusBefore) return;
+		this.reopening = shown ? "shown" : "hidden";
+		this.open();
+		// A dialog that opens a moment later (after its own await) still wins: the popup gets out of its way.
+		window.setTimeout(() => {
+			const focused = doc.activeElement;
+			const elsewhere = focused?.instanceOf(HTMLElement) === true && focused.closest(".modal-container") !== null && !this.containerEl.contains(focused);
+			if (!this.containerEl.isConnected || !elsewhere) return;
+			this.close();
+			// Closing hands the focus back to the note; the dialog keeps it instead.
+			if (focused.isConnected) focused.focus();
+		}, 0);
 	}
 }

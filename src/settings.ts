@@ -643,6 +643,12 @@ export class NeokeysSettingTab extends PluginSettingTab {
 			() => parseKeymapSource(this.plugin.settings.keymapSource),
 			(root) => this.persistTree(root),
 			this.macroStore,
+			{
+				paths: () => this.plugin.settings.stickyGroups,
+				set: (paths) => {
+					this.plugin.settings.stickyGroups = paths;
+				},
+			},
 		);
 
 		this.applyViewMode();

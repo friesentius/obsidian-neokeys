@@ -12,12 +12,11 @@ import { shownIcon } from "../icons";
 import { DIAL_LEGIBLE_SIZE, pillClearance, ringParamsFor, type DialArc, type DialGeometry, type DialLayoutMode } from "../dial/layout";
 import { diffRings, swapRing } from "../dial/ringDiff";
 import { getCommandName, hasCommand } from "../obsidianCommands";
+import type { WhichKeyCallbacks } from "./whichKeyModal";
 import type { DialCorner, DialDescription, DialRadiusRule, DialRingAnimation, GroupEntry, GroupNode } from "../types";
 
-export interface MobileDialCallbacks {
-	executeCommand(id: string): void;
-	openFile(path: string): void;
-}
+/** What the dial needs from the plugin to act on a chosen item: the same as the which-key popup. */
+export type MobileDialCallbacks = WhichKeyCallbacks;
 
 export interface MobileDialAnimation {
 	/** Any motion at all (the backdrop's fade, the lens easing); off when the OS prefers reduced motion. */
@@ -120,8 +119,11 @@ export class MobileDial {
 		const host: DialHost = {
 			isCommandKnown: (id) => hasCommand(app, id),
 			resolveCommandName: (id) => getCommandName(app, id),
-			executeCommand: (id) => callbacks.executeCommand(id),
-			openFile: (path) => callbacks.openFile(path),
+			executeCommand: (id, label) => callbacks.executeCommand(id, label),
+			openFile: (path, label) => callbacks.openFile(path, label),
+			isSticky: (path) => callbacks.isSticky(path),
+			commandDetail: (id) => callbacks.commandDetail(id),
+			focusedElement: () => activeDocument.activeElement,
 			notify: (message) => {
 				new Notice(message, 6000);
 			},
@@ -493,6 +495,7 @@ export class MobileDial {
 	private render(change: DialChange): void {
 		const view = this.controller.view();
 		this.layerEl.toggleClass("neokeys-dial-open", view.open);
+		this.layerEl.toggleClass("neokeys-dial-sticky", view.open && view.sticky);
 		if (view.open) {
 			this.layerEl.setAttribute("role", "dialog");
 			this.layerEl.setAttribute("aria-label", "Neokeys dial");
@@ -630,6 +633,8 @@ export class MobileDial {
 		else el.removeAttribute("aria-hidden");
 		el.toggleClass("neokeys-dial-item-armed", item.armed);
 		el.toggleClass("neokeys-dial-item-open", item.open);
+		// The item that just ran in a sticky group keeps a ring around it, so a repeated tap is seen to land.
+		el.toggleClass("neokeys-dial-item-ran", item.ran > 0);
 		// A circle shrunk below what a key or icon can be read at (a crowded ring at rest, or a circle fading out) is only a dot until the lens grows it.
 		el.toggleClass("neokeys-dial-item-tiny", item.size < DIAL_LEGIBLE_SIZE);
 		el.setAttribute("aria-pressed", item.armed ? "true" : "false");
@@ -660,6 +665,7 @@ export class MobileDial {
 		const collapsedEl = this.crumbsEl.createSpan({ cls: "neokeys-dial-crumb neokeys-dial-crumb-collapsed neokeys-hidden", text: "…" });
 		const trail: HTMLElement[] = [];
 		const seps: HTMLElement[] = [];
+		if (view.sticky) setIcon(this.crumbsEl.createSpan({ cls: "neokeys-dial-sticky-pin", attr: { "aria-label": "Sticky" } }), "pin");
 		[view.title, ...view.crumbs].forEach((label, i) => {
 			if (i > 0) seps.push(this.crumbsEl.createSpan({ cls: "neokeys-dial-crumb-sep", text: "›" }));
 			trail.push(this.crumbsEl.createSpan({ cls: "neokeys-dial-crumb neokeys-dial-crumb-trail", text: label }));
