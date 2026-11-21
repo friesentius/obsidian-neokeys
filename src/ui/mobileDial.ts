@@ -123,10 +123,7 @@ export class MobileDial {
 			openFile: (path, label) => callbacks.openFile(path, label),
 			isSticky: (path) => callbacks.isSticky(path),
 			commandDetail: (id) => callbacks.commandDetail(id),
-			tookFocus: () => {
-				const focused = activeDocument.activeElement;
-				return focused?.instanceOf(HTMLElement) === true && focused.closest(".modal-container") !== null;
-			},
+			focusedElement: () => activeDocument.activeElement,
 			notify: (message) => {
 				new Notice(message, 6000);
 			},

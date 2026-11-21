@@ -377,8 +377,8 @@ items. The row that just ran lights up, with a count from the second run on. To 
 - **Escape** closes it, and **Backspace** goes up to the group above (which is not sticky unless
   you made it so).
 - **Any other key** closes it and types into the note, so you can simply carry on writing.
-- An item that opens something of its own (the quick switcher, a prompt) closes it, so only that
-  dialog is left.
+- An item that moves the focus somewhere of its own (the quick switcher, a prompt, the note's title
+  for Rename) closes it, so you can carry on there. The dial does the same.
 
 ![The sticky Heading group after + ran three times, the line now a level-3 heading, dark theme](docs/screenshots/repeat-sticky/desktop-sticky-heading-dark.png)
 

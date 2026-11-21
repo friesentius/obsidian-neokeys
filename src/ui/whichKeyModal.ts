@@ -53,6 +53,12 @@ export class WhichKeyModal extends Modal {
 	private crossfadeToken = 0;
 	/** The item that last ran while this sticky group stayed open; forgotten on navigation. */
 	private ran: Ran | null = null;
+	/**
+	 * Set while the popup opens again after a sticky group's item ran: "shown" when it was showing
+	 * (it comes back at once, without sliding in), "hidden" when its show delay had not run out yet
+	 * (it keeps waiting, so a fast sequence still never flashes it).
+	 */
+	private reopening: "shown" | "hidden" | null = null;
 
 	constructor(
 		app: App,
@@ -63,10 +69,14 @@ export class WhichKeyModal extends Modal {
 	) {
 		super(app);
 		this.path = [root];
+		this.scope.register(null, null, (evt) => this.handleKey(evt));
 	}
 
 	onOpen(): void {
-		this.containerEl.addClass("neokeys-modal-container", "neokeys-modal-collapsed");
+		const shown = this.reopening === "shown";
+		this.reopening = null;
+		this.containerEl.addClass("neokeys-modal-container");
+		if (!shown) this.containerEl.addClass("neokeys-modal-collapsed");
 		this.modalEl.addClass("neokeys-modal");
 		if (this.animation.enabled) {
 			this.containerEl.addClass("neokeys-animate");
@@ -81,8 +91,6 @@ export class WhichKeyModal extends Modal {
 		this.gridEl = this.contentWrapperEl.createDiv({ cls: "neokeys-grid" });
 		this.hintEl = this.contentWrapperEl.createDiv({ cls: "neokeys-sticky-hint" });
 
-		this.scope.register(null, null, (evt) => this.handleKey(evt));
-
 		this.render();
 
 		// Force a style flush with the collapsed class applied before the gate can remove it, so a
@@ -90,7 +98,7 @@ export class WhichKeyModal extends Modal {
 		// from, instead of the add+remove collapsing into a no-op the browser never renders.
 		if (this.animation.enabled) void this.containerEl.offsetHeight;
 
-		this.delayGate = new ShowDelayGate(this.showDelayMs, () => {
+		this.delayGate = new ShowDelayGate(shown ? 0 : this.showDelayMs, () => {
 			this.containerEl.removeClass("neokeys-modal-collapsed");
 		});
 		this.delayGate.poke();
@@ -275,32 +283,31 @@ export class WhichKeyModal extends Modal {
 	}
 
 	/**
-	 * Run an item of a sticky group with the popup left open (editor commands act on the note
-	 * behind it), then light up its row. An item that opens something of its own that takes focus
-	 * (the quick switcher, a prompt) closes the popup, so only that dialog is left; the focus it
-	 * took is handed back after the popup's close restores the note's.
+	 * Run an item of a sticky group exactly as any item runs (the popup closes first, so the note
+	 * has the focus), then open the popup again on the same group with the item's row lit up. An
+	 * item that moves the focus somewhere of its own (the quick switcher, a prompt, the note's
+	 * title for Rename) is left to it: the popup stays closed. The popup cannot run the item while
+	 * open instead: Obsidian keeps the rest of the window inert behind a modal, so such an item
+	 * could not take the focus at all.
 	 */
 	private runSticky(entry: GroupEntry): void {
 		const doc = this.containerEl.doc;
-		this.run(entry);
 		this.ran = { entry, count: this.ran !== null && this.ran.entry === entry ? this.ran.count + 1 : 1 };
-		const tookFocus = (): boolean => {
-			const focused = doc.activeElement;
-			return focused?.instanceOf(HTMLElement) === true && focused.closest(".modal-container") !== null && !this.containerEl.contains(focused);
-		};
-		if (tookFocus()) {
-			this.closeKeepingFocus();
-			return;
-		}
-		this.render();
-		window.setTimeout(() => {
-			if (this.containerEl.isConnected && tookFocus()) this.closeKeepingFocus();
-		}, 0);
-	}
-
-	private closeKeepingFocus(): void {
-		const focused = this.containerEl.doc.activeElement;
+		const shown = this.delayGate.isShown;
 		this.close();
-		if (focused?.instanceOf(HTMLElement) && focused.isConnected) focused.focus();
+		const focusBefore = doc.activeElement;
+		this.run(entry);
+		if (doc.activeElement !== focusBefore) return;
+		this.reopening = shown ? "shown" : "hidden";
+		this.open();
+		// A dialog that opens a moment later (after its own await) still wins: the popup gets out of its way.
+		window.setTimeout(() => {
+			const focused = doc.activeElement;
+			const elsewhere = focused?.instanceOf(HTMLElement) === true && focused.closest(".modal-container") !== null && !this.containerEl.contains(focused);
+			if (!this.containerEl.isConnected || !elsewhere) return;
+			this.close();
+			// Closing hands the focus back to the note; the dialog keeps it instead.
+			if (focused.isConnected) focused.focus();
+		}, 0);
 	}
 }

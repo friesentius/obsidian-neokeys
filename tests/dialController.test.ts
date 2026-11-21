@@ -1573,7 +1573,7 @@ describe("DialController sticky groups and Repeat", () => {
 
 	it("an item that opens something taking the focus closes a sticky dial", () => {
 		const { root, controller, host, calls } = stickySetup();
-		host.tookFocus = () => calls.executed.includes("workspace:close");
+		host.focusedElement = () => (calls.executed.includes("workspace:close") ? "switcher" : "note");
 		controller.open(root);
 		controller.typeKey(key("w"));
 		controller.typeKey(key("n"));

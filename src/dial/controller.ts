@@ -39,8 +39,8 @@ export interface DialHost {
 	isSticky(path: readonly GroupNode[]): boolean;
 	/** What the pill says about a command beyond its label, such as what Repeat would run; undefined for nothing special. */
 	commandDetail?(id: string): string | undefined;
-	/** Whether something the command just opened has taken the focus (the quick switcher, a prompt), so a sticky dial gets out of its way. */
-	tookFocus?(): boolean;
+	/** What has the focus right now, compared before and after an item of a sticky group runs: an item that moves it (the quick switcher, a prompt, Rename's title) closes the dial. */
+	focusedElement?(): unknown;
 	notify(message: string): void;
 	/** A short haptic tick when the armed item changes; the caller feature-detects it, so it may be absent. */
 	vibrate?(): void;
@@ -654,8 +654,9 @@ export class DialController {
 		const before = this.targets;
 		this.usePath(group);
 		this.plan();
+		const focusBefore = this.host.focusedElement?.();
 		this.run(node, label);
-		if (this.host.tookFocus?.()) {
+		if (this.host.focusedElement !== undefined && this.host.focusedElement() !== focusBefore) {
 			this.close();
 			return;
 		}
